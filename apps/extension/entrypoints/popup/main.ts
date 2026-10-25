@@ -1,5 +1,5 @@
 import { browser } from 'wxt/browser';
-import { createSkillMarkdown, type Recording } from '@show-me-once/shared';
+import { createSkillMarkdown, parseSkillPlan, type Recording, type RunState, type SkillParameter, type SkillPlan } from '@show-me-once/shared';
 import './style.css';
 
 const start = document.querySelector<HTMLButtonElement>('#start')!;
@@ -15,8 +15,40 @@ const skillDescription = document.querySelector<HTMLInputElement>('#skill-descri
 const skillMarkdown = document.querySelector<HTMLTextAreaElement>('#skill-markdown')!;
 const generate = document.querySelector<HTMLButtonElement>('#generate')!;
 const download = document.querySelector<HTMLButtonElement>('#download')!;
+const runParameters = document.querySelector<HTMLElement>('#run-parameters')!;
+const runStart = document.querySelector<HTMLButtonElement>('#run-start')!;
+const runControls = document.querySelector<HTMLElement>('#run-controls')!;
+const runStatus = document.querySelector<HTMLElement>('#run-status')!;
+const runNext = document.querySelector<HTMLButtonElement>('#run-next')!;
+const runConfirm = document.querySelector<HTMLButtonElement>('#run-confirm')!;
+const runStop = document.querySelector<HTMLButtonElement>('#run-stop')!;
+const runLog = document.querySelector<HTMLOListElement>('#run-log')!;
 type SkillDraft = { sourceRecordingId: string; name: string; description: string; markdown: string };
 let shownRecordingId: string | null = null;
+let parameterDefinitions: SkillParameter[] = [];
+let planValid = false;
+
+function showParameters(markdown: string) {
+  runParameters.replaceChildren();
+  try {
+    parameterDefinitions = parseSkillPlan(markdown).parameters;
+    planValid = true;
+    for (const parameter of parameterDefinitions) {
+      const label = document.createElement('label');
+      label.textContent = parameter.name;
+      const input = document.createElement('input');
+      input.dataset.parameter = parameter.name;
+      input.type = parameter.type === 'boolean' ? 'checkbox' : 'text';
+      label.append(input);
+      runParameters.append(label);
+    }
+    runStart.disabled = false;
+  } catch {
+    parameterDefinitions = [];
+    planValid = false;
+    runStart.disabled = true;
+  }
+}
 
 function showDraft(draft: SkillDraft | null) {
   draftSection.hidden = !draft;
@@ -24,6 +56,35 @@ function showDraft(draft: SkillDraft | null) {
   skillName.value = draft.name;
   skillDescription.value = draft.description;
   skillMarkdown.value = draft.markdown;
+  showParameters(draft.markdown);
+}
+
+async function renderRun() {
+  const [run, stored] = await Promise.all([
+    browser.runtime.sendMessage({ type: 'get-run' }) as Promise<RunState | null>,
+    browser.storage.local.get('runPlan'),
+  ]);
+  runControls.hidden = !run?.active;
+  runStart.disabled = !!run?.active || draftSection.hidden || !planValid;
+  skillMarkdown.disabled = !!run?.active;
+  generate.disabled = !!run?.active;
+  if (run?.active) {
+    const upcoming = (stored.runPlan as SkillPlan | undefined)?.steps[run.nextStep];
+    const action = upcoming?.kind === 'navigation' ? `Check ${upcoming.url}`
+      : upcoming?.kind === 'input' ? `Fill ${upcoming.inputKind} control (value hidden)`
+      : upcoming?.kind === 'click' ? 'Click the matched control' : 'Unknown step';
+    runStatus.textContent = `Step ${run.nextStep + 1} of ${run.totalSteps}: ${action}`;
+  } else {
+    runStatus.textContent = '';
+  }
+  runNext.hidden = run?.confirmationStep === run?.nextStep;
+  runConfirm.hidden = run?.confirmationStep !== run?.nextStep;
+  runLog.replaceChildren();
+  for (const entry of run?.logs ?? []) {
+    const item = document.createElement('li');
+    item.textContent = `Step ${entry.step}: ${entry.status} — ${entry.detail}`;
+    runLog.append(item);
+  }
 }
 
 function defaultName(recording: Recording): string {
@@ -61,6 +122,7 @@ async function render() {
     const draft = stored.skillDraft as SkillDraft | undefined;
     showDraft(draft?.sourceRecordingId === recording.id ? draft : null);
   }
+  await renderRun();
 }
 
 async function execute(type: 'start-recording' | 'stop-recording') {
@@ -92,6 +154,7 @@ generate.addEventListener('click', () => {
       };
       await browser.storage.local.set({ skillDraft: draft });
       showDraft(draft);
+      await renderRun();
     } catch (cause) {
       error.textContent = cause instanceof Error ? cause.message : String(cause);
     }
@@ -99,6 +162,7 @@ generate.addEventListener('click', () => {
 });
 skillMarkdown.addEventListener('input', () => {
   if (!shownRecordingId) return;
+  showParameters(skillMarkdown.value);
   void browser.storage.local.set({ skillDraft: {
     sourceRecordingId: shownRecordingId,
     name: skillName.value.trim(),
@@ -106,6 +170,34 @@ skillMarkdown.addEventListener('input', () => {
     markdown: skillMarkdown.value,
   } satisfies SkillDraft });
 });
+runStart.addEventListener('click', () => {
+  void (async () => {
+    error.textContent = '';
+    try {
+      const parameters: Record<string, string | boolean> = {};
+      for (const definition of parameterDefinitions) {
+        const input = runParameters.querySelector<HTMLInputElement>(`[data-parameter="${definition.name}"]`)!;
+        parameters[definition.name] = definition.type === 'boolean' ? input.checked : input.value;
+      }
+      await browser.runtime.sendMessage({ type: 'start-run', markdown: skillMarkdown.value, parameters });
+      await renderRun();
+    } catch (cause) {
+      error.textContent = cause instanceof Error ? cause.message : String(cause);
+    }
+  })();
+});
+async function runAction(type: 'run-next-step' | 'stop-run', confirm = false) {
+  error.textContent = '';
+  try {
+    await browser.runtime.sendMessage({ type, confirm });
+    await renderRun();
+  } catch (cause) {
+    error.textContent = cause instanceof Error ? cause.message : String(cause);
+  }
+}
+runNext.addEventListener('click', () => { void runAction('run-next-step'); });
+runConfirm.addEventListener('click', () => { void runAction('run-next-step', true); });
+runStop.addEventListener('click', () => { void runAction('stop-run'); });
 download.addEventListener('click', () => {
   const url = URL.createObjectURL(new Blob([skillMarkdown.value], { type: 'text/markdown' }));
   const link = document.createElement('a');
@@ -114,5 +206,9 @@ download.addEventListener('click', () => {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
-browser.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.recording) void render(); });
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local') return;
+  if (changes.recording) void render();
+  else if (changes.runState) void renderRun();
+});
 void render();

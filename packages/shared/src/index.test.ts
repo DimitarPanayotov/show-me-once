@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { appendAction, createSkillMarkdown, sanitizeUrl, sanitizedAction, type Recording } from './index.ts';
+import { appendAction, createSkillMarkdown, parseSkillPlan, sanitizeUrl, sanitizedAction, type Recording } from './index.ts';
 
 test('URL sanitization removes credentials, path values, query and fragment', () => {
   assert.equal(sanitizeUrl('https://user:secret@example.com/invoice/abc123?token=secret#private'), 'https://example.com/…/…');
@@ -47,6 +47,7 @@ test('skill generation uses placeholders and excludes recorded values and URL de
   assert.match(markdown, /\{\{search_1\}\}/);
   assert.match(markdown, /## Checkpoints and safety/);
   assert.doesNotMatch(markdown, /private|secret-page|token=/);
+  assert.deepEqual(parseSkillPlan(markdown).parameters, [{ name: 'search_1', type: 'string' }]);
 });
 
 test('a click-only skill asks for target descriptions instead of freezing a link choice', () => {
@@ -55,4 +56,10 @@ test('a click-only skill asks for target descriptions instead of freezing a link
     actions: [{ id: 'click', at: '2026-10-25T00:00:01Z', kind: 'click', url: 'https://example.com', selector: 'a:nth-of-type(1)' }],
   };
   assert.match(createSkillMarkdown(recording, 'follow-link', 'Follow a link'), /\{\{target_1\}\}/);
+});
+
+test('runner rejects a skill plan containing an unredacted URL or raw field value', () => {
+  const wrap = (step: object) => `# Skill\n\n\`\`\`json show-me-once\n${JSON.stringify({ schemaVersion: 1, parameters: [], steps: [step] })}\n\`\`\``;
+  assert.throws(() => parseSkillPlan(wrap({ kind: 'navigation', url: 'https://example.com/private?token=secret' })), /Unsafe/);
+  assert.throws(() => parseSkillPlan(wrap({ kind: 'input', url: 'https://example.com', selector: 'input:nth-of-type(1)', inputKind: 'search', parameter: 'search_1', value: 'secret' })), /Unsafe/);
 });

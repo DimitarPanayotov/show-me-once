@@ -17,6 +17,15 @@ export type Recording = {
   actions: RecordedAction[];
 };
 
+export type SkillParameter = { name: string; type: 'string' | 'boolean' };
+export type SkillStep =
+  | { kind: 'navigation'; url: string }
+  | { kind: 'click'; url: string; selector: string; parameter?: string }
+  | { kind: 'input'; url: string; selector: string; inputKind: NonNullable<RecordedAction['inputKind']>; parameter: string };
+export type SkillPlan = { schemaVersion: 1; parameters: SkillParameter[]; steps: SkillStep[] };
+export type RunLog = { step: number; kind: SkillStep['kind']; status: 'done' | 'blocked' | 'confirmation-required'; at: string; detail: string };
+export type RunState = { id: string; tabId: number; active: boolean; nextStep: number; totalSteps: number; confirmationStep?: number; logs: RunLog[] };
+
 export function appendAction(
   recording: Recording,
   action: Omit<RecordedAction, 'id' | 'at'>,
@@ -95,6 +104,7 @@ export function createSkillMarkdown(recording: Recording, name: string, descript
   const hasInput = actions.some(action => action.kind === 'input');
   const parameters: string[] = [];
   const steps: string[] = [];
+  const plan: SkillPlan = { schemaVersion: 1, parameters: [], steps: [] };
   let inputNumber = 0;
   let targetNumber = 0;
 
@@ -102,19 +112,25 @@ export function createSkillMarkdown(recording: Recording, name: string, descript
     const number = index + 1;
     if (action.kind === 'navigation') {
       steps.push(`${number}. **Navigation checkpoint:** Wait for the current tab to match \`${action.url}\` (same origin and path depth). Stop if it does not.`);
+      plan.steps.push({ kind: 'navigation', url: action.url });
     } else if (action.kind === 'input') {
       const parameter = `${action.inputKind}_${++inputNumber}`;
       const type = action.inputKind === 'checkbox' || action.inputKind === 'radio' ? 'boolean' : 'string';
       parameters.push(`- \`${parameter}\` (${type}, required): replacement for the ${action.inputKind} control in step ${number}.`);
       steps.push(`${number}. Find one visible ${action.inputKind} control at \`${action.selector}\`. Set it from \`{{${parameter}}}\`; verify the control accepted it locally without logging the value.`);
+      plan.parameters.push({ name: parameter, type });
+      plan.steps.push({ kind: 'input', url: action.url, selector: action.selector!, inputKind: action.inputKind!, parameter });
     } else {
       const selector = `\`${action.selector}\``;
       if (!hasInput) {
         const parameter = `target_${++targetNumber}`;
         parameters.push(`- \`${parameter}\` (string, required): describe the intended target for step ${number}.`);
         steps.push(`${number}. Find the target described by \`{{${parameter}}}\`. Use the recorded structural selector ${selector} only after confirming it points to that target, then click it.`);
+        plan.parameters.push({ name: parameter, type: 'string' });
+        plan.steps.push({ kind: 'click', url: action.url, selector: action.selector!, parameter });
       } else {
         steps.push(`${number}. Find one visible, enabled control at ${selector}, verify it is the intended target, then click it.`);
+        plan.steps.push({ kind: 'click', url: action.url, selector: action.selector! });
       }
     }
   }
@@ -140,5 +156,53 @@ export function createSkillMarkdown(recording: Recording, name: string, descript
     '- Obtain explicit user confirmation before any destructive action, purchase, payment, or submission with irreversible effects.',
     '- Never record passwords, secrets, page text, or parameter values in the skill or run log.',
     '',
+    '## Executable plan',
+    'The runner reads this block. Keep it aligned with the instructions when editing the skill.',
+    '```json show-me-once',
+    JSON.stringify(plan, null, 2),
+    '```',
+    '',
   ].join('\n');
+}
+
+/** Validate the editable executable block before it can control a browser tab. */
+export function parseSkillPlan(markdown: string): SkillPlan {
+  const match = /```json show-me-once\r?\n([\s\S]*?)\r?\n```/.exec(markdown);
+  if (!match) throw new Error('This skill has no executable plan. Regenerate it from the recording.');
+  let value: unknown;
+  try { value = JSON.parse(match[1]!); } catch { throw new Error('The executable plan is not valid JSON.'); }
+  if (!value || typeof value !== 'object') throw new Error('Invalid executable plan.');
+  const raw = value as Record<string, unknown>;
+  if (raw.schemaVersion !== 1 || !Array.isArray(raw.parameters) || !Array.isArray(raw.steps) || raw.steps.length < 1 || raw.steps.length > 100 || raw.parameters.length > 30) {
+    throw new Error('Invalid executable plan.');
+  }
+  const parameters: SkillParameter[] = raw.parameters.map((item: unknown) => {
+    if (!item || typeof item !== 'object') throw new Error('Invalid skill parameter.');
+    const parameter = item as Record<string, unknown>;
+    if (typeof parameter.name !== 'string' || !/^[a-z][a-z0-9_]*$/.test(parameter.name) || (parameter.type !== 'string' && parameter.type !== 'boolean')) {
+      throw new Error('Invalid skill parameter.');
+    }
+    return { name: parameter.name, type: parameter.type };
+  });
+  if (new Set(parameters.map(parameter => parameter.name)).size !== parameters.length) throw new Error('Duplicate skill parameter.');
+  const steps: SkillStep[] = raw.steps.map((item: unknown) => {
+    if (!item || typeof item !== 'object') throw new Error('Invalid skill step.');
+    const step = item as Record<string, unknown>;
+    const clean = sanitizedAction(step);
+    if (!clean || clean.url !== step.url || Object.keys(step).some(key => !['kind', 'url', 'selector', 'inputKind', 'parameter'].includes(key))) {
+      throw new Error('Unsafe or invalid skill step.');
+    }
+    if (clean.kind === 'navigation') return { kind: 'navigation', url: clean.url };
+    if (clean.kind === 'click') {
+      if (step.parameter !== undefined && (typeof step.parameter !== 'string' || !parameters.some(parameter => parameter.name === step.parameter && parameter.type === 'string'))) {
+        throw new Error('Invalid click parameter.');
+      }
+      return { kind: 'click', url: clean.url, selector: clean.selector!, ...(step.parameter ? { parameter: step.parameter as string } : {}) };
+    }
+    if (typeof step.parameter !== 'string' || !parameters.some(parameter => parameter.name === step.parameter && parameter.type === (clean.inputKind === 'checkbox' || clean.inputKind === 'radio' ? 'boolean' : 'string'))) {
+      throw new Error('Invalid input parameter.');
+    }
+    return { kind: 'input', url: clean.url, selector: clean.selector!, inputKind: clean.inputKind!, parameter: step.parameter };
+  });
+  return { schemaVersion: 1, parameters, steps };
 }

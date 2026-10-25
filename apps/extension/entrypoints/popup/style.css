@@ -25,3 +25,7 @@ input, textarea { width: 100%; border: 1px solid #c8d1df; border-radius: 7px; pa
 textarea { min-height: 230px; resize: vertical; }
 #generate, #download { margin-top: 10px; background: #2463eb; color: white; }
 #draft-section { margin-top: 14px; }
+#run-start, #run-next { margin-top: 8px; background: #0c705a; color: white; }
+#run-confirm { margin-top: 8px; background: #a61e2b; color: white; }
+#run-stop { margin-top: 8px; background: #fee2e2; color: #9f2121; }
+#run-log { max-height: 160px; }

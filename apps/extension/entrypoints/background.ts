@@ -1,5 +1,5 @@
 import { browser } from 'wxt/browser';
-import { appendAction, sanitizeUrl, sanitizedAction, type RecordedAction, type Recording } from '@show-me-once/shared';
+import { appendAction, parseSkillPlan, sanitizeUrl, sanitizedAction, type RecordedAction, type Recording, type RunState, type SkillPlan } from '@show-me-once/shared';
 
 const STORAGE_KEY = 'recording';
 let pending: Promise<unknown> = Promise.resolve();
@@ -17,6 +17,16 @@ async function read(): Promise<Recording | null> {
 
 async function save(recording: Recording): Promise<void> {
   await browser.storage.local.set({ [STORAGE_KEY]: recording });
+}
+
+async function readRun(): Promise<RunState | null> {
+  const stored = await browser.storage.local.get('runState');
+  return (stored.runState as RunState | undefined) ?? null;
+}
+
+async function saveRun(run: RunState): Promise<RunState> {
+  await browser.storage.local.set({ runState: run });
+  return run;
 }
 
 function append(recording: Recording, action: Omit<RecordedAction, 'id' | 'at'>): Recording {
@@ -41,11 +51,13 @@ export default defineBackground(() => {
     const request = message as Record<string, unknown>;
 
     if (request.type === 'get-recording') return read();
+    if (request.type === 'get-run') return readRun();
     if (request.type === 'get-recording-status') {
       return read().then(recording => ({ active: !!recording?.active, tabId: recording?.tabId ?? null }));
     }
     if (request.type === 'start-recording') {
       return serial(async () => {
+        if ((await readRun())?.active) throw new Error('Stop the current run before recording.');
         const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
         const tabId = tab?.id;
         const url = tab?.url ? sanitizeUrl(tab.url) : null;
@@ -81,6 +93,81 @@ export default defineBackground(() => {
         const updated = appendAction(recording, action, eventId, new Date().toISOString());
         if (updated !== recording) await save(updated);
         return true;
+      });
+    }
+    if (request.type === 'start-run') {
+      return serial(async () => {
+        if ((await read())?.active) throw new Error('Stop recording before running a skill.');
+        if ((await readRun())?.active) throw new Error('Stop the current run first.');
+        if (typeof request.markdown !== 'string') throw new Error('Generate a skill first.');
+        const plan = parseSkillPlan(request.markdown);
+        const provided = request.parameters && typeof request.parameters === 'object' ? request.parameters as Record<string, unknown> : {};
+        const parameters: Record<string, string | boolean> = {};
+        for (const parameter of plan.parameters) {
+          const value = provided[parameter.name];
+          if (parameter.type === 'string' && (typeof value !== 'string' || !value.trim())) throw new Error(`Enter ${parameter.name}.`);
+          if (parameter.type === 'boolean' && typeof value !== 'boolean') throw new Error(`Select ${parameter.name}.`);
+          parameters[parameter.name] = value as string | boolean;
+        }
+        const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tab?.id === undefined || !tab.url || !sanitizeUrl(tab.url)) throw new Error('Open an http(s) page before running.');
+        await ensureRecorder(tab.id);
+        const run: RunState = { id: crypto.randomUUID(), tabId: tab.id, active: true, nextStep: 0, totalSteps: plan.steps.length, logs: [] };
+        await browser.storage.local.set({ runPlan: plan });
+        await browser.storage.session.set({ runParameters: parameters });
+        return saveRun(run);
+      });
+    }
+    if (request.type === 'run-next-step') {
+      return serial(async () => {
+        const run = await readRun();
+        if (!run?.active) throw new Error('No active run.');
+        const { runPlan } = await browser.storage.local.get('runPlan') as { runPlan?: SkillPlan };
+        const step = runPlan?.steps[run.nextStep];
+        if (!step) throw new Error('Run plan is unavailable.');
+        const tab = await browser.tabs.get(run.tabId);
+        const currentUrl = tab.url ? sanitizeUrl(tab.url) : null;
+        let status: 'done' | 'blocked' | 'confirmation-required' = 'blocked';
+        let detail = 'The page does not match the recorded checkpoint.';
+        if (currentUrl === step.url) {
+          if (step.kind === 'navigation') {
+            status = 'done';
+            detail = 'Navigation checkpoint matched.';
+          } else {
+            const { runParameters } = await browser.storage.session.get('runParameters') as { runParameters?: Record<string, string | boolean> };
+            if (!runParameters) throw new Error('Run inputs expired. Stop and start the run again.');
+            await ensureRecorder(run.tabId);
+            const response = await browser.tabs.sendMessage(run.tabId, {
+              type: 'execute-skill-step', step,
+              value: step.parameter ? runParameters[step.parameter] : undefined,
+              confirmed: run.confirmationStep === run.nextStep && request.confirm === true,
+            }) as { status?: string } | undefined;
+            if (response?.status === 'done') {
+              status = 'done'; detail = `${step.kind} dispatched.`;
+            } else if (response?.status === 'confirmation-required') {
+              status = 'confirmation-required'; detail = 'Explicit confirmation required before this action.';
+            } else {
+              detail = 'The target was unavailable or ambiguous.';
+            }
+          }
+        }
+        const nextStep = status === 'done' ? run.nextStep + 1 : run.nextStep;
+        const updated: RunState = {
+          ...run,
+          active: status === 'done' && nextStep === run.totalSteps ? false : true,
+          nextStep,
+          ...(status === 'confirmation-required' ? { confirmationStep: run.nextStep } : { confirmationStep: undefined }),
+          logs: [...run.logs, { step: run.nextStep + 1, kind: step.kind, status, at: new Date().toISOString(), detail }],
+        };
+        if (!updated.active) await browser.storage.session.remove('runParameters');
+        return saveRun(updated);
+      });
+    }
+    if (request.type === 'stop-run') {
+      return serial(async () => {
+        const run = await readRun();
+        await browser.storage.session.remove('runParameters');
+        return run ? saveRun({ ...run, active: false, confirmationStep: undefined }) : null;
       });
     }
   });

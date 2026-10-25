@@ -11,9 +11,10 @@ One demonstration becomes a reusable browser skill. This repository is an in-pro
 - Show the timeline in the popup after it is reopened.
 - Start recording in a tab that was already open when the extension was loaded, without refreshing the page.
 - Generate, edit, retain locally and download a `SKILL.md` draft with `name` and `description` frontmatter, parameters, steps and checkpoints.
-- Never read or save typed values, page text, URL queries, fragments, credentials or path values. Password and other sensitive controls are ignored entirely.
+- Run the generated plan one step at a time in the extension, with visible logs, Stop, page checkpoints and explicit confirmation for detected submit, destructive and payment actions.
+- Never save recorded form values, page text, URL queries, fragments, credentials or path values. Password and other sensitive controls are ignored entirely. During a run, interactive labels are compared locally for target selection and never logged or sent to a model.
 
-The recording and draft are local to the extension. The backend library, auth, sharing, controlled replay and deployment are the next milestones.
+The recording, draft and run log are local to the extension. The backend library, auth, sharing and deployment are the next milestones.
 
 ## Run locally
 
@@ -30,19 +31,21 @@ In Chrome, open `chrome://extensions`, enable **Developer mode**, choose **Load 
 
 To test generalization, record a public search task. The query value is omitted from the timeline. Its generated step should use a placeholder such as `{{search_1}}`. A recording made only of clicks instead asks for target descriptions such as `{{target_1}}`.
 
+To run a new input, regenerate a skill made before the runner was added so it includes the `json show-me-once` plan block. Navigate to the starting site, enter new parameters under **Run this skill**, and click **Start run**. Click **Next step** once for each action. A submit button or detected destructive/payment target requires **Confirm this action** before it is clicked. Reopen the popup after navigation to continue. **Stop run** prevents later steps. Parameter values live only in `chrome.storage.session` for the run and are removed on stop or completion; they are not written to the local run log.
+
 The web app runs at `http://localhost:3000`. Its oRPC health procedure accepts POST at `/api/rpc/health`. The web app currently has no account or skill UI.
 
 ## Architecture
 
 | Layer | Responsibility |
 | --- | --- |
-| Content script | Observe click, change and same-document navigation events. It sends only structural selectors, control types, checkbox state and page URL to the background worker. It never reads field values or page text. |
-| MV3 service worker | Validate/sanitize every incoming event, bind it to the tab where recording began, serialize writes, and persist the timeline in `chrome.storage.local`. Browser navigation events are captured here too. |
-| Popup | Start/stop recording, display the timeline, and generate/edit/download a local skill draft. |
+| Content script | Observe click, change and same-document navigation events. It sends only structural selectors, control types, checkbox state and page URL to the background worker. During a run, it executes one validated step and compares interactive labels locally when needed. |
+| MV3 service worker | Validate/sanitize every incoming event, bind it to the tab where recording began, serialize writes, persist the timeline and manage one-step run state. Browser navigation events are captured here too. |
+| Popup | Start/stop recording, display the timeline, generate/edit/download a local skill draft, and control a step-by-step run. |
 | Next.js + oRPC | Future skill library and run APIs. A health procedure is wired now. |
 | PostgreSQL + Prisma | Schema for users, skills, versions, shares, runs and per-step logs. A connection is required when migrations and persistence are enabled. |
 
-The generated skill uses YAML `name` and `description` frontmatter, explicit parameters, step instructions and checkpoints. Generation is deterministic and local. Input values are not inferred from recorded form contents. Structural selectors are hints that the future runner must validate before acting. Because URL paths are redacted, navigation steps are checkpoints rather than executable URLs; the user starts on the intended site. The draft is not yet a runnable or backend-saved skill.
+The generated skill uses YAML `name` and `description` frontmatter, explicit parameters, step instructions, checkpoints and a validated JSON executable plan. Generation is deterministic and local. Input values are not inferred from recorded form contents. Structural selectors are hints that the runner validates before acting. Because URL paths are redacted, navigation steps are checkpoints rather than executable URLs; the user starts on the intended site. The runner reads the JSON block; edits to the prose alone do not change executable actions. The skill is not yet saved to the backend.
 
 ## Deployment preparation
 
@@ -50,9 +53,8 @@ The Next.js app is under `apps/web`. Set the Vercel project root to that directo
 
 ## Next milestones
 
-1. Run steps one at a time in the extension, showing actions, pause/stop controls and confirmations for destructive or payment actions.
-2. Add accounts, backend persistence, sharing and step logs.
-3. Verify on three public websites with two distinct inputs each.
-4. Deploy to Vercel, provide a test account, build a zip and record a demo under five minutes.
+1. Verify the step-by-step runner on the three public websites with two distinct inputs each and improve selectors where checkpoints block.
+2. Add accounts, backend persistence, sharing and database-backed step logs.
+3. Deploy to Vercel, provide a test account, build a zip and record a demo under five minutes.
 
 The required personal report about challenges and decisions must be written by the candidate in their own words.

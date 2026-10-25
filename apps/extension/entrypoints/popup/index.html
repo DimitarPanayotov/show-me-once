@@ -25,6 +25,17 @@
           <label for="skill-markdown">Edit the draft</label>
           <textarea id="skill-markdown" spellcheck="false"></textarea>
           <button id="download" type="button">Download SKILL.md</button>
+          <h2>Run this skill</h2>
+          <p>Enter new inputs, then run one step at a time. Inputs stay in this browser session and are not written to the run log.</p>
+          <div id="run-parameters"></div>
+          <button id="run-start" type="button">Start run</button>
+          <div id="run-controls" hidden>
+            <p id="run-status"></p>
+            <button id="run-next" type="button">Next step</button>
+            <button id="run-confirm" type="button" hidden>Confirm this action</button>
+            <button id="run-stop" type="button">Stop run</button>
+          </div>
+          <ol id="run-log"></ol>
         </div>
       </section>
     </main>
