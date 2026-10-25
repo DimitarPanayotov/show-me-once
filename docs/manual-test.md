@@ -1,6 +1,6 @@
 # Manual test checklist
 
-For the deployed test, download the extension ZIP from the GitHub release, extract it, and choose the extracted folder containing `manifest.json` in Chrome's **Load unpacked** dialog at `chrome://extensions`. Open [the live app](https://show-me-once-juma.vercel.app) and use the reviewer account supplied separately. For local development, load `apps/extension/.output/chrome-mv3` and run the web app at `http://localhost:3000`. After each rebuild, press **Reload** on the extension card.
+For the deployed test, download the extension ZIP from the [demo release](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.1.0-demo), extract it, and choose the extracted folder containing `manifest.json` in Chrome's **Load unpacked** dialog at `chrome://extensions`. Open [the live app](https://show-me-once-juma.vercel.app) and use the reviewer account supplied separately. For local development, load `apps/extension/.output/chrome-mv3` and run the web app at `http://localhost:3000`. After each rebuild, press **Reload** on the extension card.
 
 ## Record and safety
 
