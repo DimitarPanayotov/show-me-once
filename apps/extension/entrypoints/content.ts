@@ -12,20 +12,23 @@ function isSensitive(element: Element): boolean {
 export default defineContentScript({
   matches: ['http://*/*', 'https://*/*'],
   runAt: 'document_start',
-  async main(ctx) {
+  main(ctx) {
     let active = false;
     let lastLocation = location.href;
     let lastPointer: { selector: string; id: string; at: number } | null = null;
-    const status = await browser.runtime.sendMessage({ type: 'get-recording-status' }).catch(() => null) as { active?: boolean; tabId?: number } | null;
-    active = !!status?.active;
+    let stateRevision = 0;
 
     browser.storage.onChanged.addListener((changes, area) => {
-      if (area === 'local' && changes.recording) active = !!(changes.recording.newValue as { active?: boolean } | undefined)?.active;
+      if (area === 'local' && changes.recording) {
+        active = !!(changes.recording.newValue as { active?: boolean } | undefined)?.active;
+        stateRevision++;
+      }
     });
 
     browser.runtime.onMessage.addListener((message: unknown) => {
       if (message && typeof message === 'object' && (message as { type?: string }).type === 'recording-state') {
         active = !!(message as { active?: boolean }).active;
+        stateRevision++;
       }
     });
 
@@ -79,5 +82,13 @@ export default defineContentScript({
       lastLocation = location.href;
       send({ kind: 'navigation' });
     }, 500);
+
+    // Never delay event listeners while a dormant service worker wakes up.
+    const revisionAtRequest = stateRevision;
+    void browser.runtime.sendMessage({ type: 'get-recording-status' })
+      .then((status: { active?: boolean } | null) => {
+        if (stateRevision === revisionAtRequest) active = !!status?.active;
+      })
+      .catch(() => undefined);
   },
 });
