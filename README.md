@@ -56,6 +56,8 @@ pnpm build
 
 ## Deployment
 
-The Vercel project root is `apps/web`. Configure a PostgreSQL `DATABASE_URL`, apply `prisma migrate deploy`, then build the web app. Build the extension with `WXT_API_BASE_URL` set to the deployed HTTPS origin and distribute its `.output/chrome-mv3` folder or WXT zip. The app must be deployed and a reviewer test account provisioned before submission.
+Import the GitHub repository into Vercel as a Next.js project. Set **Root Directory** to `apps/web` and keep **Include source files outside of the Root Directory** enabled, because the app imports `packages/shared`. Vercel detects the root pnpm workspace and the web package build script. Use Node.js 24.x.
+
+Connect a PostgreSQL provider through Vercel Storage or supply a secure `DATABASE_URL` in the project environment. Apply `prisma migrate deploy` against that database once before opening registration to reviewers. Build the extension with `WXT_API_BASE_URL` set to the deployed HTTPS origin and distribute its `.output/chrome-mv3` folder or WXT zip. Create a reviewer test account and verify extension sign-in against the deployed app before submission. [Vercel's monorepo guidance](https://vercel.com/docs/monorepos/monorepo-faq) covers shared packages outside an app root; [Postgres setup](https://vercel.com/docs/postgres) covers Marketplace connections.
 
 The required short personal report about what was hard and how it was tackled must be written by the candidate in their own words.
