@@ -70,7 +70,9 @@ async function renderRun() {
   generate.disabled = !!run?.active;
   if (run?.active) {
     const upcoming = (stored.runPlan as SkillPlan | undefined)?.steps[run.nextStep];
-    const action = upcoming?.kind === 'navigation' ? `Check ${upcoming.url}`
+    const action = upcoming?.kind === 'navigation' && run.awaitingNavigation && !run.navigationObserved
+      ? 'Waiting for the page to finish navigating'
+      : upcoming?.kind === 'navigation' ? `Check ${upcoming.url}`
       : upcoming?.kind === 'input' ? `Fill ${upcoming.inputKind} control (value hidden)`
       : upcoming?.kind === 'key' ? 'Press Enter in the matched control'
       : upcoming?.kind === 'click' ? 'Click the matched control' : 'Unknown step';

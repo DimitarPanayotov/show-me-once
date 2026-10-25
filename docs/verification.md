@@ -8,7 +8,8 @@ This is a record of checks reported by the candidate during local Chrome testing
 | Wikipedia | Same recording and skill | Alan Turing | Passed (reported) | Five steps completed with confirmation; destination was `https://en.wikipedia.org/wiki/Alan_Turing`. |
 | GitHub | Public repository search/filter | actions | Passed (reported) | Five steps completed; Enter required confirmation; destination was `https://github.com/orgs/github/repositories?q=actions`. |
 | GitHub | Same recording and skill | docs | Passed (reported) | Five steps completed with confirmation; destination was `https://github.com/orgs/github/repositories?q=docs`. |
-| Open Library | Public book search | Pending | Pending | Use two distinct queries with one recording. |
+| Open Library | Advanced Search by title | Foundation | Passed (reported) | Five steps completed; search submit required confirmation; destination was `https://openlibrary.org/search?title=Foundation`. |
+| Open Library | Same recording and skill | Pending | Pending | Run with a second distinct title. |
 
 The run log showed step kind, status and generic result text. The candidate's pasted logs contained no search terms. Recorded form values are absent from the generated `SKILL.md`; parameters are supplied when running.
 
@@ -22,7 +23,7 @@ The run log showed step kind, status and generic result text. The candidate's pa
 
 ## Remaining evidence
 
-- Open Library needs a recorded skill and two successful runs with distinct inputs.
+- Open Library needs one more successful run with a distinct title.
 - Verify that **Stop run** prevents further actions and that a mismatched page blocks a step.
 - Verify a sensitive field is omitted from a recording and a destructive action requires confirmation.
 - Save screenshots or a short video of the final runs for the submission.

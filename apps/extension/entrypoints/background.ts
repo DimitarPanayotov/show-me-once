@@ -135,12 +135,10 @@ export default defineBackground(() => {
         if (!step) throw new Error('Run plan is unavailable.');
         const tab = await browser.tabs.get(run.tabId);
         const currentUrl = tab.url ? sanitizeUrl(tab.url) : null;
+        if (step.kind === 'navigation' && run.awaitingNavigation && !run.navigationObserved) return run;
         let status: 'done' | 'blocked' | 'confirmation-required' = 'blocked';
         let detail = 'The page does not match the recorded checkpoint.';
-        if (currentUrl === step.url && step.kind === 'navigation' && run.awaitingNavigation && !run.navigationObserved) {
-          detail = 'Waiting for navigation after the previous action.';
-        }
-        if (currentUrl === step.url && (step.kind !== 'navigation' || !run.awaitingNavigation || run.navigationObserved)) {
+        if (currentUrl === step.url) {
           if (step.kind === 'navigation') {
             status = 'done';
             detail = 'Navigation checkpoint matched.';
