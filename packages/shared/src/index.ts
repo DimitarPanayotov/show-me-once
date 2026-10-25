@@ -17,6 +17,16 @@ export type Recording = {
   actions: RecordedAction[];
 };
 
+export function appendAction(
+  recording: Recording,
+  action: Omit<RecordedAction, 'id' | 'at'>,
+  id: string,
+  at: string,
+): Recording {
+  if (recording.actions.some(existing => existing.id === id)) return recording;
+  return { ...recording, actions: [...recording.actions, { ...action, id, at }] };
+}
+
 /** Keep only the origin and path depth. Query, fragment, credentials and path text can carry secrets. */
 export function sanitizeUrl(raw: string): string | null {
   try {

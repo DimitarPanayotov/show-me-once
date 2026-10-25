@@ -1,5 +1,5 @@
 import { browser } from 'wxt/browser';
-import { sanitizeUrl, sanitizedAction, type RecordedAction, type Recording } from '@show-me-once/shared';
+import { appendAction, sanitizeUrl, sanitizedAction, type RecordedAction, type Recording } from '@show-me-once/shared';
 
 const STORAGE_KEY = 'recording';
 let pending: Promise<unknown> = Promise.resolve();
@@ -20,10 +20,7 @@ async function save(recording: Recording): Promise<void> {
 }
 
 function append(recording: Recording, action: Omit<RecordedAction, 'id' | 'at'>): Recording {
-  return {
-    ...recording,
-    actions: [...recording.actions, { ...action, id: crypto.randomUUID(), at: new Date().toISOString() }],
-  };
+  return appendAction(recording, action, crypto.randomUUID(), new Date().toISOString());
 }
 
 export default defineBackground(() => {
@@ -46,6 +43,7 @@ export default defineBackground(() => {
           startedAt: new Date().toISOString(), actions: [],
         };
         await save(append(recording, { kind: 'navigation', url }));
+        await browser.tabs.sendMessage(tabId, { type: 'recording-state', active: true }).catch(() => undefined);
         return read();
       });
     }
@@ -55,6 +53,7 @@ export default defineBackground(() => {
         if (!recording) return null;
         const stopped = { ...recording, active: false, stoppedAt: new Date().toISOString() };
         await save(stopped);
+        await browser.tabs.sendMessage(recording.tabId, { type: 'recording-state', active: false }).catch(() => undefined);
         return stopped;
       });
     }
@@ -64,7 +63,10 @@ export default defineBackground(() => {
         if (!recording?.active || sender.tab?.id !== recording.tabId) return false;
         const action = sanitizedAction(request.action);
         if (!action) return false;
-        await save(append(recording, action));
+        const eventId = typeof request.eventId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(request.eventId)
+          ? request.eventId : crypto.randomUUID();
+        const updated = appendAction(recording, action, eventId, new Date().toISOString());
+        if (updated !== recording) await save(updated);
         return true;
       });
     }

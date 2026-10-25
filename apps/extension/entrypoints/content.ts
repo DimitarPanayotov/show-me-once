@@ -15,6 +15,7 @@ export default defineContentScript({
   async main(ctx) {
     let active = false;
     let lastLocation = location.href;
+    let lastPointer: { selector: string; id: string; at: number } | null = null;
     const status = await browser.runtime.sendMessage({ type: 'get-recording-status' }).catch(() => null) as { active?: boolean; tabId?: number } | null;
     active = !!status?.active;
 
@@ -22,17 +23,40 @@ export default defineContentScript({
       if (area === 'local' && changes.recording) active = !!(changes.recording.newValue as { active?: boolean } | undefined)?.active;
     });
 
-    function send(action: Record<string, unknown>) {
+    browser.runtime.onMessage.addListener((message: unknown) => {
+      if (message && typeof message === 'object' && (message as { type?: string }).type === 'recording-state') {
+        active = !!(message as { active?: boolean }).active;
+      }
+    });
+
+    function send(action: Record<string, unknown>, eventId?: string) {
       if (!active) return;
-      void browser.runtime.sendMessage({ type: 'record-action', action: { ...action, url: location.href } }).catch(() => undefined);
+      void browser.runtime.sendMessage({ type: 'record-action', eventId, action: { ...action, url: location.href } }).catch(() => undefined);
     }
 
-    ctx.addEventListener(document, 'click', (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
+    function clickSelector(target: EventTarget | null): string | null {
+      if (!(target instanceof Element)) return null;
       const interactive = target.closest('a,button,input,select,textarea,[role="button"],[role="link"]');
-      if (!interactive || isSensitive(interactive)) return;
-      send({ kind: 'click', selector: structuralSelector(interactive) });
+      if (!interactive || isSensitive(interactive)) return null;
+      return structuralSelector(interactive);
+    }
+
+    ctx.addEventListener(document, 'pointerdown', (event) => {
+      if (!(event instanceof PointerEvent) || event.button !== 0) return;
+      const selector = clickSelector(event.target);
+      if (!selector) return;
+      const id = crypto.randomUUID();
+      lastPointer = { selector, id, at: Date.now() };
+      send({ kind: 'click', selector }, id);
+    }, true);
+
+    ctx.addEventListener(document, 'click', (event) => {
+      const selector = clickSelector(event.target);
+      if (!selector) return;
+      const id = lastPointer?.selector === selector && Date.now() - lastPointer.at < 1500
+        ? lastPointer.id : crypto.randomUUID();
+      lastPointer = null;
+      send({ kind: 'click', selector }, id);
     }, true);
 
     ctx.addEventListener(document, 'change', (event) => {
