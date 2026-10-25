@@ -10,7 +10,9 @@ One browser demonstration becomes a reusable `SKILL.md` and a step-by-step Chrom
 - Next.js/shadcn web app uses oRPC, Prisma and PostgreSQL for accounts, skill versions, sharing and per-step run history. Web sessions use HttpOnly cookies; extension sessions are held in `chrome.storage.session`.
 - The candidate manually reported successful replay of one skill with two inputs on each of Wikipedia, GitHub and Open Library. See [verification](docs/verification.md).
 
-The local API and database have been smoke tested. A local Chromium test also passed extension sign-in, saving/loading a skill, a controlled run, and a synced server step log. Final verification in regular Chrome and production deployment remain to be completed.
+The app is deployed at [show-me-once-juma.vercel.app](https://show-me-once-juma.vercel.app) with Neon PostgreSQL. Production API smoke checks passed registration, skill versions, sharing, run logs, and access revocation. An automated Chromium run also passed extension sign-in, saving/loading a skill, a controlled run, and a synced server step log against production. Final verification in regular Chrome is still pending.
+
+For a reviewer: load the built extension from the ZIP attached to the GitHub release, open the live app, and sign in with the test account supplied separately. The repository is private until the candidate is ready to share it.
 
 ## Local setup
 
@@ -18,7 +20,7 @@ Requires Node.js 24.11+, pnpm 10, Docker and Chrome.
 
 ```powershell
 pnpm install
-Copy-Item apps/web/.env.example apps/web/.env
+Copy-Item apps/web/.env.example apps/web/.env.local
 docker compose up -d
 pnpm --filter @show-me-once/web exec prisma migrate deploy
 pnpm dev:web
@@ -58,6 +60,6 @@ pnpm build
 
 Import the GitHub repository into Vercel as a Next.js project. Set **Root Directory** to `apps/web` and keep **Include source files outside of the Root Directory** enabled, because the app imports `packages/shared`. Vercel detects the root pnpm workspace and the web package build script. Use Node.js 24.x.
 
-Connect a PostgreSQL provider through Vercel Storage or supply a secure `DATABASE_URL` in the project environment. Apply `prisma migrate deploy` against that database once before opening registration to reviewers. Build the extension with `WXT_API_BASE_URL` set to the deployed HTTPS origin and distribute its `.output/chrome-mv3` folder or WXT zip. Create a reviewer test account and verify extension sign-in against the deployed app before submission. [Vercel's monorepo guidance](https://vercel.com/docs/monorepos/monorepo-faq) covers shared packages outside an app root; [Postgres setup](https://vercel.com/docs/postgres) covers Marketplace connections.
+Connect a PostgreSQL provider through Vercel Storage or supply a secure `DATABASE_URL` in the project environment. The web build runs `prisma migrate deploy` before `next build`; Prisma reads `.env.local` for local development and the environment variable in Vercel. Build the extension with `WXT_API_BASE_URL` set to the deployed HTTPS origin and distribute its `.output/chrome-mv3` folder or WXT zip. [Vercel's monorepo guidance](https://vercel.com/docs/monorepos/monorepo-faq) covers shared packages outside an app root; [Postgres setup](https://vercel.com/docs/postgres) covers Marketplace connections.
 
 The required short personal report about what was hard and how it was tackled must be written by the candidate in their own words.
