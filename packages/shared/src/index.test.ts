@@ -22,3 +22,14 @@ test('two reports of one physical click create one timeline action', () => {
   assert.equal(twice.actions.length, 1);
   assert.equal(twice, once);
 });
+
+test('adjacent duplicate navigation is collapsed, but navigation after a click is retained', () => {
+  const recording: Recording = { id: 'recording', active: true, tabId: 1, startedAt: '2026-10-25T00:00:00Z', actions: [] };
+  const navigation = { kind: 'navigation' as const, url: 'https://example.com/…/…' };
+  const first = appendAction(recording, navigation, 'nav-1', '2026-10-25T00:00:01.000Z');
+  const duplicate = appendAction(first, navigation, 'nav-2', '2026-10-25T00:00:01.500Z');
+  assert.equal(duplicate, first);
+  const clicked = appendAction(duplicate, { kind: 'click', url: navigation.url, selector: 'a:nth-of-type(1)' }, 'click-1', '2026-10-25T00:00:02.000Z');
+  const second = appendAction(clicked, navigation, 'nav-3', '2026-10-25T00:00:02.200Z');
+  assert.deepEqual(second.actions.map(action => action.kind), ['navigation', 'click', 'navigation']);
+});

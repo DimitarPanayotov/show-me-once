@@ -24,6 +24,11 @@ export function appendAction(
   at: string,
 ): Recording {
   if (recording.actions.some(existing => existing.id === id)) return recording;
+  const last = recording.actions.at(-1);
+  if (action.kind === 'navigation' && last?.kind === 'navigation' && last.url === action.url) {
+    const elapsed = Date.parse(at) - Date.parse(last.at);
+    if (elapsed >= 0 && elapsed < 1500) return recording;
+  }
   return { ...recording, actions: [...recording.actions, { ...action, id, at }] };
 }
 

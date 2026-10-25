@@ -79,9 +79,8 @@ export default defineBackground(() => {
       if (!recording?.active || recording.tabId !== tabId) return;
       const url = sanitizeUrl(tab.url!);
       if (!url) return;
-      const last = recording.actions.at(-1);
-      if (last?.kind === 'navigation' && last.url === url && Date.now() - Date.parse(last.at) < 1500) return;
-      await save(append(recording, { kind: 'navigation', url }));
+      const updated = append(recording, { kind: 'navigation', url });
+      if (updated !== recording) await save(updated);
     });
   });
 });
