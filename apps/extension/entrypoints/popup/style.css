@@ -1,0 +1,21 @@
+:root { font-family: Inter, system-ui, sans-serif; color: #18212f; background: #f6f8fb; }
+* { box-sizing: border-box; }
+body { margin: 0; width: 390px; min-height: 320px; }
+main { padding: 18px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+h1 { font-size: 18px; margin: 0; }
+h2 { font-size: 14px; margin: 20px 0 10px; display: flex; justify-content: space-between; }
+p { color: #5d6978; font-size: 12px; line-height: 1.5; }
+#status { color: #0c705a; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.controls { display: flex; gap: 8px; }
+button { border: 0; border-radius: 8px; padding: 10px 12px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
+#start { background: #2463eb; color: white; flex: 1; }
+#stop { background: #fee2e2; color: #9f2121; }
+button:disabled { opacity: .45; cursor: default; }
+#error { color: #a61e2b; min-height: 16px; }
+ol { margin: 0; padding-left: 25px; max-height: 320px; overflow-y: auto; }
+li { padding: 8px 0; border-bottom: 1px solid #dde4ed; font-size: 11px; }
+li strong, li span, li time { display: block; overflow-wrap: anywhere; }
+li strong { text-transform: capitalize; }
+li span { color: #5d6978; margin: 2px 0; }
+li time { color: #8b96a4; }

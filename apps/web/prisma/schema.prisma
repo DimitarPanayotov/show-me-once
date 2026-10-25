@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  name           String?
+  passwordHash   String?
+  createdAt      DateTime     @default(now())
+  ownedSkills    Skill[]
+  receivedShares SkillShare[]
+  runs           Run[]
+}
+
+model Skill {
+  id          String         @id @default(cuid())
+  ownerId     String
+  owner       User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  versions    SkillVersion[]
+  shares      SkillShare[]
+  runs        Run[]
+
+  @@index([ownerId])
+}
+
+model SkillVersion {
+  id         String   @id @default(cuid())
+  skillId    String
+  skill      Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  number     Int
+  markdown   String   @db.Text
+  parameters Json
+  createdAt  DateTime @default(now())
+  runs       Run[]
+
+  @@unique([skillId, number])
+}
+
+model SkillShare {
+  id          String   @id @default(cuid())
+  skillId     String
+  skill       Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  recipientId String
+  recipient   User     @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([skillId, recipientId])
+}
+
+model Run {
+  id             String       @id @default(cuid())
+  skillId        String
+  skill          Skill        @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  skillVersionId String
+  skillVersion   SkillVersion @relation(fields: [skillVersionId], references: [id])
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inputs         Json
+  status         RunStatus    @default(PENDING)
+  createdAt      DateTime     @default(now())
+  finishedAt     DateTime?
+  steps          StepLog[]
+
+  @@index([userId, createdAt])
+}
+
+model StepLog {
+  id        String     @id @default(cuid())
+  runId     String
+  run       Run        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  sequence  Int
+  summary   String
+  status    StepStatus
+  createdAt DateTime   @default(now())
+
+  @@unique([runId, sequence])
+}
+
+enum RunStatus {
+  PENDING
+  RUNNING
+  WAITING_CONFIRMATION
+  COMPLETED
+  STOPPED
+  FAILED
+}
+
+enum StepStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  SKIPPED
+  FAILED
+}

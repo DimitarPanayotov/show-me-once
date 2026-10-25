@@ -1,0 +1,15 @@
+{
+  "name": "show-me-once",
+  "private": true,
+  "packageManager": "pnpm@10.26.1",
+  "scripts": {
+    "build": "pnpm --filter @show-me-once/shared build && pnpm --filter @show-me-once/extension build && pnpm --filter @show-me-once/web build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @show-me-once/shared test",
+    "dev:extension": "pnpm --filter @show-me-once/extension dev",
+    "dev:web": "pnpm --filter @show-me-once/web dev"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

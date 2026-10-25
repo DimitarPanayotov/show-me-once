@@ -1,0 +1,19 @@
+{
+  "name": "@show-me-once/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt --browser chrome",
+    "build": "wxt build --browser chrome",
+    "zip": "wxt zip --browser chrome",
+    "typecheck": "wxt prepare && tsc --noEmit"
+  },
+  "dependencies": {
+    "@show-me-once/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "wxt": "0.21.4"
+  }
+}

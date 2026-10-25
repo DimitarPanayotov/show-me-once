@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.output/
+.wxt/
+dist/
+.env
+.env.local
+*.tsbuildinfo
+apps/web/src/generated/prisma/

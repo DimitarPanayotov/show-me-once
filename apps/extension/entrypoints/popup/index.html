@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Show Me Once</title>
+  </head>
+  <body>
+    <main>
+      <header><h1>Show Me Once</h1><span id="status">Ready</span></header>
+      <p>Record a task in the current tab. Field values and page text are never saved.</p>
+      <div class="controls"><button id="start">Start recording</button><button id="stop" disabled>Stop</button></div>
+      <p id="error" role="alert"></p>
+      <h2>Timeline <span id="count">0</span></h2>
+      <ol id="timeline"></ol>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
