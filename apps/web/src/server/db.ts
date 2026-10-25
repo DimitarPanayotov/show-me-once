@@ -8,6 +8,6 @@ export function db(): PrismaClient {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error('DATABASE_URL is not configured.');
   const client = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
-  if (process.env.NODE_ENV !== 'production') globalDb.showMeOnceDb = client;
+  globalDb.showMeOnceDb = client;
   return client;
 }
