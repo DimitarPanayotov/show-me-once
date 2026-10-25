@@ -79,3 +79,20 @@ test('Enter is recorded as a safe executable step after the input', () => {
   assert.match(markdown, /Press Enter/);
   assert.equal(sanitizedAction({ kind: 'key', key: 'A', url: 'https://github.com', selector: 'input:nth-of-type(1)' }), null);
 });
+
+test('skill generation removes repeated focus clicks before a text input', () => {
+  const url = 'https://openlibrary.org/…';
+  const selector = 'form:nth-of-type(1) > input:nth-of-type(1)';
+  const recording: Recording = {
+    id: 'search', active: false, tabId: 1, startedAt: '2026-10-25T00:00:00Z',
+    actions: [
+      { id: 'nav', at: '2026-10-25T00:00:01Z', kind: 'navigation', url },
+      { id: 'click-1', at: '2026-10-25T00:00:02Z', kind: 'click', url, selector },
+      { id: 'click-2', at: '2026-10-25T00:00:03Z', kind: 'click', url, selector },
+      { id: 'input', at: '2026-10-25T00:00:04Z', kind: 'input', url, selector, inputKind: 'text' },
+    ],
+  };
+  const markdown = createSkillMarkdown(recording, 'book-search', 'Search by title');
+  assert.deepEqual(parseSkillPlan(markdown).steps.map(step => step.kind), ['navigation', 'click', 'input']);
+  assert.match(markdown, /replacement for the text control in step 3/);
+});

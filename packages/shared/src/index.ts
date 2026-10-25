@@ -104,7 +104,13 @@ export function createSkillMarkdown(recording: Recording, name: string, descript
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) throw new Error('Use a lowercase skill name with hyphens.');
   if (!description.trim()) throw new Error('Add a short description.');
 
-  const actions = recording.actions.map(action => sanitizedAction(action)).filter(action => action !== null);
+  const safeActions = recording.actions.map(action => sanitizedAction(action)).filter(action => action !== null);
+  // Repeated focus clicks on a text field do not change the replacement input step.
+  const actions = safeActions.filter((action, index) => {
+    const next = safeActions[index + 1];
+    return !(action.kind === 'click' && action.selector?.split(' > ').at(-1)?.startsWith('input:')
+      && next?.kind === 'click' && next.url === action.url && next.selector === action.selector);
+  });
   if (actions.length === 0) throw new Error('Record at least one action first.');
   const host = new URL(actions[0]!.url).hostname;
   const hasInput = actions.some(action => action.kind === 'input');
