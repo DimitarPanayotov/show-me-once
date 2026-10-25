@@ -1,31 +1,39 @@
-# Architecture note
+# Architecture
 
-## Boundaries
+## What runs where
 
 | Layer | Responsibility |
 | --- | --- |
-| Content script | Observes clicks, non-sensitive input types, Enter and SPA navigation. It sends structural selectors and sanitized action metadata to the service worker. During replay it checks that the target is unique, visible and enabled, then executes one requested action. It never sends a form value or page text to the service worker. |
-| MV3 service worker | Owns the active tab, serializes action writes, sanitizes every event, stores the recording/run in `chrome.storage.local`, and keeps run parameters and the account token in `chrome.storage.session`. It validates and advances one step per popup request. |
-| Popup | Shows timeline, generates and edits the skill, collects per-run parameter values, shows step logs, and controls Stop/Confirm. It signs in to the library and loads/saves skills. |
-| Next.js + oRPC | Validates account, skill, sharing and run requests. The browser app exposes the library and versions. |
-| PostgreSQL + Prisma | Persists users, hashed sessions, skills, immutable versions, shares, runs and per-step status logs. Parameter values are not in the database schema. |
+| Content script | Records structural click/input/Enter/navigation metadata. Values and page text never leave the page during recording. During execution it verifies that a target is unique, visible, enabled, and non-sensitive before performing an action. |
+| MV3 service worker | Owns recording, run progress, account sessions, and execution. It serializes state writes and browser actions. Automatic execution uses short scheduled ticks with a Chrome alarm as a recovery mechanism; it does not depend on an open popup. |
+| Popup | Has focused Run and Record views. Stopping a recording creates a draft locally. Save feedback stays beside the action; timeline and Markdown are expandable. It collects new run inputs and offers Pause, Stop, confirmation, retry, and optional manual execution. |
+| Next.js + oRPC | Provides authenticated skill versions, sharing, and per-step run history. The web app uses HttpOnly session cookies; the extension explicitly omits cookies and uses its own bearer token. |
+| PostgreSQL + Prisma | Persists users, hashed sessions, skills, immutable versions, shares, runs, and step types/statuses. Run parameter values are not in the database schema. |
 
-## Skill format
+## Skill format and generalization
 
-`SKILL.md` has `name` and `description` frontmatter, human-readable parameters, numbered actions, navigation checkpoints, and a `json show-me-once` executable plan. The plan is parsed and validated before any run; edits to prose alone do not alter executable actions. This keeps the document readable while giving the extension a deterministic, reviewable action list.
+`SKILL.md` contains name/description frontmatter, parameter definitions, numbered instructions, checkpoints, safety rules, and a validated `json show-me-once` executable plan. Prose edits alone do not change executable actions.
 
-Recorded selectors are structural hints. For a click-only task, the generator asks for a target description so replay checks local link/button labels before choosing a target. For form tasks, parameter placeholders replace values that were never recorded. The runner stops on missing or ambiguous targets. URL origin and path depth are recorded; path text, queries, fragments and credentials are removed. A navigation checkpoint after an action requires observing a real navigation before it can pass, even if the sanitized URL shape is unchanged.
+Generation is deterministic and local. Form values are never recorded, so parameters replace input values rather than reproducing them. Click-only tasks ask for a target description, matched against visible local labels at run time. Structural selectors are hints; missing or ambiguous targets pause the run. URLs retain origin and path depth while dropping credentials, path text, query strings, and fragments. A checkpoint following an action also requires observing navigation.
 
-Generation is local and deterministic; no page text, passwords, search terms or recorded secret values are sent to an LLM. The present runner executes the validated plan step by step rather than asking a model to invent browser actions at runtime. This limits generalization to the recorded flow and the available local target checks.
+This provides a predictable action list without sending page data to a model. It generalizes within the demonstrated flow and local target checks; it does not perform open-ended planning or recover from major page redesigns.
+
+## Automatic execution and recovery
+
+Run state, plan, execution mode, pause reason, confirmation index, and step logs are stored in `chrome.storage.local`. Inputs and the extension session remain in `chrome.storage.session`. Safe steps advance automatically; navigation waits for the target tab to finish loading. Confirmation, a failed target check, or a navigation timeout pauses execution. Confirming a protected action resumes automatic execution; manual mode advances only on explicit steps.
+
+A short timer provides prompt progress while the worker is active. A repeating alarm recovers automatic work after worker suspension. Listeners are registered synchronously at startup, and persisted work is checked on each new worker lifetime. [Chrome's service-worker lifecycle](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle), [alarm API](https://developer.chrome.com/docs/extensions/reference/api/alarms).
+
+Before dispatching a browser action, the worker persists an in-flight marker. If the worker restarts without knowing the action's outcome, execution pauses for inspection instead of automatically repeating it. Pause and Stop interrupt scheduling immediately; an action already dispatched to a page cannot be undone. Run history sync is retried independently of the locally persisted action log.
 
 ## Safety and access
 
-- Password, payment, token and other sensitive controls are ignored by the recorder. Form values are omitted from recordings and server logs.
-- Submit controls, Enter submissions and detected destructive or payment controls require an explicit user confirmation. Stop halts subsequent steps.
-- Web sessions use HttpOnly cookies. Extension tokens are stored in browser session storage; only the extension popup can invoke its account/library messages. Server session tokens are stored as hashes.
-- Skill read access is limited to the owner and explicit recipients. Only the owner can create a new version or share/unshare it. Run history belongs to the user who ran the skill.
-- Browser recordings and drafts stay local until the user chooses **Save to library**. The backend receives `SKILL.md` and step kind/status, never run parameter values.
+- Sensitive controls, including passwords, token fields, and payment fields, are excluded from recording. Raw values and page text are omitted from recordings and server logs.
+- Submit controls, Enter submissions, and detected destructive/payment controls require explicit confirmation in both execution modes. The current detection is conservative and heuristic; it does not prove that every possible custom control is harmless.
+- Only extension pages may invoke account, library, and run-control messages. The server retains cross-origin cookie protection; extension requests omit website cookies.
+- Skill access is limited to owners and explicit recipients. Only an owner can edit versions or share a skill. A recipient can read and run it. Run history belongs to the person who ran it.
+- Recording and drafts remain local until Save to library. The backend receives the skill and generic step types/statuses, without run input values.
 
-## Known limits
+## Current limits
 
-Selectors can break after large page redesigns; the current runner stops instead of guessing. Controls inside closed Shadow DOM are outside the recorder. A site's human verification challenge must be completed by the user and is not part of a reusable skill. Library and run-log sync passed an automated Chromium test against the deployed app; a manual check in regular Chrome is still pending.
+Closed Shadow DOM controls are unsupported. A human-verification challenge must be completed by the user. URL checkpoints check origin/path depth, so the user should still inspect the actual result. Background recovery timing depends on Chrome alarm scheduling. Automatic execution has controlled-fixture coverage and completed two-input runs on Wikipedia, GitHub, and Open Library; these examples do not establish compatibility with arbitrary websites.

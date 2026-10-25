@@ -28,9 +28,27 @@ The run log showed step kind, status and generic result text. The candidate's pa
 - A fresh Chromium profile passed website cookie login, extension login, saving a skill, and extension logout while preserving the website session. A cookie-authenticated request from an unrelated origin still returned 403.
 - Five API regression tests cover cookie omission, bearer authentication, plain-text errors, structured errors, and invalid success responses.
 
-## Remaining evidence
+## Automatic runner and interface — extension 0.2.0
 
-- All three chosen sites have two reported successful runs with different inputs from the same skill on each site.
-- Verify that **Stop run** prevents further actions and that a mismatched page blocks a step.
-- Verify a sensitive field is omitted from a recording and a destructive action requires confirmation.
+- The controlled browser fixture passed real recording, automatic draft creation, excluded password/input values, local save progress/success, and collapsed timeline/Markdown.
+- A saved search skill completed automatic runs with Alpha and Beta. Submission paused for explicit confirmation; navigation and the final checkpoint completed with the popup closed.
+- Pause/Resume, Stop before submission, optional manual mode, duplicate-target blocking, and parameter-free server logs passed.
+- The extension worker was deliberately terminated during a persisted automatic run. The alarm woke a new worker and all remaining checkpoints completed without opening the popup.
+- Nineteen unit tests and the workspace typecheck pass. The production web build passes, and the deployed primary buttons have a blue background, white text, and visible outlines for secondary actions.
+- The public app and current release use neutral Show Me Once branding.
+
+Real-site automatic runs were also verified using one new recording per site:
+
+| Site | Demonstration | New automatic inputs | Result |
+| --- | --- | --- | --- |
+| Wikipedia | Ada Lovelace search | Grace Hopper; Alan Turing | Both completed, including www → en cross-origin navigation. |
+| GitHub | Organization repository search for copilot | actions; docs | Both completed, including Enter submission and SPA navigation. |
+| Open Library | Advanced Search Title: Dune | Foundation; Frankenstein | Both completed with the expected title query URLs. |
+
+Each run advanced safe steps automatically, paused for explicit submission confirmation, and completed its final checkpoint. The popup was closed after confirmation acceptance while navigation and checkpoint execution continued.
+
+## Remaining manual evidence
+
+- Perform a final user acceptance check of the redesigned popup in regular Chrome.
+- Exercise a dummy destructive/payment control manually when preparing the demonstration; automated tests already cover protected submission, privacy, ambiguous targets, and Stop.
 - Save screenshots or a short video of the final runs for the submission.

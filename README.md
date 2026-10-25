@@ -1,22 +1,33 @@
 # Show Me Once
 
-One browser demonstration becomes a reusable `SKILL.md` and a step-by-step Chrome run. This is the Juma Labs AI Engineer take-home project.
+Teach a browser task once, save it as a reusable skill, and run it again with new inputs.
 
-## Current state
+[Open the app](https://show-me-once-dimitar.vercel.app) · [Download the Chrome extension](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.2.0-demo)
 
-- WXT/TypeScript Manifest V3 extension records sanitized clicks, inputs, Enter and navigation. The timeline survives page changes and service-worker suspension.
-- Local deterministic generation produces editable `SKILL.md` instructions, parameters, checkpoints and a validated executable plan. Form values, page text and unredacted URLs are excluded.
-- The extension executes one step at a time, shows each action, asks before submission or detected destructive/payment actions, and can stop a run.
-- Next.js/shadcn web app uses oRPC, Prisma and PostgreSQL for accounts, skill versions, sharing and per-step run history. Web sessions use HttpOnly cookies; extension sessions are held in `chrome.storage.session`.
-- The candidate manually reported successful replay of one skill with two inputs on each of Wikipedia, GitHub and Open Library. See [verification](docs/verification.md).
+## How it works
 
-The app is deployed at [show-me-once-juma.vercel.app](https://show-me-once-juma.vercel.app) with Neon PostgreSQL. Production API smoke checks passed registration, skill versions, sharing, run logs, and access revocation. An automated Chromium run also passed extension sign-in, saving/loading a skill, a controlled run, and a synced server step log against production. Final verification in regular Chrome is still pending.
+1. **Record:** open a task's starting page, switch to **Record**, and demonstrate the task. Choose **Stop & create skill** when finished.
+2. **Save:** a parameterized skill is created locally. Review its name and choose **Save to library**. The button shows progress and confirms the saved version in place.
+3. **Run:** switch to **Run**, choose a saved skill, enter new inputs, and choose **Run skill**. Automatic execution is the default. It continues with the popup closed and pauses for confirmation or an unavailable target.
+4. **Control:** use **Pause**, **Resume run**, or **Stop run** at any time. **Step by step** execution is also available. The extension badge shows when a run needs attention.
+5. **Share:** use the web app to edit versions, share with another registered account, and inspect run history. **Instructions & download** contains the editable `SKILL.md` and export action.
 
-For a reviewer: load the built extension from the ZIP attached to the [demo release](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.1.1-demo), open the live app, and sign in with the test account supplied separately. The repository is private until the candidate is ready to share it.
+## Stack and design
+
+- WXT, TypeScript, and Chrome Manifest V3 for recording and execution.
+- Next.js and shadcn/ui for the skill library, versions, sharing, and run history.
+- oRPC, Prisma, PostgreSQL, and Vercel for the backend and deployment.
+- Local deterministic skill generation: recorded values and page text are excluded. No model service or API key is required.
+
+The **Run** and **Record** views keep unrelated controls out of the way. The timeline and raw Markdown are expandable details. Recordings and run progress survive service-worker suspension; run parameters and extension tokens stay in browser session storage.
+
+Automatic execution has been verified with two inputs each on Wikipedia search, GitHub organization repository search, and Open Library title search. Safe actions advance automatically; protected submissions still require confirmation.
+
+The [architecture note](docs/architecture.md) explains the skill format, background scheduler, privacy boundaries, and current limits. The [manual test guide](docs/manual-test.md) covers the full user flow. [Verification](docs/verification.md) distinguishes reported real-site checks from automated browser tests.
 
 ## Local setup
 
-Requires Node.js 24.11+, pnpm 10, Docker and Chrome.
+Requires Node.js 24.11+, pnpm 10, Docker, and Chrome 120+.
 
 ```powershell
 pnpm install
@@ -32,21 +43,16 @@ In another terminal:
 pnpm --filter @show-me-once/extension build
 ```
 
-Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select `apps/extension/.output/chrome-mv3`. The web library runs at `http://localhost:3000`. Register an account in the web app, then sign in with the same account in the extension popup. The extension can save the current skill to the library and load owned or shared skills. Share a saved skill with a second registered account from the web app.
+At `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `apps/extension/.output/chrome-mv3`. Register in the local web app, then use the popup's **Sign in** button with the same account. Web and extension sessions are independent.
 
-The extension defaults to `http://localhost:3000`. To build it for a deployed app, set `WXT_API_BASE_URL` to the HTTPS Vercel origin before `pnpm --filter @show-me-once/extension build` or `zip`. The generated manifest grants host access only to that API origin.
+To build a ZIP for the deployed app:
 
-## Use the extension
+```powershell
+$env:WXT_API_BASE_URL = 'https://show-me-once-dimitar.vercel.app'
+pnpm --filter @show-me-once/extension zip
+```
 
-1. Open an ordinary public website, choose **Start recording**, perform one task, and choose **Stop**. The timeline omits field values.
-2. Set a skill name and description; choose **Generate SKILL.md**. Review the Markdown and download it if desired.
-3. Sign in and choose **Save to library**. The web app can show versions and share the skill with another account.
-4. Return to the starting page, enter new parameter values and choose **Start run**. Use **Next step** to execute one action at a time; confirm submissions when prompted. Reopen the popup after navigation. **Stop run** prevents later actions.
-5. Load a saved or shared skill from the popup to run it. Values used during a run live only in browser session storage and are omitted from server run logs.
-
-## Architecture and safety
-
-See [architecture](docs/architecture.md) for the content script, service worker, backend, skill format and safety boundaries.
+Extract the ZIP and load the folder containing `manifest.json`. After rebuilding an existing unpacked installation, choose **Reload** on its extension card.
 
 ## Checks
 
@@ -56,10 +62,10 @@ pnpm typecheck
 pnpm build
 ```
 
+Browser tests additionally cover recording to automatic draft creation, inline save feedback, automatic runs with two inputs, navigation with the popup closed, confirmations, Pause/Resume/Stop, manual mode, ambiguous targets, worker termination recovery, and server logs. See [browser testing](docs/browser-testing.md) for setup.
+
 ## Deployment
 
-Import the GitHub repository into Vercel as a Next.js project. Set **Root Directory** to `apps/web` and keep **Include source files outside of the Root Directory** enabled, because the app imports `packages/shared`. Vercel detects the root pnpm workspace and the web package build script. Use Node.js 24.x.
+Import the repository into Vercel with **Root Directory** set to `apps/web` and **Include source files outside of the Root Directory** enabled. Use Node.js 24.x and connect PostgreSQL through Vercel Storage or provide `DATABASE_URL`.
 
-Connect a PostgreSQL provider through Vercel Storage or supply a secure `DATABASE_URL` in the project environment. The web build runs `prisma migrate deploy` before `next build`; Prisma reads `.env.local` for local development and the environment variable in Vercel. Build the extension with `WXT_API_BASE_URL` set to the deployed HTTPS origin and distribute its `.output/chrome-mv3` folder or WXT zip. [Vercel's monorepo guidance](https://vercel.com/docs/monorepos/monorepo-faq) covers shared packages outside an app root; [Postgres setup](https://vercel.com/docs/postgres) covers Marketplace connections.
-
-The required short personal report about what was hard and how it was tackled must be written by the candidate in their own words.
+The web build runs `prisma migrate deploy` before `next build`. Prisma reads `.env.local` locally and the environment variable in Vercel. Build the extension with `WXT_API_BASE_URL` set to the public production origin; the manifest grants host access only to that API origin. [Vercel monorepo guidance](https://vercel.com/docs/monorepos/monorepo-faq).

@@ -6,55 +6,305 @@
     <title>Show Me Once</title>
   </head>
   <body>
-    <main>
-      <header><h1>Show Me Once</h1><span id="status">Ready</span></header>
-      <p>Record a task in the current tab. Field values and page text are never saved.</p>
-      <div class="controls"><button id="start">Start recording</button><button id="stop" disabled>Stop</button></div>
-      <p id="error" role="alert"></p>
-      <p id="notice" role="status"></p>
-      <section id="account-section">
-        <h2>Skill library</h2>
-        <p id="account-status">Sign in to save and load shared skills.</p>
-        <form id="account-form">
-          <label for="account-email">Email</label><input id="account-email" type="email" required autocomplete="email" />
-          <label for="account-password">Password</label><input id="account-password" type="password" required autocomplete="current-password" />
-          <button id="account-login" type="submit">Sign in</button>
-        </form>
-        <div id="library-controls" hidden>
-          <button id="account-logout" type="button">Sign out</button>
-          <button id="library-refresh" type="button">Refresh skills</button>
-          <label for="library-skills">Saved and shared skills</label>
-          <select id="library-skills"></select>
-          <button id="library-load" type="button">Load selected skill</button>
-        </div>
-        <p><a id="web-app" href="http://localhost:3000" target="_blank" rel="noopener">Create an account or manage sharing in the web app</a></p>
-      </section>
-      <h2>Timeline <span id="count">0</span></h2>
-      <ol id="timeline"></ol>
-      <section id="skill-section" hidden>
-        <h2>Skill draft</h2>
-        <p>Generate an editable SKILL.md. Recorded field values are never included.</p>
-        <label for="skill-name">Name</label>
-        <input id="skill-name" type="text" maxlength="80" spellcheck="false" />
-        <label for="skill-description">Description</label>
-        <input id="skill-description" type="text" maxlength="200" />
-        <button id="generate" type="button">Generate SKILL.md</button>
-        <div id="draft-section" hidden>
-          <label for="skill-markdown">Edit the draft</label>
-          <textarea id="skill-markdown" spellcheck="false"></textarea>
-          <button id="download" type="button">Download SKILL.md</button>
-          <button id="save-library" type="button">Save to library</button>
-          <h2>Run this skill</h2>
-          <p>Enter new inputs, then run one step at a time. Inputs stay in this browser session and are not written to the run log.</p>
-          <div id="run-parameters"></div>
-          <button id="run-start" type="button">Start run</button>
-          <div id="run-controls" hidden>
-            <p id="run-status"></p>
-            <button id="run-next" type="button">Next step</button>
-            <button id="run-confirm" type="button" hidden>Confirm this action</button>
-            <button id="run-stop" type="button">Stop run</button>
+    <header class="app-header">
+      <div class="brand-row">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">S</span>
+          <div>
+            <h1>Show Me Once</h1>
+            <span id="status">Teach it once. Run it again.</span>
           </div>
-          <ol id="run-log"></ol>
+        </div>
+        <button
+          id="account-toggle"
+          class="button quiet small"
+          type="button"
+          aria-expanded="false"
+          aria-controls="account-section"
+        >
+          Sign in
+        </button>
+      </div>
+      <nav class="tabs" role="tablist" aria-label="Workspace">
+        <button
+          id="tab-run"
+          role="tab"
+          aria-selected="true"
+          aria-controls="view-run"
+        >
+          Run</button
+        ><button
+          id="tab-record"
+          role="tab"
+          aria-selected="false"
+          aria-controls="view-record"
+        >
+          Record
+        </button>
+      </nav>
+    </header>
+    <main>
+      <p id="error" class="alert error" role="alert"></p>
+      <section id="account-section" class="card" hidden>
+        <div class="section-heading">
+          <h2>Your library account</h2>
+          <button
+            id="account-close"
+            type="button"
+            class="button quiet small"
+            aria-label="Close account panel"
+          >
+            Close
+          </button>
+        </div>
+        <p id="account-status" class="muted">
+          Sign in to save and load shared skills.
+        </p>
+        <form id="account-form">
+          <label for="account-email">Email</label
+          ><input
+            id="account-email"
+            type="email"
+            required
+            autocomplete="email"
+          />
+          <label for="account-password">Password</label
+          ><input
+            id="account-password"
+            type="password"
+            required
+            autocomplete="current-password"
+          />
+          <button id="account-login" class="button primary full" type="submit">
+            Sign in
+          </button>
+        </form>
+        <button
+          id="account-logout"
+          class="button secondary"
+          type="button"
+          hidden
+        >
+          Sign out
+        </button>
+        <a
+          id="web-app"
+          class="text-link"
+          href="http://localhost:3000"
+          target="_blank"
+          rel="noopener"
+          >Open web library ↗</a
+        >
+      </section>
+
+      <section id="view-run" role="tabpanel" aria-labelledby="tab-run">
+        <div id="library-controls" class="library-picker" hidden>
+          <div class="section-heading">
+            <label for="library-skills">Your skills</label
+            ><button
+              id="library-refresh"
+              type="button"
+              class="button quiet small"
+            >
+              Refresh
+            </button>
+          </div>
+          <div class="inline-controls">
+            <select
+              id="library-skills"
+              aria-label="Saved and shared skills"
+            ></select
+            ><button id="library-load" type="button" class="button secondary">
+              Open
+            </button>
+          </div>
+          <p id="library-empty" class="muted" hidden>
+            Your library is empty. Record a task to create your first skill.
+          </p>
+        </div>
+        <div id="run-empty" class="empty-state">
+          <span class="empty-icon" aria-hidden="true">↗</span>
+          <h2>Your next task, on repeat.</h2>
+          <p>
+            Choose a saved skill, or show us a browser task once to create one.
+          </p>
+          <button id="empty-record" type="button" class="button primary full">
+            Record a new task</button
+          ><button id="sign-in-prompt" type="button" class="button quiet full">
+            Sign in to your library
+          </button>
+        </div>
+        <section id="run-panel" hidden>
+          <div class="skill-heading">
+            <span id="current-meta" class="eyebrow">Ready to run</span>
+            <h2 id="current-name"></h2>
+            <p id="current-description" class="muted"></p>
+          </div>
+          <div id="run-setup">
+            <div id="run-parameters"></div>
+            <div class="mode-row">
+              <label for="run-mode">Execution</label
+              ><select id="run-mode">
+                <option value="automatic">Automatic</option>
+                <option value="manual">Step by step</option>
+              </select>
+            </div>
+            <p id="run-help" class="hint">
+              Runs all steps and pauses when it needs your confirmation.
+            </p>
+            <button id="run-start" type="button" class="button primary full">
+              Run skill
+            </button>
+          </div>
+          <div id="run-controls" class="run-card" hidden>
+            <div class="section-heading">
+              <strong id="run-state-label">Running</strong
+              ><span id="run-step-count" class="muted"></span>
+            </div>
+            <progress
+              id="run-progress"
+              value="0"
+              max="1"
+              aria-label="Run progress"
+            ></progress>
+            <p id="run-status" aria-live="polite"></p>
+            <p id="run-context" class="hint"></p>
+            <button
+              id="run-confirm"
+              type="button"
+              class="button confirm full"
+              hidden
+            >
+              Confirm & continue
+            </button>
+            <div class="inline-controls">
+              <button id="run-next" type="button" class="button primary" hidden>
+                Next step</button
+              ><button
+                id="run-pause"
+                type="button"
+                class="button secondary"
+                hidden
+              >
+                Pause</button
+              ><button
+                id="run-resume"
+                type="button"
+                class="button primary"
+                hidden
+              >
+                Resume run</button
+              ><button
+                id="run-stop"
+                type="button"
+                class="button danger-outline"
+              >
+                Stop run
+              </button>
+            </div>
+          </div>
+          <p id="run-summary" class="alert success" role="status" hidden></p>
+          <details id="run-log-details" hidden>
+            <summary>
+              Run activity <span id="run-log-count" class="count"></span>
+            </summary>
+            <ol id="run-log"></ol>
+          </details>
+          <details id="run-editor-details">
+            <summary>Edit skill & export</summary>
+            <div id="run-editor-slot"></div>
+          </details>
+        </section>
+      </section>
+
+      <section
+        id="view-record"
+        role="tabpanel"
+        aria-labelledby="tab-record"
+        hidden
+      >
+        <div id="record-intro" class="record-intro">
+          <span class="eyebrow">Teach a new skill</span>
+          <h2 id="record-heading">Show us once.</h2>
+          <p id="record-description" class="muted">
+            Open the task's starting page, then record yourself doing it.
+          </p>
+          <div id="record-start-slot">
+            <button id="start" type="button" class="button primary full">
+              <span class="record-dot" aria-hidden="true"></span>Start recording
+            </button>
+          </div>
+        </div>
+        <div id="record-active" class="recording-card" hidden>
+          <strong
+            ><span class="record-dot pulse" aria-hidden="true"></span>Recording
+            your task</strong
+          >
+          <p id="record-count" class="muted">0 actions captured</p>
+          <p class="hint">
+            Continue in the current tab, then return here when you are done.
+          </p>
+          <button id="stop" type="button" class="button danger full">
+            Stop & create skill
+          </button>
+        </div>
+        <p id="privacy-note" class="privacy-note">
+          Field values and passwords are never recorded.
+        </p>
+        <div id="record-review-slot"></div>
+        <details id="record-timeline" hidden>
+          <summary>
+            Recorded actions <span id="count" class="count">0</span>
+          </summary>
+          <ol id="timeline"></ol>
+        </details>
+        <div id="record-footer" hidden></div>
+      </section>
+
+      <section id="skill-section" class="skill-editor" hidden>
+        <div class="section-heading">
+          <h3 id="editor-title">Your skill is ready</h3>
+          <span id="draft-label" class="pill">Draft</span>
+        </div>
+        <label for="skill-name">Name</label
+        ><input id="skill-name" type="text" maxlength="80" spellcheck="false" />
+        <label for="skill-description">Description</label
+        ><input id="skill-description" type="text" maxlength="200" />
+        <details id="draft-section">
+          <summary>Instructions & download</summary>
+          <label for="skill-markdown">SKILL.md</label
+          ><textarea id="skill-markdown" spellcheck="false"></textarea>
+          <div class="inline-controls">
+            <button id="download" type="button" class="button secondary">
+              Download SKILL.md</button
+            ><button id="generate" type="button" class="button quiet">
+              Rebuild from recording
+            </button>
+          </div>
+        </details>
+        <div class="save-bar">
+          <div class="inline-controls">
+            <button id="save-library" type="button" class="button primary grow">
+              Save to library</button
+            ><button id="try-skill" type="button" class="button secondary">
+              Try skill
+            </button>
+          </div>
+          <p
+            id="notice"
+            class="save-feedback"
+            role="status"
+            aria-live="polite"
+          ></p>
+          <p id="save-error" class="save-feedback error" role="alert"></p>
+          <button
+            id="save-run"
+            type="button"
+            class="button success-button full"
+            hidden
+          >
+            Run saved skill →
+          </button>
         </div>
       </section>
     </main>

@@ -26,7 +26,12 @@ export type SkillStep =
   | { kind: 'key'; url: string; selector: string; key: 'Enter' };
 export type SkillPlan = { schemaVersion: 1; parameters: SkillParameter[]; steps: SkillStep[] };
 export type RunLog = { step: number; kind: SkillStep['kind']; status: 'done' | 'blocked' | 'confirmation-required'; at: string; detail: string };
-export type RunState = { id: string; tabId: number; active: boolean; nextStep: number; totalSteps: number; confirmationStep?: number; awaitingNavigation?: boolean; navigationObserved?: boolean; remoteRunId?: string; remoteSyncedLogs?: number; syncError?: string; logs: RunLog[] };
+export type RunState = {
+  id: string; tabId: number; active: boolean; nextStep: number; totalSteps: number;
+  mode?: 'automatic' | 'manual'; pauseReason?: 'user' | 'confirmation' | 'blocked'; skillKey?: string;
+  confirmationStep?: number; inFlightStep?: number; awaitingNavigation?: boolean; navigationObserved?: boolean; navigationStartedAt?: number;
+  remoteRunId?: string; remoteSyncedLogs?: number; syncError?: string; logs: RunLog[];
+};
 
 export function appendAction(
   recording: Recording,

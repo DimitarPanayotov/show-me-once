@@ -1,31 +1,52 @@
-# Manual test checklist
+# Manual testing
 
-For the deployed test, download the extension ZIP from the [demo release](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.1.1-demo), extract it, and choose the extracted folder containing `manifest.json` in Chrome's **Load unpacked** dialog at `chrome://extensions`. Open [the live app](https://show-me-once-juma.vercel.app) and use the reviewer account supplied separately. For local development, load `apps/extension/.output/chrome-mv3` and run the web app at `http://localhost:3000`. After each rebuild, press **Reload** on the extension card.
+Use the [live app](https://show-me-once-dimitar.vercel.app) and the ZIP from [the current release](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.2.0-demo). Extract it and load the folder containing `manifest.json` through **Load unpacked** at `chrome://extensions`. Existing source installations can use **Reload**. Confirm version 0.2.0.
 
-## Record and safety
+## Sign in
 
-1. Open `https://www.wikipedia.org`, open the extension, and choose **Start recording**. Search for a public topic and stop after the result page loads.
-2. The timeline should contain the initial navigation, focus click, input with **value omitted**, submit click, and result navigation. It must not show the search value or URL query.
-3. Generate `SKILL.md`, inspect its `search_1` parameter and executable plan, then download it. Search text must not appear in the file.
-4. Close and reopen the popup. The timeline and draft should remain. Reload the tab and start another recording to check that event capture still works after extension reload.
-5. On a page with a password field, type a disposable value while recording and confirm that no password input action appears in the timeline. Do not use a real password for this test.
+1. Sign in on the website.
+2. Open the extension, choose **Sign in**, and use the same account. Keep the website signed in to exercise cookie/session isolation.
+3. The account panel should close after sign-in and saved skills should appear in **Run**.
 
-## Run
+## Record, create, and save
 
-1. Return to the starting page, enter a new topic in `search_1`, and choose **Start run**.
-2. Advance one step at a time. Confirm the search submission when the popup asks. Reopen the popup after navigation and finish the checkpoint. The result page should match the supplied topic.
-3. Repeat with a different topic. Start a third run and choose **Stop run** before the next action; later steps must not execute.
-4. A missing or ambiguous control should leave the step blocked. A payment or destructive action must require explicit confirmation.
+1. Open `https://www.wikipedia.org` with English selected.
+2. Choose **Record → Start recording**. Search for Ada Lovelace using the search button, then wait for the article.
+3. Reopen the popup and choose **Stop & create skill**. A draft should appear automatically.
+4. Review Name and Description. The timeline and **Instructions & download** should be collapsed.
+5. Expand the timeline and Markdown to confirm that the search value is absent and the skill uses `search_1`.
+6. Choose **Save to library**. The button should show Saving, then a visible saved state and version message at the same location. It should not require scrolling to find success.
+7. Choose **Run saved skill**. The popup should switch to Run and show the skill inputs.
 
-## Library and sharing
+## Automatic runs
 
-1. Register or sign in through the web app. Keep that website session signed in, then sign in with the same account in the extension popup. Both should work together; the extension uses its own bearer session and excludes website cookies.
-2. Choose **Save to library** on a generated draft. The popup should show a success message and list the skill under **Saved and shared skills**. Refresh the web app and confirm it appears there.
-3. Edit the skill in the web app and choose **Save new version**. The version number should increase and older versions remain listed.
-4. Register a second account, share the skill with its email from the owner's web app, then sign in as that account. It should appear as shared and be loadable but not editable as owner.
-5. Run the saved skill. The web app's **Run history** should show step types and statuses, without parameter values.
-6. Sign out in the extension and refresh the web app. The website should remain signed in because its cookie session is independent.
+1. Return to the starting Wikipedia page and enter Grace Hopper as the search term.
+2. Keep Execution set to **Automatic** and choose **Run skill**.
+3. Safe actions should advance without Next. Search submission should pause for **Confirm & continue**. The badge should show `!` when attention is needed.
+4. Confirm the intended search. Close the popup during navigation; it should continue and finish the checkpoint without requiring the popup to remain open.
+5. Reopen it and verify the completed summary, activity log, and Grace Hopper result.
+6. Return to the starting page and repeat with Alan Turing using the same skill, without recording again.
+7. Repeat the record/save/run flow for GitHub's organization repository search (`https://github.com/orgs/github/repositories`, inputs actions/docs) and Open Library Advanced Search (`https://openlibrary.org/advancedsearch`, Title inputs Foundation/Frankenstein).
+8. If a website shows human verification, complete it yourself and inspect the page before resuming.
 
-## Three-site evidence
+## Pause, Stop, and manual execution
 
-The candidate's manual replay results are recorded in [verification.md](verification.md): Wikipedia search, GitHub repository filtering, and Open Library title search, each with two different inputs. If Open Library presents human verification, complete it manually and start from the intended search page again.
+1. Start an automatic run, choose **Pause**, and check that no additional actions execute until **Resume run**.
+2. Stop a run before confirming submission. No later search action should execute; the web history should show a stopped run.
+3. Choose **Step by step** before starting another run. Only **Next step** should advance it; protected actions still require confirmation.
+4. Start a Wikipedia skill on `https://example.com`. The first checkpoint should block and nothing should be clicked. Stop afterward.
+
+## Library, versions, and sharing
+
+1. Refresh the web library and open the saved skill. Main actions should have visible filled or outlined button styles.
+2. Change its description and choose **Save new version**. Both version numbers should remain listed.
+3. Refresh and reopen that skill in the extension.
+4. Register a second disposable account before sharing with its email. As the recipient, confirm the shared skill is readable and runnable but owner editing is unavailable.
+5. Run the shared skill and inspect the recipient's Run history. **View steps** should expose step types/statuses without input values.
+6. Sign out in the extension and refresh the website; the independent website session should remain signed in.
+
+## Privacy and recovery
+
+Use disposable inputs on a controlled page for password filtering and dummy Delete/Pay confirmation tests. Never exercise this check on a real payment or deletion. Automated fixture tests cover omitted password values, blocked duplicate targets, and confirmation pauses.
+
+For worker suspension, close extension DevTools and the popup while recording, wait until the worker becomes inactive, then click another link in the recorded tab. The timeline must retain both earlier and later actions. An automatic run should recover after suspension; an interrupted action with an unknown outcome must pause for inspection.

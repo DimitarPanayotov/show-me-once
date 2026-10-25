@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
+import { ArrowRight, Download, LogOut, Plus, Save, Share2 } from 'lucide-react';
 
 type User = { id: string; email: string; name: string | null };
 type SkillSummary = { id: string; title: string; description: string; ownerId: string; currentVersion: number; updatedAt: string; owner: { email: string; name: string | null } };
@@ -24,6 +25,8 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [notice, setNotice] = useState('');
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
@@ -91,7 +94,7 @@ export default function Home() {
   }
 
   async function saveSkill(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setNotice('');
+    event.preventDefault(); setBusy(true); setSaving(true); setNotice('');
     try {
       const input = { title, description, markdown };
       const result = selected
@@ -101,17 +104,17 @@ export default function Home() {
       await openSkill(result.id);
       setNotice(selected ? 'New version saved.' : 'Skill saved to your library.');
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not save the skill.'); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setSaving(false); }
   }
 
   async function shareSkill(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!selected) return;
-    setBusy(true); setNotice('');
+    setBusy(true); setSharing(true); setNotice('');
     try {
       await rpc('skill/share', { id: selected.id, email: shareEmail });
       setNotice(`Shared with ${shareEmail}.`); setShareEmail('');
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not share the skill.'); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setSharing(false); }
   }
 
   function newSkill() {
@@ -140,11 +143,11 @@ export default function Home() {
     <main className="mx-auto max-w-6xl px-5 py-10 md:px-8">
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-7">
         <div>
-          <div className="mb-3 inline-flex rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-blue-800">Record · Teach · Reuse</div>
+          <div className="mb-3 inline-flex rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-blue-800">Record once · Run again</div>
           <h1 className="text-4xl font-semibold tracking-tight text-slate-950">Show Me Once</h1>
           <p className="mt-3 max-w-2xl text-slate-600">Save browser skills, keep every version, and share them with another account. Record and run tasks in the Chrome extension.</p>
         </div>
-        {user && <div className="flex items-center gap-3 text-sm"><span>{user.email}</span><Button variant="outline" disabled={busy} onClick={() => void signOut()}>Sign out</Button></div>}
+        {user && <div className="flex items-center gap-3 text-sm"><span>{user.email}</span><Button variant="outline" disabled={busy} onClick={() => void signOut()}><LogOut />Sign out</Button></div>}
       </header>
 
       {notice && <p className="mt-5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900" role="status">{notice}</p>}
@@ -156,7 +159,7 @@ export default function Home() {
             {authMode === 'register' && <label className="block text-sm font-medium">Name (optional)<input className={`${fieldClass} mt-1`} value={displayName} onChange={event => setDisplayName(event.target.value)} /></label>}
             <label className="block text-sm font-medium">Email<input className={`${fieldClass} mt-1`} type="email" required autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} /></label>
             <label className="block text-sm font-medium">Password<input className={`${fieldClass} mt-1`} type="password" required minLength={authMode === 'register' ? 12 : 1} autoComplete={authMode === 'register' ? 'new-password' : 'current-password'} value={password} onChange={event => setPassword(event.target.value)} /></label>
-            <Button disabled={busy} type="submit">{authMode === 'login' ? 'Sign in' : 'Create account'}</Button>
+            <Button disabled={busy} type="submit">{busy ? 'Please wait…' : authMode === 'login' ? 'Sign in' : 'Create account'}<ArrowRight /></Button>
           </form>
           <button className="mt-5 text-sm font-medium text-blue-700 underline" onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setNotice(''); }}>
             {authMode === 'login' ? 'Need an account? Register' : 'Already have an account? Sign in'}
@@ -166,7 +169,7 @@ export default function Home() {
         <div className="mt-8 grid gap-7 lg:grid-cols-[300px_minmax(0,1fr)]">
           <aside className="space-y-6">
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between gap-2"><h2 className="text-xl font-semibold">Skill library</h2><Button size="sm" onClick={newSkill}>New</Button></div>
+              <div className="flex items-center justify-between gap-2"><h2 className="text-xl font-semibold">Skill library</h2><Button size="sm" onClick={newSkill}><Plus />New skill</Button></div>
               <p className="mt-2 text-sm text-slate-600">Owned and shared skills appear here.</p>
               <div className="mt-4 space-y-2">{skills.length === 0 ? <p className="text-sm text-slate-500">No skills yet. Import a SKILL.md to begin.</p> : skills.map(skill => (
                 <button key={skill.id} onClick={() => void openSkill(skill.id)} className={`w-full rounded-xl border p-3 text-left text-sm transition hover:border-blue-400 ${selected?.id === skill.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200'}`}>
@@ -182,6 +185,7 @@ export default function Home() {
                 <div key={run.id} className="rounded-xl border border-slate-200 p-3 text-sm">
                   <strong className="block">{run.skill.title}</strong>
                   <span className="text-slate-500">{run.status.toLowerCase()} · {run.steps.length} log entries</span>
+                  <details className="mt-3"><summary className="text-xs font-medium text-blue-700">View steps</summary><ol className="mt-2 space-y-1 text-xs text-slate-600">{run.steps.map(step => <li key={step.sequence}>Step {step.stepNumber}: {step.kind} · {step.status.toLowerCase().replaceAll('_', ' ')}</li>)}</ol></details>
                 </div>
               ))}</div>
             </section>
@@ -198,8 +202,8 @@ export default function Home() {
                 {(!selected || selected.ownerId === user.id) && <label className="block text-sm font-medium">Import SKILL.md<input className="mt-2 block w-full text-sm" type="file" accept=".md,text/markdown,text/plain" onChange={event => importMarkdown(event.target.files?.[0])} /></label>}
                 <label className="block text-sm font-medium">SKILL.md<textarea className={`${fieldClass} mt-1 min-h-72 font-mono text-xs`} required value={markdown} readOnly={!!selected && selected.ownerId !== user.id} onChange={event => setMarkdown(event.target.value)} /></label>
                 <div className="flex flex-wrap gap-2">
-                  {(!selected || selected.ownerId === user.id) && <Button type="submit" disabled={busy}>{selected ? 'Save new version' : 'Save skill'}</Button>}
-                  {selected && <Button type="button" variant="outline" onClick={downloadSkill}>Download SKILL.md</Button>}
+                  {(!selected || selected.ownerId === user.id) && <Button type="submit" disabled={busy}><Save />{saving ? 'Saving…' : selected ? 'Save new version' : 'Save skill'}</Button>}
+                  {selected && <Button type="button" variant="outline" onClick={downloadSkill}><Download />Download SKILL.md</Button>}
                 </div>
               </form>
               {selected && <div className="mt-6 border-t border-slate-200 pt-5"><h3 className="font-semibold">Versions</h3><p className="mt-2 text-sm text-slate-600">{selected.versions.map(version => `v${version.number}`).join(' · ')}</p></div>}
@@ -209,7 +213,7 @@ export default function Home() {
               <p className="mt-2 text-sm text-slate-600">The recipient needs an account. Sharing gives them read access to the skill and its versions.</p>
               <form onSubmit={event => void shareSkill(event)} className="mt-4 flex flex-wrap gap-2">
                 <input className={`${fieldClass} min-w-56 flex-1`} type="email" required placeholder="Recipient email" aria-label="Recipient email" value={shareEmail} onChange={event => setShareEmail(event.target.value)} />
-                <Button type="submit" disabled={busy}>Share</Button>
+                <Button type="submit" disabled={busy}><Share2 />{sharing ? 'Sharing…' : 'Share skill'}</Button>
               </form>
             </section>}
           </div>

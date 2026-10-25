@@ -1,11 +1,35 @@
-import { browser } from 'wxt/browser';
-import { appendAction, parseSkillPlan, sanitizeUrl, sanitizedAction, type RecordedAction, type Recording, type RunState, type SkillPlan } from '@show-me-once/shared';
-import { requestApi } from '../lib/api';
+import { browser } from "wxt/browser";
+import {
+  appendAction,
+  parseSkillPlan,
+  sanitizeUrl,
+  sanitizedAction,
+  type RecordedAction,
+  type Recording,
+  type RunState,
+  type SkillPlan,
+} from "@show-me-once/shared";
+import { requestApi } from "../lib/api";
+import {
+  applyStepOutcome,
+  canAutoAdvance,
+  recoverInterruptedRun,
+} from "../lib/run-state";
 
-const STORAGE_KEY = 'recording';
-const API_BASE = (import.meta.env.WXT_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
-type Account = { token: string; user: { id: string; email: string; name: string | null } };
+const STORAGE_KEY = "recording";
+const AUTO_ALARM = "continue-skill-run";
+const API_BASE = (
+  import.meta.env.WXT_API_BASE_URL || "http://localhost:3000"
+).replace(/\/$/, "");
+type Account = {
+  token: string;
+  user: { id: string; email: string; name: string | null };
+};
 let pending: Promise<unknown> = Promise.resolve();
+let timer: ReturnType<typeof setTimeout> | undefined;
+let tickQueued = false;
+let interruption: "pause" | "stop" | undefined;
+let controlRevision = 0;
 
 function serial<T>(work: () => Promise<T>): Promise<T> {
   const next = pending.then(work, work);
@@ -14,8 +38,11 @@ function serial<T>(work: () => Promise<T>): Promise<T> {
 }
 
 async function read(): Promise<Recording | null> {
-  const stored = await browser.storage.local.get(STORAGE_KEY);
-  return (stored[STORAGE_KEY] as Recording | undefined) ?? null;
+  return (
+    ((await browser.storage.local.get(STORAGE_KEY))[STORAGE_KEY] as
+      | Recording
+      | undefined) ?? null
+  );
 }
 
 async function save(recording: Recording): Promise<void> {
@@ -23,27 +50,48 @@ async function save(recording: Recording): Promise<void> {
 }
 
 async function readRun(): Promise<RunState | null> {
-  const stored = await browser.storage.local.get('runState');
-  return (stored.runState as RunState | undefined) ?? null;
+  return (
+    ((await browser.storage.local.get("runState")).runState as
+      | RunState
+      | undefined) ?? null
+  );
 }
 
 async function saveRun(run: RunState): Promise<RunState> {
   await browser.storage.local.set({ runState: run });
+  const paused =
+    run.active && (!!run.pauseReason || run.confirmationStep === run.nextStep);
+  await browser.action.setBadgeText({
+    text: run.active ? (paused ? "!" : "RUN") : "",
+  });
+  await browser.action.setBadgeBackgroundColor({
+    color: paused ? "#b45309" : "#2563eb",
+  });
+  await browser.action.setTitle({
+    title: `Show Me Once${run.active ? (paused ? " — your attention is needed" : " — running") : ""}`,
+  });
   return run;
 }
 
 async function readAccount(): Promise<Account | null> {
-  const stored = await browser.storage.session.get('account');
-  return (stored.account as Account | undefined) ?? null;
+  return (
+    ((await browser.storage.session.get("account")).account as
+      | Account
+      | undefined) ?? null
+  );
 }
 
-async function api<T>(path: string, input: object, account?: Account | null): Promise<T> {
+async function api<T>(
+  path: string,
+  input: object,
+  account?: Account | null,
+): Promise<T> {
   return requestApi<T>(API_BASE, path, input, account?.token);
 }
 
 async function requiredAccount(): Promise<Account> {
   const account = await readAccount();
-  if (!account) throw new Error('Sign in to the library first.');
+  if (!account) throw new Error("Sign in to the library first.");
   return account;
 }
 
@@ -51,248 +99,587 @@ async function syncRunLogs(run: RunState): Promise<RunState> {
   if (!run.remoteRunId) return run;
   const account = await requiredAccount();
   let current = run;
-  for (let index = run.remoteSyncedLogs ?? 0; index < run.logs.length; index++) {
+  for (
+    let index = run.remoteSyncedLogs ?? 0;
+    index < run.logs.length;
+    index++
+  ) {
     const entry = run.logs[index]!;
-    await api('run/log', { runId: run.remoteRunId, stepNumber: entry.step, kind: entry.kind, status: entry.status }, account);
-    current = await saveRun({ ...current, remoteSyncedLogs: index + 1, syncError: undefined });
+    await api(
+      "run/log",
+      {
+        runId: run.remoteRunId,
+        stepNumber: entry.step,
+        kind: entry.kind,
+        status: entry.status,
+      },
+      account,
+    );
+    current = await saveRun({
+      ...current,
+      remoteSyncedLogs: index + 1,
+      syncError: undefined,
+    });
   }
   return current;
 }
 
-function append(recording: Recording, action: Omit<RecordedAction, 'id' | 'at'>): Recording {
-  return appendAction(recording, action, crypto.randomUUID(), new Date().toISOString());
+function append(
+  recording: Recording,
+  action: Omit<RecordedAction, "id" | "at">,
+): Recording {
+  return appendAction(
+    recording,
+    action,
+    crypto.randomUUID(),
+    new Date().toISOString(),
+  );
 }
 
 async function ensureRecorder(tabId: number): Promise<void> {
   try {
-    if (await browser.tabs.sendMessage(tabId, { type: 'recorder-ping' }) === true) return;
+    if (
+      (await browser.tabs.sendMessage(tabId, { type: "recorder-ping" })) ===
+      true
+    )
+      return;
   } catch {
-    // A tab opened before this extension version was loaded has no content script yet.
+    /* A tab opened before the extension was loaded needs its content script. */
   }
-  await browser.scripting.executeScript({ target: { tabId }, files: ['/content-scripts/content.js'] });
-  if (await browser.tabs.sendMessage(tabId, { type: 'recorder-ping' }) !== true) {
-    throw new Error('Could not start recording on this page. Check its extension access.');
+  await browser.scripting.executeScript({
+    target: { tabId },
+    files: ["/content-scripts/content.js"],
+  });
+  if (
+    (await browser.tabs.sendMessage(tabId, { type: "recorder-ping" })) !== true
+  ) {
+    throw new Error(
+      "Could not connect to this page. Check its extension access.",
+    );
   }
 }
 
-export default defineBackground(() => {
-  browser.runtime.onMessage.addListener((message: unknown, sender) => {
-    if (!message || typeof message !== 'object') return;
-    const request = message as Record<string, unknown>;
+function clearTimer() {
+  if (timer !== undefined) clearTimeout(timer);
+  timer = undefined;
+}
 
-    if (typeof request.type === 'string' && (request.type.startsWith('account-') || request.type.startsWith('library-'))) {
-      const fromOwnPage = sender.id === browser.runtime.id
-        && (!sender.tab || sender.url?.startsWith(browser.runtime.getURL('')));
-      if (!fromOwnPage) throw new Error('Only extension pages may access the library.');
-      if (request.type === 'account-status') return readAccount().then(account => account?.user ?? null);
-      if (request.type === 'account-login') return serial(async () => {
-        if (typeof request.email !== 'string' || typeof request.password !== 'string') throw new Error('Enter email and password.');
-        const account = await api<Account>('auth/login', { email: request.email, password: request.password });
-        await browser.storage.session.set({ account });
-        return account.user;
-      });
-      if (request.type === 'account-logout') return serial(async () => {
-        const account = await readAccount();
-        if (account) await api('auth/logout', {}, account).catch(() => undefined);
-        await browser.storage.session.remove('account');
-        return true;
-      });
-      if (request.type === 'library-list') return requiredAccount().then(account => api('skill/list', {}, account));
-      if (request.type === 'library-load') return serial(async () => {
-        if (typeof request.id !== 'string') throw new Error('Choose a skill.');
-        const skill = await api<{ id: string; title: string; description: string; ownerId: string; versions: { markdown: string }[] }>(
-          'skill/get', { id: request.id }, await requiredAccount());
-        if (!skill.versions[0]) throw new Error('The skill has no saved version.');
-        return { id: skill.id, name: skill.title, description: skill.description, markdown: skill.versions[0].markdown, ownerId: skill.ownerId };
-      });
-      if (request.type === 'library-save') return serial(async () => {
-        if (typeof request.name !== 'string' || typeof request.description !== 'string' || typeof request.markdown !== 'string') {
-          throw new Error('Generate a skill first.');
-        }
-        parseSkillPlan(request.markdown);
-        const account = await requiredAccount();
-        const path = typeof request.remoteSkillId === 'string' ? 'skill/update' : 'skill/create';
-        return api<{ id: string; currentVersion: number }>(path, {
-          ...(path === 'skill/update' ? { id: request.remoteSkillId } : {}),
-          title: request.name, description: request.description, markdown: request.markdown,
-        }, account);
-      });
-    }
-
-    if (request.type === 'get-recording') return read();
-    if (request.type === 'get-run') return serial(async () => {
-      const run = await readRun();
-      if (!run?.remoteRunId || (run.remoteSyncedLogs ?? 0) >= run.logs.length) return run;
-      try { return await syncRunLogs(run); }
-      catch { return run; }
+async function scheduleRun(run: RunState | null, delay = 450): Promise<void> {
+  clearTimer();
+  if (!canAutoAdvance(run) || interruption) {
+    await browser.alarms.clear(AUTO_ALARM);
+    return;
+  }
+  // The timer advances promptly; the alarm recovers persisted work if MV3 suspends the worker.
+  if (!(await browser.alarms.get(AUTO_ALARM))) {
+    await browser.alarms.create(AUTO_ALARM, {
+      delayInMinutes: 0.5,
+      periodInMinutes: 0.5,
     });
-    if (request.type === 'get-recording-status') {
-      return read().then(recording => ({ active: !!recording?.active, tabId: recording?.tabId ?? null }));
+  }
+  timer = setTimeout(() => {
+    timer = undefined;
+    void automaticTick();
+  }, delay);
+}
+
+async function performStep(confirmed = false): Promise<RunState> {
+  const run = await readRun();
+  if (!run?.active) throw new Error("No active run.");
+  if (interruption) return run;
+  if (run.confirmationStep === run.nextStep && !confirmed) return run;
+  const { runPlan } = (await browser.storage.local.get("runPlan")) as {
+    runPlan?: SkillPlan;
+  };
+  const step = runPlan?.steps[run.nextStep];
+  if (!runPlan || !step) throw new Error("Run plan is unavailable.");
+  const { runParameters } = (await browser.storage.session.get(
+    "runParameters",
+  )) as { runParameters?: Record<string, string | boolean> };
+  if (!runParameters)
+    throw new Error("Run inputs expired. Stop and start the run again.");
+  const tab = await browser.tabs.get(run.tabId);
+  if (tab.status === "loading") return run;
+  const waiting =
+    step.kind === "navigation" &&
+    run.awaitingNavigation &&
+    !run.navigationObserved;
+  if (waiting && Date.now() - (run.navigationStartedAt ?? Date.now()) < 25000)
+    return run;
+  let status: "done" | "blocked" | "confirmation-required" = "blocked";
+  let detail = waiting
+    ? "Navigation did not finish. Check the page, then retry."
+    : "The page does not match the recorded checkpoint.";
+  if (!waiting && (tab.url ? sanitizeUrl(tab.url) : null) === step.url) {
+    if (step.kind === "navigation") {
+      status = "done";
+      detail = "Navigation checkpoint matched.";
+    } else {
+      await ensureRecorder(run.tabId);
+      // Stop and Pause take effect before another browser action, even during an in-flight API request.
+      if (interruption) return run;
+      await saveRun({ ...run, inFlightStep: run.nextStep });
+      if (interruption) return saveRun({ ...run, inFlightStep: undefined });
+      const response = (await browser.tabs.sendMessage(run.tabId, {
+        type: "execute-skill-step",
+        step,
+        value:
+          "parameter" in step && step.parameter
+            ? runParameters[step.parameter]
+            : undefined,
+        confirmed: run.confirmationStep === run.nextStep && confirmed,
+      })) as { status?: string } | undefined;
+      if (response?.status === "done") {
+        status = "done";
+        detail = `${step.kind} dispatched.`;
+      } else if (response?.status === "confirmation-required") {
+        status = "confirmation-required";
+        detail = "Review this action and confirm to continue.";
+      } else
+        detail =
+          "The target was unavailable or ambiguous. Check the page, then retry.";
     }
-    if (request.type === 'start-recording') {
+  }
+  const updated = applyStepOutcome(run, runPlan, status, detail);
+  if (interruption === "pause" && updated.active && !updated.pauseReason)
+    updated.pauseReason = "user";
+  if (!updated.active) await browser.storage.session.remove("runParameters");
+  const saved = await saveRun(updated);
+  try {
+    return await syncRunLogs(saved);
+  } catch {
+    return saveRun({
+      ...saved,
+      syncError: "Run history will sync when you reopen the extension.",
+    });
+  }
+}
+
+async function automaticTick(): Promise<void> {
+  if (tickQueued || interruption) return;
+  tickQueued = true;
+  try {
+    await serial(async () => {
+      const run = await readRun();
+      if (!canAutoAdvance(run) || interruption) {
+        await scheduleRun(null);
+        return;
+      }
+      try {
+        await scheduleRun(await performStep());
+      } catch {
+        const current = await readRun();
+        if (current?.active) {
+          const plan = (await browser.storage.local.get("runPlan")).runPlan as
+            | SkillPlan
+            | undefined;
+          if (plan?.steps[current.nextStep]) {
+            await saveRun(
+              applyStepOutcome(
+                current,
+                plan,
+                "blocked",
+                "Could not continue on this page. Check the tab and retry, or stop this run.",
+              ),
+            );
+          } else await saveRun({ ...current, pauseReason: "blocked" });
+        }
+        await scheduleRun(null);
+      }
+    });
+  } finally {
+    tickQueued = false;
+  }
+}
+
+async function recoverRun(): Promise<void> {
+  let run = await readRun();
+  if (run?.active && run.inFlightStep !== undefined) {
+    const plan = (await browser.storage.local.get("runPlan")).runPlan as
+      | SkillPlan
+      | undefined;
+    run = await saveRun(
+      plan?.steps[run.nextStep]
+        ? recoverInterruptedRun(run, plan)
+        : { ...run, pauseReason: "blocked" },
+    );
+  }
+  await scheduleRun(run);
+}
+
+export default defineBackground(() => {
+  const controls = new Set([
+    "start-recording",
+    "stop-recording",
+    "start-run",
+    "run-next-step",
+    "pause-run",
+    "resume-run",
+    "stop-run",
+  ]);
+  browser.runtime.onMessage.addListener((message: unknown, sender) => {
+    if (!message || typeof message !== "object") return;
+    const request = message as Record<string, unknown>;
+    const fromOwnPage =
+      sender.id === browser.runtime.id &&
+      (!sender.tab || sender.url?.startsWith(browser.runtime.getURL("")));
+    if (
+      typeof request.type === "string" &&
+      controls.has(request.type) &&
+      !fromOwnPage
+    ) {
+      throw new Error("Only extension pages may control a recording or run.");
+    }
+    if (
+      typeof request.type === "string" &&
+      (request.type.startsWith("account-") ||
+        request.type.startsWith("library-"))
+    ) {
+      if (!fromOwnPage)
+        throw new Error("Only extension pages may access the library.");
+      if (request.type === "account-status")
+        return readAccount().then((account) => account?.user ?? null);
+      if (request.type === "account-login")
+        return serial(async () => {
+          if (
+            typeof request.email !== "string" ||
+            typeof request.password !== "string"
+          )
+            throw new Error("Enter email and password.");
+          const account = await api<Account>("auth/login", {
+            email: request.email,
+            password: request.password,
+          });
+          await browser.storage.session.set({ account });
+          return account.user;
+        });
+      if (request.type === "account-logout")
+        return serial(async () => {
+          if ((await readRun())?.active)
+            throw new Error("Stop the current run before signing out.");
+          const account = await readAccount();
+          if (account)
+            await api("auth/logout", {}, account).catch(() => undefined);
+          await browser.storage.session.remove("account");
+          return true;
+        });
+      if (request.type === "library-list")
+        return requiredAccount().then((account) =>
+          api("skill/list", {}, account),
+        );
+      if (request.type === "library-load")
+        return serial(async () => {
+          if (typeof request.id !== "string")
+            throw new Error("Choose a skill.");
+          const skill = await api<{
+            id: string;
+            title: string;
+            description: string;
+            ownerId: string;
+            currentVersion: number;
+            versions: { markdown: string }[];
+          }>("skill/get", { id: request.id }, await requiredAccount());
+          if (!skill.versions[0])
+            throw new Error("The skill has no saved version.");
+          return {
+            id: skill.id,
+            name: skill.title,
+            description: skill.description,
+            markdown: skill.versions[0].markdown,
+            ownerId: skill.ownerId,
+            currentVersion: skill.currentVersion,
+          };
+        });
+      if (request.type === "library-save")
+        return serial(async () => {
+          if (
+            typeof request.name !== "string" ||
+            typeof request.description !== "string" ||
+            typeof request.markdown !== "string"
+          )
+            throw new Error("Create a skill first.");
+          parseSkillPlan(request.markdown);
+          const account = await requiredAccount();
+          const path =
+            typeof request.remoteSkillId === "string"
+              ? "skill/update"
+              : "skill/create";
+          return api<{ id: string; currentVersion: number }>(
+            path,
+            {
+              ...(path === "skill/update" ? { id: request.remoteSkillId } : {}),
+              title: request.name,
+              description: request.description,
+              markdown: request.markdown,
+            },
+            account,
+          );
+        });
+    }
+    if (request.type === "get-recording") return read();
+    if (request.type === "get-run")
       return serial(async () => {
-        if ((await readRun())?.active) throw new Error('Stop the current run before recording.');
-        const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+        let run = await readRun();
+        if (run?.remoteRunId && (run.remoteSyncedLogs ?? 0) < run.logs.length) {
+          try {
+            run = await syncRunLogs(run);
+          } catch {
+            /* Keep the local log available offline. */
+          }
+        }
+        await scheduleRun(run);
+        return run;
+      });
+    if (request.type === "get-recording-status")
+      return read().then((recording) => ({
+        active: !!recording?.active,
+        tabId: recording?.tabId ?? null,
+      }));
+    if (request.type === "start-recording")
+      return serial(async () => {
+        if ((await readRun())?.active)
+          throw new Error("Stop the current run before recording.");
+        const [tab] = await browser.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
         const tabId = tab?.id;
         const url = tab?.url ? sanitizeUrl(tab.url) : null;
-        if (tabId === undefined || !url) throw new Error('Open an http(s) page before recording.');
+        if (tabId === undefined || !url)
+          throw new Error("Open a website before recording.");
         await ensureRecorder(tabId);
         const recording: Recording = {
-          id: crypto.randomUUID(), active: true, tabId,
-          startedAt: new Date().toISOString(), actions: [],
+          id: crypto.randomUUID(),
+          active: true,
+          tabId,
+          startedAt: new Date().toISOString(),
+          actions: [],
         };
-        await save(append(recording, { kind: 'navigation', url }));
-        await browser.tabs.sendMessage(tabId, { type: 'recording-state', active: true }).catch(() => undefined);
+        await save(append(recording, { kind: "navigation", url }));
+        await browser.action.setBadgeText({ text: "REC" });
+        await browser.action.setBadgeBackgroundColor({ color: "#dc2626" });
+        await browser.tabs
+          .sendMessage(tabId, { type: "recording-state", active: true })
+          .catch(() => undefined);
         return read();
       });
-    }
-    if (request.type === 'stop-recording') {
+    if (request.type === "stop-recording")
       return serial(async () => {
         const recording = await read();
         if (!recording) return null;
-        const stopped = { ...recording, active: false, stoppedAt: new Date().toISOString() };
+        const stopped = {
+          ...recording,
+          active: false,
+          stoppedAt: new Date().toISOString(),
+        };
         await save(stopped);
-        await browser.tabs.sendMessage(recording.tabId, { type: 'recording-state', active: false }).catch(() => undefined);
+        await browser.action.setBadgeText({ text: "" });
+        await browser.tabs
+          .sendMessage(recording.tabId, {
+            type: "recording-state",
+            active: false,
+          })
+          .catch(() => undefined);
         return stopped;
       });
-    }
-    if (request.type === 'record-action') {
+    if (request.type === "record-action")
       return serial(async () => {
         const recording = await read();
-        if (!recording?.active || sender.tab?.id !== recording.tabId) return false;
+        if (!recording?.active || sender.tab?.id !== recording.tabId)
+          return false;
         const action = sanitizedAction(request.action);
         if (!action) return false;
-        const eventId = typeof request.eventId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(request.eventId)
-          ? request.eventId : crypto.randomUUID();
-        const updated = appendAction(recording, action, eventId, new Date().toISOString());
+        const eventId =
+          typeof request.eventId === "string" &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+            request.eventId,
+          )
+            ? request.eventId
+            : crypto.randomUUID();
+        const updated = appendAction(
+          recording,
+          action,
+          eventId,
+          new Date().toISOString(),
+        );
         if (updated !== recording) await save(updated);
         return true;
       });
-    }
-    if (request.type === 'run-navigation') {
+    if (request.type === "run-navigation")
       return serial(async () => {
         const run = await readRun();
-        if (!run?.active || sender.tab?.id !== run.tabId || !run.awaitingNavigation || run.navigationObserved) return false;
-        await saveRun({ ...run, navigationObserved: true });
+        if (
+          !run?.active ||
+          sender.tab?.id !== run.tabId ||
+          !run.awaitingNavigation ||
+          run.navigationObserved
+        )
+          return false;
+        const updated = await saveRun({ ...run, navigationObserved: true });
+        await scheduleRun(updated);
         return true;
       });
-    }
-    if (request.type === 'start-run') {
+    if (request.type === "start-run")
       return serial(async () => {
-        if ((await read())?.active) throw new Error('Stop recording before running a skill.');
-        if ((await readRun())?.active) throw new Error('Stop the current run first.');
-        if (typeof request.markdown !== 'string') throw new Error('Generate a skill first.');
+        if ((await read())?.active)
+          throw new Error("Stop recording before running a skill.");
+        if ((await readRun())?.active)
+          throw new Error("Stop the current run first.");
+        if (typeof request.markdown !== "string")
+          throw new Error("Choose a skill first.");
         const plan = parseSkillPlan(request.markdown);
-        const provided = request.parameters && typeof request.parameters === 'object' ? request.parameters as Record<string, unknown> : {};
+        const provided =
+          request.parameters && typeof request.parameters === "object"
+            ? (request.parameters as Record<string, unknown>)
+            : {};
         const parameters: Record<string, string | boolean> = {};
         for (const parameter of plan.parameters) {
           const value = provided[parameter.name];
-          if (parameter.type === 'string' && (typeof value !== 'string' || !value.trim())) throw new Error(`Enter ${parameter.name}.`);
-          if (parameter.type === 'boolean' && typeof value !== 'boolean') throw new Error(`Select ${parameter.name}.`);
+          if (
+            parameter.type === "string" &&
+            (typeof value !== "string" || !value.trim())
+          )
+            throw new Error(`Enter ${parameter.name}.`);
+          if (parameter.type === "boolean" && typeof value !== "boolean")
+            throw new Error(`Select ${parameter.name}.`);
           parameters[parameter.name] = value as string | boolean;
         }
-        const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-        if (tab?.id === undefined || !tab.url || !sanitizeUrl(tab.url)) throw new Error('Open an http(s) page before running.');
+        const [tab] = await browser.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
+        if (tab?.id === undefined || !tab.url || !sanitizeUrl(tab.url))
+          throw new Error("Open the task website before running.");
         await ensureRecorder(tab.id);
         let remoteRunId: string | undefined;
-        if (typeof request.remoteSkillId === 'string') {
+        if (typeof request.remoteSkillId === "string") {
           const account = await requiredAccount();
-          const skill = await api<{ versions: { markdown: string }[] }>('skill/get', { id: request.remoteSkillId }, account);
-          if (skill.versions[0]?.markdown !== request.markdown) throw new Error('Save this skill version before running it.');
-          const remote = await api<{ id: string }>('run/start', { skillId: request.remoteSkillId }, account);
-          remoteRunId = remote.id;
+          const skill = await api<{ versions: { markdown: string }[] }>(
+            "skill/get",
+            { id: request.remoteSkillId },
+            account,
+          );
+          if (skill.versions[0]?.markdown !== request.markdown)
+            throw new Error("Save your changes before running this skill.");
+          remoteRunId = (
+            await api<{ id: string }>(
+              "run/start",
+              { skillId: request.remoteSkillId },
+              account,
+            )
+          ).id;
         }
-        const run: RunState = { id: crypto.randomUUID(), tabId: tab.id, active: true, nextStep: 0, totalSteps: plan.steps.length,
-          ...(remoteRunId ? { remoteRunId, remoteSyncedLogs: 0 } : {}), logs: [] };
+        interruption = undefined;
+        const run: RunState = {
+          id: crypto.randomUUID(),
+          tabId: tab.id,
+          active: true,
+          mode: request.mode === "manual" ? "manual" : "automatic",
+          skillKey:
+            typeof request.skillKey === "string" ? request.skillKey : undefined,
+          nextStep: 0,
+          totalSteps: plan.steps.length,
+          ...(remoteRunId ? { remoteRunId, remoteSyncedLogs: 0 } : {}),
+          logs: [],
+        };
         await browser.storage.local.set({ runPlan: plan });
         await browser.storage.session.set({ runParameters: parameters });
-        return saveRun(run);
+        await saveRun(run);
+        await scheduleRun(run);
+        return run;
+      });
+    if (request.type === "run-next-step") {
+      const revision = controlRevision;
+      return serial(async () => {
+        if (revision !== controlRevision) return readRun();
+        interruption = undefined;
+        const run = await performStep(request.confirm === true);
+        await scheduleRun(run);
+        return run;
       });
     }
-    if (request.type === 'run-next-step') {
+    if (request.type === "pause-run" || request.type === "stop-run") {
+      controlRevision++;
+      interruption = request.type === "stop-run" ? "stop" : "pause";
+      clearTimer();
+      void browser.alarms.clear(AUTO_ALARM);
       return serial(async () => {
         const run = await readRun();
-        if (!run?.active) throw new Error('No active run.');
-        const { runPlan } = await browser.storage.local.get('runPlan') as { runPlan?: SkillPlan };
-        const step = runPlan?.steps[run.nextStep];
-        if (!step) throw new Error('Run plan is unavailable.');
-        const tab = await browser.tabs.get(run.tabId);
-        const currentUrl = tab.url ? sanitizeUrl(tab.url) : null;
-        if (step.kind === 'navigation' && run.awaitingNavigation && !run.navigationObserved) return run;
-        let status: 'done' | 'blocked' | 'confirmation-required' = 'blocked';
-        let detail = 'The page does not match the recorded checkpoint.';
-        if (currentUrl === step.url) {
-          if (step.kind === 'navigation') {
-            status = 'done';
-            detail = 'Navigation checkpoint matched.';
-          } else {
-            const { runParameters } = await browser.storage.session.get('runParameters') as { runParameters?: Record<string, string | boolean> };
-            if (!runParameters) throw new Error('Run inputs expired. Stop and start the run again.');
-            await ensureRecorder(run.tabId);
-            const response = await browser.tabs.sendMessage(run.tabId, {
-              type: 'execute-skill-step', step,
-              value: 'parameter' in step && step.parameter ? runParameters[step.parameter] : undefined,
-              confirmed: run.confirmationStep === run.nextStep && request.confirm === true,
-            }) as { status?: string } | undefined;
-            if (response?.status === 'done') {
-              status = 'done'; detail = `${step.kind} dispatched.`;
-            } else if (response?.status === 'confirmation-required') {
-              status = 'confirmation-required'; detail = 'Explicit confirmation required before this action.';
-            } else {
-              detail = 'The target was unavailable or ambiguous.';
-            }
-          }
-        }
-        const nextStep = status === 'done' ? run.nextStep + 1 : run.nextStep;
-        const awaitingNavigation = status === 'done' && (step.kind === 'click' || step.kind === 'key') && runPlan?.steps[nextStep]?.kind === 'navigation'
-          ? true : status === 'done' && step.kind === 'navigation' ? false : run.awaitingNavigation;
-        const navigationObserved = awaitingNavigation && status === 'done' && (step.kind === 'click' || step.kind === 'key')
-          ? false : status === 'done' && step.kind === 'navigation' ? false : run.navigationObserved;
-        const updated: RunState = {
+        if (!run?.active) return run;
+        if (request.type === "pause-run")
+          return saveRun({ ...run, pauseReason: run.pauseReason ?? "user" });
+        await browser.storage.session.remove("runParameters");
+        const stopped = await saveRun({
           ...run,
-          active: status === 'done' && nextStep === run.totalSteps ? false : true,
-          nextStep,
-          awaitingNavigation,
-          navigationObserved,
-          ...(status === 'confirmation-required' ? { confirmationStep: run.nextStep } : { confirmationStep: undefined }),
-          logs: [...run.logs, { step: run.nextStep + 1, kind: step.kind, status, at: new Date().toISOString(), detail }],
-        };
-        if (!updated.active) await browser.storage.session.remove('runParameters');
-        const saved = await saveRun(updated);
-        try { return await syncRunLogs(saved); }
-        catch { return saveRun({ ...saved, syncError: 'Server log could not sync. It will retry when this popup reopens.' }); }
-      });
-    }
-    if (request.type === 'stop-run') {
-      return serial(async () => {
-        const run = await readRun();
-        await browser.storage.session.remove('runParameters');
-        if (!run) return null;
-        const stopped = await saveRun({ ...run, active: false, confirmationStep: undefined });
+          active: false,
+          confirmationStep: undefined,
+          pauseReason: undefined,
+        });
         if (stopped.remoteRunId) {
           try {
-            await syncRunLogs(stopped);
-            await api('run/stop', { runId: stopped.remoteRunId }, await requiredAccount());
-          } catch { return saveRun({ ...stopped, syncError: 'Server run status could not sync.' }); }
+            const synced = await syncRunLogs(stopped);
+            await api(
+              "run/stop",
+              { runId: stopped.remoteRunId },
+              await requiredAccount(),
+            );
+            return synced;
+          } catch {
+            return saveRun({
+              ...stopped,
+              syncError: "Run history could not sync yet.",
+            });
+          }
         }
         return stopped;
+      });
+    }
+    if (request.type === "resume-run") {
+      const revision = controlRevision;
+      return serial(async () => {
+        if (revision !== controlRevision) return readRun();
+        const run = await readRun();
+        if (!run?.active) throw new Error("No active run.");
+        if (run.confirmationStep === run.nextStep)
+          throw new Error("Confirm the pending action before continuing.");
+        interruption = undefined;
+        const resumed = await saveRun({
+          ...run,
+          pauseReason: undefined,
+          navigationStartedAt: run.awaitingNavigation
+            ? Date.now()
+            : run.navigationStartedAt,
+        });
+        await scheduleRun(resumed, 100);
+        return resumed;
       });
     }
   });
 
   browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.status !== 'complete' || !tab.url) return;
+    if (changeInfo.status !== "complete" || !tab.url) return;
     void serial(async () => {
       const run = await readRun();
-      if (run?.active && run.tabId === tabId && run.awaitingNavigation && !run.navigationObserved) {
-        await saveRun({ ...run, navigationObserved: true });
+      if (run?.active && run.tabId === tabId) {
+        const updated =
+          run.awaitingNavigation && !run.navigationObserved
+            ? await saveRun({ ...run, navigationObserved: true })
+            : run;
+        await scheduleRun(updated);
       }
       const recording = await read();
       if (!recording?.active || recording.tabId !== tabId) return;
       const url = sanitizeUrl(tab.url!);
       if (!url) return;
-      const updated = append(recording, { kind: 'navigation', url });
+      const updated = append(recording, { kind: "navigation", url });
       if (updated !== recording) await save(updated);
     });
   });
+  browser.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === AUTO_ALARM) void automaticTick();
+  });
+  browser.runtime.onStartup.addListener(() => {
+    void serial(recoverRun);
+  });
+  void serial(recoverRun);
 });
