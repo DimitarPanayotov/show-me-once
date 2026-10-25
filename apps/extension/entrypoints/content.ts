@@ -16,7 +16,7 @@ export default defineContentScript({
     let active = false;
     let lastLocation = location.href;
     let lastPointer: { selector: string; id: string; at: number } | null = null;
-    let lastInput: { element: Element; id: string; at: number } | null = null;
+    let inputSessions = new WeakMap<Element, { id: string; sent: boolean }>();
     let stateRevision = 0;
 
     function usable(element: Element): element is HTMLElement {
@@ -109,7 +109,9 @@ export default defineContentScript({
 
     browser.storage.onChanged.addListener((changes, area) => {
       if (area === 'local' && changes.recording) {
-        active = !!(changes.recording.newValue as { active?: boolean } | undefined)?.active;
+        const nextActive = !!(changes.recording.newValue as { active?: boolean } | undefined)?.active;
+        if (nextActive && !active) inputSessions = new WeakMap();
+        active = nextActive;
         stateRevision++;
       }
     });
@@ -126,7 +128,9 @@ export default defineContentScript({
         return;
       }
       if ((message as { type?: string }).type === 'recording-state') {
-        active = !!(message as { active?: boolean }).active;
+        const nextActive = !!(message as { active?: boolean }).active;
+        if (nextActive && !active) inputSessions = new WeakMap();
+        active = nextActive;
         stateRevision++;
       }
     });
@@ -144,7 +148,11 @@ export default defineContentScript({
     }
 
     function recordInput(target: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement) {
-      if (isSensitive(target)) return;
+      if (!active || isSensitive(target)) return;
+      const session = inputSessions.get(target) ?? { id: crypto.randomUUID(), sent: false };
+      if (session.sent) return;
+      session.sent = true;
+      inputSessions.set(target, session);
       let inputKind: 'text' | 'search' | 'checkbox' | 'radio' | 'select' = 'text';
       if (target instanceof HTMLSelectElement) inputKind = 'select';
       else if (target instanceof HTMLInputElement) {
@@ -152,12 +160,21 @@ export default defineContentScript({
         else if (target.type === 'radio') inputKind = 'radio';
         else if (target.type === 'search') inputKind = 'search';
       }
-      const id = lastInput?.element === target && Date.now() - lastInput.at < 1500
-        ? lastInput.id : crypto.randomUUID();
-      lastInput = { element: target, id, at: Date.now() };
       send({ kind: 'input', selector: structuralSelector(target), inputKind,
-        ...((inputKind === 'checkbox' || inputKind === 'radio') ? { checked: (target as HTMLInputElement).checked } : {}) }, id);
+        ...((inputKind === 'checkbox' || inputKind === 'radio') ? { checked: (target as HTMLInputElement).checked } : {}) }, session.id);
     }
+
+    ctx.addEventListener(document, 'focusin', (event) => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+        inputSessions.set(target, { id: crypto.randomUUID(), sent: false });
+      }
+    }, true);
+
+    ctx.addEventListener(document, 'input', (event) => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) recordInput(target);
+    }, true);
 
     ctx.addEventListener(document, 'pointerdown', (event) => {
       if (!(event instanceof PointerEvent) || event.button !== 0) return;
