@@ -23,6 +23,18 @@ function append(recording: Recording, action: Omit<RecordedAction, 'id' | 'at'>)
   return appendAction(recording, action, crypto.randomUUID(), new Date().toISOString());
 }
 
+async function ensureRecorder(tabId: number): Promise<void> {
+  try {
+    if (await browser.tabs.sendMessage(tabId, { type: 'recorder-ping' }) === true) return;
+  } catch {
+    // A tab opened before this extension version was loaded has no content script yet.
+  }
+  await browser.scripting.executeScript({ target: { tabId }, files: ['/content-scripts/content.js'] });
+  if (await browser.tabs.sendMessage(tabId, { type: 'recorder-ping' }) !== true) {
+    throw new Error('Could not start recording on this page. Check its extension access.');
+  }
+}
+
 export default defineBackground(() => {
   browser.runtime.onMessage.addListener((message: unknown, sender) => {
     if (!message || typeof message !== 'object') return;
@@ -38,6 +50,7 @@ export default defineBackground(() => {
         const tabId = tab?.id;
         const url = tab?.url ? sanitizeUrl(tab.url) : null;
         if (tabId === undefined || !url) throw new Error('Open an http(s) page before recording.');
+        await ensureRecorder(tabId);
         const recording: Recording = {
           id: crypto.randomUUID(), active: true, tabId,
           startedAt: new Date().toISOString(), actions: [],

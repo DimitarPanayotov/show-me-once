@@ -26,7 +26,9 @@ export default defineContentScript({
     });
 
     browser.runtime.onMessage.addListener((message: unknown) => {
-      if (message && typeof message === 'object' && (message as { type?: string }).type === 'recording-state') {
+      if (!message || typeof message !== 'object') return;
+      if ((message as { type?: string }).type === 'recorder-ping') return true;
+      if ((message as { type?: string }).type === 'recording-state') {
         active = !!(message as { active?: boolean }).active;
         stateRevision++;
       }
