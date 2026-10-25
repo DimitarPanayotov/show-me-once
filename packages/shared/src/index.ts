@@ -82,3 +82,63 @@ export function sanitizedAction(value: unknown): Omit<RecordedAction, 'id' | 'at
   }
   return action;
 }
+
+/** Produce an editable skill without using page text, form values, or unredacted URLs. */
+export function createSkillMarkdown(recording: Recording, name: string, description: string): string {
+  if (recording.active) throw new Error('Stop recording before generating a skill.');
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) throw new Error('Use a lowercase skill name with hyphens.');
+  if (!description.trim()) throw new Error('Add a short description.');
+
+  const actions = recording.actions.map(action => sanitizedAction(action)).filter(action => action !== null);
+  if (actions.length === 0) throw new Error('Record at least one action first.');
+  const host = new URL(actions[0]!.url).hostname;
+  const hasInput = actions.some(action => action.kind === 'input');
+  const parameters: string[] = [];
+  const steps: string[] = [];
+  let inputNumber = 0;
+  let targetNumber = 0;
+
+  for (const [index, action] of actions.entries()) {
+    const number = index + 1;
+    if (action.kind === 'navigation') {
+      steps.push(`${number}. **Navigation checkpoint:** Wait for the current tab to match \`${action.url}\` (same origin and path depth). Stop if it does not.`);
+    } else if (action.kind === 'input') {
+      const parameter = `${action.inputKind}_${++inputNumber}`;
+      const type = action.inputKind === 'checkbox' || action.inputKind === 'radio' ? 'boolean' : 'string';
+      parameters.push(`- \`${parameter}\` (${type}, required): replacement for the ${action.inputKind} control in step ${number}.`);
+      steps.push(`${number}. Find one visible ${action.inputKind} control at \`${action.selector}\`. Set it from \`{{${parameter}}}\`; verify the control accepted it locally without logging the value.`);
+    } else {
+      const selector = `\`${action.selector}\``;
+      if (!hasInput) {
+        const parameter = `target_${++targetNumber}`;
+        parameters.push(`- \`${parameter}\` (string, required): describe the intended target for step ${number}.`);
+        steps.push(`${number}. Find the target described by \`{{${parameter}}}\`. Use the recorded structural selector ${selector} only after confirming it points to that target, then click it.`);
+      } else {
+        steps.push(`${number}. Find one visible, enabled control at ${selector}, verify it is the intended target, then click it.`);
+      }
+    }
+  }
+
+  return [
+    '---',
+    `name: ${name}`,
+    `description: ${JSON.stringify(description.trim())}`,
+    '---',
+    '',
+    '# Instructions',
+    `Start in a browser tab on ${host}. Use the supplied parameters for this run. The recorded selectors are hints, not proof that an element is safe to act on.`,
+    '',
+    '## Parameters',
+    ...parameters,
+    '',
+    '## Steps',
+    ...steps,
+    '',
+    '## Checkpoints and safety',
+    '- Before every click or input, confirm the target is unique, visible, enabled, and matches the intended action. Stop and ask the user if it does not.',
+    '- After each navigation, confirm the expected origin and path depth before continuing. Stop on an unexpected page.',
+    '- Obtain explicit user confirmation before any destructive action, purchase, payment, or submission with irreversible effects.',
+    '- Never record passwords, secrets, page text, or parameter values in the skill or run log.',
+    '',
+  ].join('\n');
+}

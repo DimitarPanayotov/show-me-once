@@ -13,6 +13,20 @@
       <p id="error" role="alert"></p>
       <h2>Timeline <span id="count">0</span></h2>
       <ol id="timeline"></ol>
+      <section id="skill-section" hidden>
+        <h2>Skill draft</h2>
+        <p>Generate an editable SKILL.md. Recorded field values are never included.</p>
+        <label for="skill-name">Name</label>
+        <input id="skill-name" type="text" maxlength="80" spellcheck="false" />
+        <label for="skill-description">Description</label>
+        <input id="skill-description" type="text" maxlength="200" />
+        <button id="generate" type="button">Generate SKILL.md</button>
+        <div id="draft-section" hidden>
+          <label for="skill-markdown">Edit the draft</label>
+          <textarea id="skill-markdown" spellcheck="false"></textarea>
+          <button id="download" type="button">Download SKILL.md</button>
+        </div>
+      </section>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>

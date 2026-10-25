@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { appendAction, sanitizeUrl, sanitizedAction, type Recording } from './index.ts';
+import { appendAction, createSkillMarkdown, sanitizeUrl, sanitizedAction, type Recording } from './index.ts';
 
 test('URL sanitization removes credentials, path values, query and fragment', () => {
   assert.equal(sanitizeUrl('https://user:secret@example.com/invoice/abc123?token=secret#private'), 'https://example.com/…/…');
@@ -32,4 +32,27 @@ test('adjacent duplicate navigation is collapsed, but navigation after a click i
   const clicked = appendAction(duplicate, { kind: 'click', url: navigation.url, selector: 'a:nth-of-type(1)' }, 'click-1', '2026-10-25T00:00:02.000Z');
   const second = appendAction(clicked, navigation, 'nav-3', '2026-10-25T00:00:02.200Z');
   assert.deepEqual(second.actions.map(action => action.kind), ['navigation', 'click', 'navigation']);
+});
+
+test('skill generation uses placeholders and excludes recorded values and URL details', () => {
+  const recording: Recording = {
+    id: 'recording', active: false, tabId: 1, startedAt: '2026-10-25T00:00:00Z',
+    actions: [
+      { id: 'nav', at: '2026-10-25T00:00:01Z', kind: 'navigation', url: 'https://user:private@example.com/search/secret-page?token=private' },
+      { id: 'input', at: '2026-10-25T00:00:02Z', kind: 'input', url: 'https://example.com/search/secret-page', selector: 'input:nth-of-type(1)', inputKind: 'search', value: 'private' } as unknown as Recording['actions'][number],
+    ],
+  };
+  const markdown = createSkillMarkdown(recording, 'example-search', 'Search with a new term');
+  assert.match(markdown, /^---\nname: example-search\ndescription: "Search with a new term"\n---/);
+  assert.match(markdown, /\{\{search_1\}\}/);
+  assert.match(markdown, /## Checkpoints and safety/);
+  assert.doesNotMatch(markdown, /private|secret-page|token=/);
+});
+
+test('a click-only skill asks for target descriptions instead of freezing a link choice', () => {
+  const recording: Recording = {
+    id: 'recording', active: false, tabId: 1, startedAt: '2026-10-25T00:00:00Z',
+    actions: [{ id: 'click', at: '2026-10-25T00:00:01Z', kind: 'click', url: 'https://example.com', selector: 'a:nth-of-type(1)' }],
+  };
+  assert.match(createSkillMarkdown(recording, 'follow-link', 'Follow a link'), /\{\{target_1\}\}/);
 });
