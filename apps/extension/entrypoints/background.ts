@@ -87,7 +87,9 @@ export default defineBackground(() => {
     const request = message as Record<string, unknown>;
 
     if (typeof request.type === 'string' && (request.type.startsWith('account-') || request.type.startsWith('library-'))) {
-      if (sender.tab || sender.id !== browser.runtime.id) throw new Error('Only the extension popup may access the library.');
+      const fromOwnPage = sender.id === browser.runtime.id
+        && (!sender.tab || sender.url?.startsWith(browser.runtime.getURL('')));
+      if (!fromOwnPage) throw new Error('Only extension pages may access the library.');
       if (request.type === 'account-status') return readAccount().then(account => account?.user ?? null);
       if (request.type === 'account-login') return serial(async () => {
         if (typeof request.email !== 'string' || typeof request.password !== 'string') throw new Error('Enter email and password.');

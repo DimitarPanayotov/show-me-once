@@ -10,7 +10,7 @@ One browser demonstration becomes a reusable `SKILL.md` and a step-by-step Chrom
 - Next.js/shadcn web app uses oRPC, Prisma and PostgreSQL for accounts, skill versions, sharing and per-step run history. Web sessions use HttpOnly cookies; extension sessions are held in `chrome.storage.session`.
 - The candidate manually reported successful replay of one skill with two inputs on each of Wikipedia, GitHub and Open Library. See [verification](docs/verification.md).
 
-The local API and database have been smoke tested. Chrome testing of the new account/library sync and production deployment remain to be completed.
+The local API and database have been smoke tested. A local Chromium test also passed extension sign-in, saving/loading a skill, a controlled run, and a synced server step log. Final verification in regular Chrome and production deployment remain to be completed.
 
 ## Local setup
 

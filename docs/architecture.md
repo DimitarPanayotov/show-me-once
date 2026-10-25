@@ -28,4 +28,4 @@ Generation is local and deterministic; no page text, passwords, search terms or 
 
 ## Known limits
 
-Selectors can break after large page redesigns; the current runner stops instead of guessing. Controls inside closed Shadow DOM are outside the recorder. A site's human verification challenge must be completed by the user and is not part of a reusable skill. The web library and extension sync need final manual Chrome verification after deployment.
+Selectors can break after large page redesigns; the current runner stops instead of guessing. Controls inside closed Shadow DOM are outside the recorder. A site's human verification challenge must be completed by the user and is not part of a reusable skill. Local library and run-log sync passed an automated Chromium test; the deployed build still needs manual Chrome verification.
