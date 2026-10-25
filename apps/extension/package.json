@@ -1,9 +1,10 @@
 {
   "name": "@show-me-once/extension",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node --experimental-strip-types --test lib/*.test.ts",
     "dev": "wxt --browser chrome",
     "build": "wxt build --browser chrome",
     "zip": "wxt zip --browser chrome",

@@ -5,7 +5,7 @@
   "scripts": {
     "build": "pnpm --filter @show-me-once/shared build && pnpm --filter @show-me-once/extension build && pnpm --filter @show-me-once/web build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm --filter @show-me-once/shared test",
+    "test": "pnpm --filter @show-me-once/shared test && pnpm --filter @show-me-once/extension test",
     "dev:extension": "pnpm --filter @show-me-once/extension dev",
     "dev:web": "pnpm --filter @show-me-once/web dev"
   },

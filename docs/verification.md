@@ -1,6 +1,6 @@
 # Manual verification
 
-This is a record of checks reported by the candidate during local Chrome testing. It is not an automated browser test report.
+The three-site table records checks reported by the candidate during local Chrome testing. Automated production checks are documented separately below.
 
 | Site | Recorded task | New input | Result | Evidence |
 | --- | --- | --- | --- | --- |
@@ -20,6 +20,13 @@ The run log showed step kind, status and generic result text. The candidate's pa
 3. Click **Start run**, then **Next step** once per step.
 4. If prompted, click **Confirm this action** only after checking the intended target.
 5. Reopen the popup after navigation, finish the checkpoint, and inspect the run log for success and for absence of parameter values.
+
+## Production sign-in regression — extension 0.1.1
+
+- Reproduced the reported plain-text `Forbidden` / JSON parsing error in Chromium by signing in on the deployed website before signing in through extension 0.1.0.
+- Extension 0.1.1 explicitly omits website cookies and authenticates library requests with its own bearer session. The server's cross-origin cookie protection is unchanged.
+- A fresh Chromium profile passed website cookie login, extension login, saving a skill, and extension logout while preserving the website session. A cookie-authenticated request from an unrelated origin still returned 403.
+- Five API regression tests cover cookie omission, bearer authentication, plain-text errors, structured errors, and invalid success responses.
 
 ## Remaining evidence
 

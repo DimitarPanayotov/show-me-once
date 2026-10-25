@@ -1,6 +1,6 @@
 # Manual test checklist
 
-For the deployed test, download the extension ZIP from the [demo release](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.1.0-demo), extract it, and choose the extracted folder containing `manifest.json` in Chrome's **Load unpacked** dialog at `chrome://extensions`. Open [the live app](https://show-me-once-juma.vercel.app) and use the reviewer account supplied separately. For local development, load `apps/extension/.output/chrome-mv3` and run the web app at `http://localhost:3000`. After each rebuild, press **Reload** on the extension card.
+For the deployed test, download the extension ZIP from the [demo release](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.1.1-demo), extract it, and choose the extracted folder containing `manifest.json` in Chrome's **Load unpacked** dialog at `chrome://extensions`. Open [the live app](https://show-me-once-juma.vercel.app) and use the reviewer account supplied separately. For local development, load `apps/extension/.output/chrome-mv3` and run the web app at `http://localhost:3000`. After each rebuild, press **Reload** on the extension card.
 
 ## Record and safety
 
@@ -19,11 +19,12 @@ For the deployed test, download the extension ZIP from the [demo release](https:
 
 ## Library and sharing
 
-1. Register or sign in through the web app. Sign in with the same account in the extension popup.
+1. Register or sign in through the web app. Keep that website session signed in, then sign in with the same account in the extension popup. Both should work together; the extension uses its own bearer session and excludes website cookies.
 2. Choose **Save to library** on a generated draft. The popup should show a success message and list the skill under **Saved and shared skills**. Refresh the web app and confirm it appears there.
 3. Edit the skill in the web app and choose **Save new version**. The version number should increase and older versions remain listed.
 4. Register a second account, share the skill with its email from the owner's web app, then sign in as that account. It should appear as shared and be loadable but not editable as owner.
 5. Run the saved skill. The web app's **Run history** should show step types and statuses, without parameter values.
+6. Sign out in the extension and refresh the web app. The website should remain signed in because its cookie session is independent.
 
 ## Three-site evidence
 

@@ -1,5 +1,6 @@
 import { browser } from 'wxt/browser';
 import { appendAction, parseSkillPlan, sanitizeUrl, sanitizedAction, type RecordedAction, type Recording, type RunState, type SkillPlan } from '@show-me-once/shared';
+import { requestApi } from '../lib/api';
 
 const STORAGE_KEY = 'recording';
 const API_BASE = (import.meta.env.WXT_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -37,14 +38,7 @@ async function readAccount(): Promise<Account | null> {
 }
 
 async function api<T>(path: string, input: object, account?: Account | null): Promise<T> {
-  const response = await fetch(`${API_BASE}/api/rpc/${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(account ? { Authorization: `Bearer ${account.token}` } : {}) },
-    body: JSON.stringify({ json: input }), signal: AbortSignal.timeout(8000),
-  });
-  const payload = await response.json() as { json?: T & { message?: string } };
-  if (!response.ok) throw new Error(payload.json?.message ?? `Library request failed (${response.status}).`);
-  return payload.json as T;
+  return requestApi<T>(API_BASE, path, input, account?.token);
 }
 
 async function requiredAccount(): Promise<Account> {

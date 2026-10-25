@@ -12,7 +12,7 @@ One browser demonstration becomes a reusable `SKILL.md` and a step-by-step Chrom
 
 The app is deployed at [show-me-once-juma.vercel.app](https://show-me-once-juma.vercel.app) with Neon PostgreSQL. Production API smoke checks passed registration, skill versions, sharing, run logs, and access revocation. An automated Chromium run also passed extension sign-in, saving/loading a skill, a controlled run, and a synced server step log against production. Final verification in regular Chrome is still pending.
 
-For a reviewer: load the built extension from the ZIP attached to the [demo release](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.1.0-demo), open the live app, and sign in with the test account supplied separately. The repository is private until the candidate is ready to share it.
+For a reviewer: load the built extension from the ZIP attached to the [demo release](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.1.1-demo), open the live app, and sign in with the test account supplied separately. The repository is private until the candidate is ready to share it.
 
 ## Local setup
 
