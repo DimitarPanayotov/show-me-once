@@ -48,6 +48,10 @@ If the extension's worker has already become inactive, set `SMO_EXTENSION_ID` to
 
 The separate unit tests cover uncertain in-flight outcomes: recovery pauses for inspection before an action could be repeated.
 
+## Confirmation regression tests
+
+With the same fixture and isolated browser running, use `pnpm --filter @show-me-once/extension test:confirmation`. No application account is required. This focused test covers action-specific search/delete/payment/Enter previews, reopening the popup, changed labels, replaced DOM elements, expired preview recovery without execution, stale approval rejection, Stop, and excluding preview labels and inputs from persistent logs. Optional screenshots use `SMO_SCREENSHOTS`; activating the popup tab first can be necessary in headless browsers.
+
 ## Production verification
 
 The current production build was tested with an explicit production origin and temporary accounts. The original real-site verification remains a separate manual evidence table; the controlled browser tests do not claim unrestricted website compatibility.

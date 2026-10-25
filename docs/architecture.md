@@ -30,6 +30,7 @@ Before dispatching a browser action, the worker persists an in-flight marker. If
 
 - Sensitive controls, including passwords, token fields, and payment fields, are excluded from recording. Raw values and page text are omitted from recordings and server logs.
 - Submit controls, Enter submissions, and detected destructive/payment controls require explicit confirmation in both execution modes. The current detection is conservative and heuristic; it does not prove that every possible custom control is harmless.
+- Confirmation previews name the live action, control label, origin, and likely effect; cross-origin form destinations are shown separately. Preview labels and approval tokens stay in `chrome.storage.session` and are removed after the action or Stop. They never enter recordings, skill Markdown, persistent run state, or backend logs. Consent is bound to the run, step, live DOM element, and action signature; a changed/replaced target requires fresh approval. Rebuilding a missing preview cannot execute an action.
 - Only extension pages may invoke account, library, and run-control messages. The server retains cross-origin cookie protection; extension requests omit website cookies.
 - Skill access is limited to owners and explicit recipients. Only an owner can edit versions or share a skill. A recipient can read and run it. Run history belongs to the person who ran it.
 - Recording and drafts remain local until Save to library. The backend receives the skill and generic step types/statuses, without run input values.

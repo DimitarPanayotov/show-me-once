@@ -2,7 +2,7 @@
 
 Teach a browser task once, save it as a reusable skill, and run it again with new inputs.
 
-[Open the app](https://show-me-once-dimitar.vercel.app) · [Download the Chrome extension](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.2.0-demo)
+[Open the app](https://show-me-once-dimitar.vercel.app) · [Download the Chrome extension](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.2.1-demo)
 
 ## How it works
 
@@ -22,6 +22,8 @@ Teach a browser task once, save it as a reusable skill, and run it again with ne
 The **Run** and **Record** views keep unrelated controls out of the way. The timeline and raw Markdown are expandable details. Recordings and run progress survive service-worker suspension; run parameters and extension tokens stay in browser session storage.
 
 Automatic execution has been verified with two inputs each on Wikipedia search, GitHub organization repository search, and Open Library title search. Safe actions advance automatically; protected submissions still require confirmation.
+
+Before approval, the extension names the pending action, live target control, website, and likely effect. Approval applies only to that action; a changed or replaced target requires a new preview and approval.
 
 The [architecture note](docs/architecture.md) explains the skill format, background scheduler, privacy boundaries, and current limits. The [manual test guide](docs/manual-test.md) covers the full user flow. [Verification](docs/verification.md) distinguishes reported real-site checks from automated browser tests.
 

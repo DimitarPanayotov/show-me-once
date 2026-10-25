@@ -11,6 +11,11 @@ import {
 } from "@show-me-once/shared";
 import { requestApi } from "../lib/api";
 import {
+  isPendingConfirmation,
+  type ConfirmationDetails,
+  type PendingConfirmation,
+} from "../lib/confirmation";
+import {
   applyStepOutcome,
   canAutoAdvance,
   recoverInterruptedRun,
@@ -183,21 +188,38 @@ async function scheduleRun(run: RunState | null, delay = 450): Promise<void> {
   }, delay);
 }
 
-async function performStep(confirmed = false): Promise<RunState> {
+async function performStep(
+  confirmed = false,
+  approvalToken?: string,
+  previewOnly = false,
+): Promise<RunState> {
   const run = await readRun();
   if (!run?.active) throw new Error("No active run.");
   if (interruption) return run;
-  if (run.confirmationStep === run.nextStep && !confirmed) return run;
+  if (run.confirmationStep === run.nextStep && !confirmed && !previewOnly)
+    return run;
   const { runPlan } = (await browser.storage.local.get("runPlan")) as {
     runPlan?: SkillPlan;
   };
   const step = runPlan?.steps[run.nextStep];
   if (!runPlan || !step) throw new Error("Run plan is unavailable.");
-  const { runParameters } = (await browser.storage.session.get(
-    "runParameters",
-  )) as { runParameters?: Record<string, string | boolean> };
+  const { runParameters, runConfirmation } = (await browser.storage.session.get(
+    ["runParameters", "runConfirmation"],
+  )) as {
+    runParameters?: Record<string, string | boolean>;
+    runConfirmation?: PendingConfirmation;
+  };
   if (!runParameters)
     throw new Error("Run inputs expired. Stop and start the run again.");
+  const approved = confirmed && run.confirmationStep === run.nextStep;
+  if (
+    approved &&
+    (!isPendingConfirmation(runConfirmation, run.id, run.nextStep) ||
+      approvalToken !== runConfirmation.details.token)
+  )
+    throw new Error(
+      "The action preview changed. Review it again before approving.",
+    );
   const tab = await browser.tabs.get(run.tabId);
   if (tab.status === "loading") return run;
   const waiting =
@@ -207,6 +229,7 @@ async function performStep(confirmed = false): Promise<RunState> {
   if (waiting && Date.now() - (run.navigationStartedAt ?? Date.now()) < 25000)
     return run;
   let status: "done" | "blocked" | "confirmation-required" = "blocked";
+  let confirmation: PendingConfirmation | undefined;
   let detail = waiting
     ? "Navigation did not finish. Check the page, then retry."
     : "The page does not match the recorded checkpoint.";
@@ -222,24 +245,42 @@ async function performStep(confirmed = false): Promise<RunState> {
       if (interruption) return saveRun({ ...run, inFlightStep: undefined });
       const response = (await browser.tabs.sendMessage(run.tabId, {
         type: "execute-skill-step",
+        executionKey: `${run.id}:${run.nextStep}`,
         step,
         value:
           "parameter" in step && step.parameter
             ? runParameters[step.parameter]
             : undefined,
-        confirmed: run.confirmationStep === run.nextStep && confirmed,
-      })) as { status?: string } | undefined;
+        confirmed: approved,
+        approvalToken: approved ? approvalToken : undefined,
+        previewOnly,
+      })) as
+        | { status?: string; confirmation?: ConfirmationDetails }
+        | undefined;
       if (response?.status === "done") {
         status = "done";
         detail = `${step.kind} dispatched.`;
       } else if (response?.status === "confirmation-required") {
-        status = "confirmation-required";
-        detail = "Review this action and confirm to continue.";
+        const pending = {
+          runId: run.id,
+          step: run.nextStep,
+          details: response.confirmation,
+        };
+        if (isPendingConfirmation(pending, run.id, run.nextStep)) {
+          confirmation = pending;
+          status = "confirmation-required";
+          detail = "Explicit confirmation required before this action.";
+        } else
+          detail =
+            "Could not describe this action safely. Reload the page and retry.";
       } else
         detail =
           "The target was unavailable or ambiguous. Check the page, then retry.";
     }
   }
+  if (confirmation)
+    await browser.storage.session.set({ runConfirmation: confirmation });
+  else await browser.storage.session.remove("runConfirmation");
   const updated = applyStepOutcome(run, runPlan, status, detail);
   if (interruption === "pause" && updated.active && !updated.pauseReason)
     updated.pauseReason = "user";
@@ -420,6 +461,16 @@ export default defineBackground(() => {
     if (request.type === "get-run")
       return serial(async () => {
         let run = await readRun();
+        if (
+          fromOwnPage &&
+          run?.active &&
+          run.confirmationStep === run.nextStep
+        ) {
+          const pending = (await browser.storage.session.get("runConfirmation"))
+            .runConfirmation;
+          if (!isPendingConfirmation(pending, run.id, run.nextStep))
+            run = await performStep(false, undefined, true);
+        }
         if (run?.remoteRunId && (run.remoteSyncedLogs ?? 0) < run.logs.length) {
           try {
             run = await syncRunLogs(run);
@@ -583,6 +634,7 @@ export default defineBackground(() => {
           logs: [],
         };
         await browser.storage.local.set({ runPlan: plan });
+        await browser.storage.session.remove("runConfirmation");
         await browser.storage.session.set({ runParameters: parameters });
         await saveRun(run);
         await scheduleRun(run);
@@ -593,7 +645,12 @@ export default defineBackground(() => {
       return serial(async () => {
         if (revision !== controlRevision) return readRun();
         interruption = undefined;
-        const run = await performStep(request.confirm === true);
+        const run = await performStep(
+          request.confirm === true,
+          typeof request.approvalToken === "string"
+            ? request.approvalToken
+            : undefined,
+        );
         await scheduleRun(run);
         return run;
       });
@@ -608,7 +665,10 @@ export default defineBackground(() => {
         if (!run?.active) return run;
         if (request.type === "pause-run")
           return saveRun({ ...run, pauseReason: run.pauseReason ?? "user" });
-        await browser.storage.session.remove("runParameters");
+        await browser.storage.session.remove([
+          "runParameters",
+          "runConfirmation",
+        ]);
         const stopped = await saveRun({
           ...run,
           active: false,

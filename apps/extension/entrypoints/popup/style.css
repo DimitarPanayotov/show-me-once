@@ -630,3 +630,30 @@ body {
 #record-footer {
   margin-top: 12px;
 }
+.confirmation-preview {
+  margin: 12px 0;
+  padding: 13px;
+  border: 1px solid #f5cf83;
+  border-radius: 9px;
+  background: #fffdf7;
+  overflow-wrap: anywhere;
+}
+.confirmation-preview .eyebrow {
+  margin: 0 0 8px;
+  color: #92400e;
+}
+.confirmation-preview h3 {
+  font-size: 15px;
+  line-height: 1.4;
+  margin: 0 0 8px;
+  color: #78350f;
+}
+.confirmation-preview p {
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+.confirmation-preview .changed-notice {
+  font-size: 11px;
+  font-weight: 650;
+  color: #92400e;
+}

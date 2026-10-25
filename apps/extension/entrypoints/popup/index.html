@@ -168,6 +168,26 @@
               aria-label="Run progress"
             ></progress>
             <p id="run-status" aria-live="polite"></p>
+            <section
+              id="run-confirmation"
+              class="confirmation-preview"
+              aria-labelledby="confirmation-title"
+              hidden
+            >
+              <p class="eyebrow">Action awaiting approval</p>
+              <h3 id="confirmation-title"></h3>
+              <p id="confirmation-target"></p>
+              <p id="confirmation-effect" class="hint"></p>
+              <p id="confirmation-destination" class="hint" hidden></p>
+              <p
+                id="confirmation-changed"
+                class="changed-notice"
+                role="status"
+                hidden
+              >
+                The target changed. Review this updated action before approving.
+              </p>
+            </section>
             <p id="run-context" class="hint"></p>
             <button
               id="run-confirm"

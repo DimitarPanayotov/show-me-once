@@ -1,6 +1,6 @@
 # Manual testing
 
-Use the [live app](https://show-me-once-dimitar.vercel.app) and the ZIP from [the current release](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.2.0-demo). Extract it and load the folder containing `manifest.json` through **Load unpacked** at `chrome://extensions`. Existing source installations can use **Reload**. Confirm version 0.2.0.
+Use the [live app](https://show-me-once-dimitar.vercel.app) and the ZIP from [the current release](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.2.1-demo). Extract it and load the folder containing `manifest.json` through **Load unpacked** at `chrome://extensions`. Existing source installations can use **Reload**. Confirm version 0.2.1.
 
 ## Sign in
 
@@ -22,8 +22,8 @@ Use the [live app](https://show-me-once-dimitar.vercel.app) and the ZIP from [th
 
 1. Return to the starting Wikipedia page and enter Grace Hopper as the search term.
 2. Keep Execution set to **Automatic** and choose **Run skill**.
-3. Safe actions should advance without Next. Search submission should pause for **Confirm & continue**. The badge should show `!` when attention is needed.
-4. Confirm the intended search. Close the popup during navigation; it should continue and finish the checkpoint without requiring the popup to remain open.
+3. Safe actions should advance without Next. Search submission should pause with **Submit search on www.wikipedia.org**, **Click the “Search” button**, and a description of the effect. The badge should show `!` when attention is needed.
+4. Choose **Submit search & continue**. This approves only the displayed action and resumes automatic execution. Close the popup during navigation; it should continue and finish the checkpoint without requiring the popup to remain open.
 5. Reopen it and verify the completed summary, activity log, and Grace Hopper result.
 6. Return to the starting page and repeat with Alan Turing using the same skill, without recording again.
 7. Repeat the record/save/run flow for GitHub's organization repository search (`https://github.com/orgs/github/repositories`, inputs actions/docs) and Open Library Advanced Search (`https://openlibrary.org/advancedsearch`, Title inputs Foundation/Frankenstein).

@@ -7,6 +7,11 @@ import {
   type SkillParameter,
   type SkillPlan,
 } from "@show-me-once/shared";
+import {
+  confirmationCopy,
+  isPendingConfirmation,
+  type PendingConfirmation,
+} from "../../lib/confirmation";
 import "./style.css";
 
 const element = <T extends HTMLElement>(id: string) =>
@@ -59,6 +64,8 @@ let saveAfterSignIn = false;
 let renderRevision = 0;
 let activeRun: RunState | null = null;
 let lastMarkdown = "";
+let approvalToken: string | undefined;
+let approving = false;
 
 function report(cause: unknown) {
   error.textContent = cause instanceof Error ? cause.message : String(cause);
@@ -245,8 +252,14 @@ async function renderAccount() {
   renderSave();
 }
 
-function renderRun(run: RunState | null, plan: SkillPlan | undefined) {
+function renderRun(
+  run: RunState | null,
+  plan: SkillPlan | undefined,
+  pending?: PendingConfirmation,
+) {
   activeRun = run;
+  approvalToken = undefined;
+  element("run-confirmation").hidden = true;
   const active = !!run?.active;
   element("library-controls").hidden = !signedInUser || active;
   element("current-description").hidden = active;
@@ -280,6 +293,23 @@ function renderRun(run: RunState | null, plan: SkillPlan | undefined) {
   librarySkills.disabled = active || librarySkills.options.length === 0;
   if (active && run) {
     const confirmation = run.confirmationStep === run.nextStep;
+    const preview =
+      confirmation && isPendingConfirmation(pending, run.id, run.nextStep)
+        ? pending.details
+        : undefined;
+    const copy = preview
+      ? confirmationCopy(preview, run.mode === "automatic")
+      : undefined;
+    approvalToken = preview?.token;
+    if (copy && preview) {
+      element("run-confirmation").hidden = false;
+      element("confirmation-title").textContent = copy.title;
+      element("confirmation-target").textContent = copy.target;
+      element("confirmation-effect").textContent = copy.effect;
+      element("confirmation-destination").hidden = !copy.destination;
+      element("confirmation-destination").textContent = copy.destination;
+      element("confirmation-changed").hidden = !preview.changed;
+    }
     const blocked = run.pauseReason === "blocked";
     const paused = run.pauseReason === "user";
     const manual = run.mode !== "automatic";
@@ -310,9 +340,10 @@ function renderRun(run: RunState | null, plan: SkillPlan | undefined) {
     progress.max = run.totalSteps;
     progress.value = run.nextStep;
     element("run-status").textContent =
-      `Step ${run.nextStep + 1}: ${waiting ? "Waiting for navigation…" : upcoming?.kind === "navigation" ? "Checking the page" : upcoming?.kind === "input" ? "Filling the supplied input" : upcoming?.kind === "key" ? "Pressing Enter" : "Clicking the target"}`;
+      `Step ${run.nextStep + 1}: ${copy ? "Waiting for your approval" : waiting ? "Waiting for navigation…" : upcoming?.kind === "navigation" ? "Checking the page" : upcoming?.kind === "input" ? "Filling the supplied input" : upcoming?.kind === "key" ? "Pressing Enter" : "Clicking the target"}`;
     element("run-context").textContent = confirmation
-      ? "Review the action on the page. Confirming will continue this run."
+      ? (copy?.continuation ??
+        "Preparing the action preview. Approval is unavailable until it is ready.")
       : blocked
         ? (run.logs.at(-1)?.detail ?? "Check the target page, then retry.")
         : paused
@@ -322,9 +353,10 @@ function renderRun(run: RunState | null, plan: SkillPlan | undefined) {
             : "You can close this popup. We will pause when we need you.";
     runNext.hidden = !manual || confirmation;
     runConfirm.hidden = !confirmation;
-    runConfirm.textContent = manual
-      ? "Confirm this action"
-      : "Confirm & continue";
+    runConfirm.disabled = !preview || approving;
+    runConfirm.textContent = approving
+      ? "Approving…"
+      : (copy?.button ?? "Preparing preview…");
     runPause.hidden = manual || !!run.pauseReason;
     runResume.hidden = manual || !run.pauseReason || confirmation;
     runResume.textContent = blocked ? "Retry step" : "Resume run";
@@ -353,11 +385,14 @@ function renderRun(run: RunState | null, plan: SkillPlan | undefined) {
 
 async function render() {
   const revision = ++renderRevision;
-  const stored = await browser.storage.local.get([
-    "recording",
-    "skillDraft",
-    "runState",
-    "runPlan",
+  const [stored, session] = await Promise.all([
+    browser.storage.local.get([
+      "recording",
+      "skillDraft",
+      "runState",
+      "runPlan",
+    ]),
+    browser.storage.session.get("runConfirmation"),
   ]);
   if (revision !== renderRevision) return;
   currentRecording = (stored.recording as Recording | undefined) ?? null;
@@ -435,7 +470,11 @@ async function render() {
   element("editor-title").textContent =
     view === "record" ? "Your skill is ready" : "Skill details";
   element("generate").hidden = !review || !!currentDraft?.readOnly;
-  renderRun(run, stored.runPlan as SkillPlan | undefined);
+  renderRun(
+    run,
+    stored.runPlan as SkillPlan | undefined,
+    session.runConfirmation as PendingConfirmation | undefined,
+  );
 }
 
 function persistDraft() {
@@ -637,11 +676,26 @@ runStart.addEventListener("click", () => {
 });
 async function runAction(type: string, confirm = false) {
   error.textContent = "";
+  const token = approvalToken;
+  if (confirm) {
+    approving = true;
+    runConfirm.disabled = true;
+    runConfirm.textContent = "Approving…";
+  }
   try {
-    await browser.runtime.sendMessage({ type, confirm });
+    await browser.runtime.sendMessage({
+      type,
+      confirm,
+      ...(confirm ? { approvalToken: token } : {}),
+    });
     await render();
   } catch (cause) {
     report(cause);
+  } finally {
+    if (confirm) {
+      approving = false;
+      await render();
+    }
   }
 }
 runNext.addEventListener("click", () => {
@@ -759,6 +813,7 @@ browser.storage.onChanged.addListener((changes, area) => {
     (changes.recording || changes.skillDraft || changes.runState)
   )
     void render();
+  if (area === "session" && changes.runConfirmation) void render();
 });
 void (async () => {
   const saved = await browser.storage.local.get(["popupView", "runMode"]);

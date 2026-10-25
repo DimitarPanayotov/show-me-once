@@ -47,6 +47,12 @@ Real-site automatic runs were also verified using one new recording per site:
 
 Each run advanced safe steps automatically, paused for explicit submission confirmation, and completed its final checkpoint. The popup was closed after confirmation acceptance while navigation and checkpoint execution continued.
 
+## Action-specific approval — extension 0.2.1
+
+- Twenty-three unit tests pass, including action classification, readable approval text, bounded labels, and run/step-bound preview validation.
+- Focused browser checks passed for search/delete/payment/Enter previews, popup reopening, changed-label and replaced-element reapproval, expired-preview rebuilding without execution, stale consent rejection, Stop, and excluding preview labels/input values from persistent logs. These tests use a controlled local fixture and require no new account.
+- A fresh real Wikipedia recording produced the live preview **Submit search on www.wikipedia.org**, **Click the “Search” button**, and **Submit search & continue**. Approval completed the automatic Grace Hopper search. The popup was visually checked at 420 × 600.
+
 ## Remaining manual evidence
 
 - Perform a final user acceptance check of the redesigned popup in regular Chrome.
