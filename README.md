@@ -6,7 +6,7 @@ One demonstration becomes a reusable browser skill. This repository is an in-pro
 
 - Manifest V3 extension built with WXT and TypeScript.
 - Start and stop recording from the popup in an ordinary `http` or `https` tab.
-- Capture clicks, changed form controls, full-page navigation and SPA URL changes in that tab.
+- Capture clicks, changed form controls, Enter in a nonsensitive input, full-page navigation and SPA URL changes in that tab.
 - Persist the timeline in `chrome.storage.local` after each action, including across service-worker suspension and page navigation.
 - Show the timeline in the popup after it is reopened.
 - Start recording in a tab that was already open when the extension was loaded, without refreshing the page.
@@ -30,6 +30,8 @@ pnpm --filter @show-me-once/web dev
 In Chrome, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `apps/extension/.output/chrome-mv3`. Open a public website, click the extension icon, start recording, complete a task in that tab, and reopen the popup to stop and inspect the timeline. After stopping, edit the suggested name and description, click **Generate SKILL.md**, review or edit the draft, then click **Download SKILL.md**. A draft stays in extension storage if the popup closes.
 
 To test generalization, record a public search task. The query value is omitted from the timeline. Its generated step should use a placeholder such as `{{search_1}}`. A recording made only of clicks instead asks for target descriptions such as `{{target_1}}`.
+
+Search forms submitted with Enter produce a separate **press Enter** step. The runner requires explicit confirmation before submitting it. A navigation checkpoint after a click or Enter must observe an actual page or SPA URL change, even when redacted URLs have the same shape.
 
 To run a new input, regenerate a skill made before the runner was added so it includes the `json show-me-once` plan block. Navigate to the starting site, enter new parameters under **Run this skill**, and click **Start run**. Click **Next step** once for each action. A submit button or detected destructive/payment target requires **Confirm this action** before it is clicked. Reopen the popup after navigation to continue. **Stop run** prevents later steps. Parameter values live only in `chrome.storage.session` for the run and are removed on stop or completion; they are not written to the local run log.
 

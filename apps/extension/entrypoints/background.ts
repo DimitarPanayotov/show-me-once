@@ -95,6 +95,14 @@ export default defineBackground(() => {
         return true;
       });
     }
+    if (request.type === 'run-navigation') {
+      return serial(async () => {
+        const run = await readRun();
+        if (!run?.active || sender.tab?.id !== run.tabId || !run.awaitingNavigation || run.navigationObserved) return false;
+        await saveRun({ ...run, navigationObserved: true });
+        return true;
+      });
+    }
     if (request.type === 'start-run') {
       return serial(async () => {
         if ((await read())?.active) throw new Error('Stop recording before running a skill.');
@@ -129,7 +137,10 @@ export default defineBackground(() => {
         const currentUrl = tab.url ? sanitizeUrl(tab.url) : null;
         let status: 'done' | 'blocked' | 'confirmation-required' = 'blocked';
         let detail = 'The page does not match the recorded checkpoint.';
-        if (currentUrl === step.url) {
+        if (currentUrl === step.url && step.kind === 'navigation' && run.awaitingNavigation && !run.navigationObserved) {
+          detail = 'Waiting for navigation after the previous action.';
+        }
+        if (currentUrl === step.url && (step.kind !== 'navigation' || !run.awaitingNavigation || run.navigationObserved)) {
           if (step.kind === 'navigation') {
             status = 'done';
             detail = 'Navigation checkpoint matched.';
@@ -139,7 +150,7 @@ export default defineBackground(() => {
             await ensureRecorder(run.tabId);
             const response = await browser.tabs.sendMessage(run.tabId, {
               type: 'execute-skill-step', step,
-              value: step.parameter ? runParameters[step.parameter] : undefined,
+              value: 'parameter' in step && step.parameter ? runParameters[step.parameter] : undefined,
               confirmed: run.confirmationStep === run.nextStep && request.confirm === true,
             }) as { status?: string } | undefined;
             if (response?.status === 'done') {
@@ -152,10 +163,16 @@ export default defineBackground(() => {
           }
         }
         const nextStep = status === 'done' ? run.nextStep + 1 : run.nextStep;
+        const awaitingNavigation = status === 'done' && (step.kind === 'click' || step.kind === 'key') && runPlan?.steps[nextStep]?.kind === 'navigation'
+          ? true : status === 'done' && step.kind === 'navigation' ? false : run.awaitingNavigation;
+        const navigationObserved = awaitingNavigation && status === 'done' && (step.kind === 'click' || step.kind === 'key')
+          ? false : status === 'done' && step.kind === 'navigation' ? false : run.navigationObserved;
         const updated: RunState = {
           ...run,
           active: status === 'done' && nextStep === run.totalSteps ? false : true,
           nextStep,
+          awaitingNavigation,
+          navigationObserved,
           ...(status === 'confirmation-required' ? { confirmationStep: run.nextStep } : { confirmationStep: undefined }),
           logs: [...run.logs, { step: run.nextStep + 1, kind: step.kind, status, at: new Date().toISOString(), detail }],
         };
@@ -175,6 +192,10 @@ export default defineBackground(() => {
   browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.status !== 'complete' || !tab.url) return;
     void serial(async () => {
+      const run = await readRun();
+      if (run?.active && run.tabId === tabId && run.awaitingNavigation && !run.navigationObserved) {
+        await saveRun({ ...run, navigationObserved: true });
+      }
       const recording = await read();
       if (!recording?.active || recording.tabId !== tabId) return;
       const url = sanitizeUrl(tab.url!);

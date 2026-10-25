@@ -16,6 +16,7 @@ export default defineContentScript({
     let active = false;
     let lastLocation = location.href;
     let lastPointer: { selector: string; id: string; at: number } | null = null;
+    let lastInput: { element: Element; id: string; at: number } | null = null;
     let stateRevision = 0;
 
     function usable(element: Element): element is HTMLElement {
@@ -65,6 +66,22 @@ export default defineContentScript({
           return { status: 'confirmation-required' };
         }
         ctx.setTimeout(() => { if (ctx.isValid) target.click(); }, 0);
+        return { status: 'done' };
+      }
+
+      if (step.kind === 'key') {
+        if (!(target instanceof HTMLInputElement) || step.key !== 'Enter') return { status: 'blocked' };
+        if (!confirmed) return { status: 'confirmation-required' };
+        ctx.setTimeout(() => {
+          if (!ctx.isValid) return;
+          const form = target.closest('form');
+          if (form instanceof HTMLFormElement) form.requestSubmit();
+          else {
+            target.focus();
+            target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+            target.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true }));
+          }
+        }, 0);
         return { status: 'done' };
       }
 
@@ -126,6 +143,22 @@ export default defineContentScript({
       return structuralSelector(interactive);
     }
 
+    function recordInput(target: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement) {
+      if (isSensitive(target)) return;
+      let inputKind: 'text' | 'search' | 'checkbox' | 'radio' | 'select' = 'text';
+      if (target instanceof HTMLSelectElement) inputKind = 'select';
+      else if (target instanceof HTMLInputElement) {
+        if (target.type === 'checkbox') inputKind = 'checkbox';
+        else if (target.type === 'radio') inputKind = 'radio';
+        else if (target.type === 'search') inputKind = 'search';
+      }
+      const id = lastInput?.element === target && Date.now() - lastInput.at < 1500
+        ? lastInput.id : crypto.randomUUID();
+      lastInput = { element: target, id, at: Date.now() };
+      send({ kind: 'input', selector: structuralSelector(target), inputKind,
+        ...((inputKind === 'checkbox' || inputKind === 'radio') ? { checked: (target as HTMLInputElement).checked } : {}) }, id);
+    }
+
     ctx.addEventListener(document, 'pointerdown', (event) => {
       if (!(event instanceof PointerEvent) || event.button !== 0) return;
       const selector = clickSelector(event.target);
@@ -147,22 +180,22 @@ export default defineContentScript({
     ctx.addEventListener(document, 'change', (event) => {
       const target = event.target;
       if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) return;
-      if (isSensitive(target)) return;
-      let inputKind: 'text' | 'search' | 'checkbox' | 'radio' | 'select' = 'text';
-      if (target instanceof HTMLSelectElement) inputKind = 'select';
-      else if (target instanceof HTMLInputElement) {
-        if (target.type === 'checkbox') inputKind = 'checkbox';
-        else if (target.type === 'radio') inputKind = 'radio';
-        else if (target.type === 'search') inputKind = 'search';
-      }
-      send({ kind: 'input', selector: structuralSelector(target), inputKind,
-        ...((inputKind === 'checkbox' || inputKind === 'radio') ? { checked: (target as HTMLInputElement).checked } : {}) });
+      recordInput(target);
+    }, true);
+
+    ctx.addEventListener(document, 'keydown', (event) => {
+      if (!(event instanceof KeyboardEvent) || event.key !== 'Enter' || event.repeat || event.isComposing) return;
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement) || isSensitive(target)) return;
+      recordInput(target);
+      send({ kind: 'key', key: 'Enter', selector: structuralSelector(target) }, crypto.randomUUID());
     }, true);
 
     ctx.setInterval(() => {
       if (location.href === lastLocation) return;
       lastLocation = location.href;
       send({ kind: 'navigation' });
+      void browser.runtime.sendMessage({ type: 'run-navigation' }).catch(() => undefined);
     }, 500);
 
     // Never delay event listeners while a dormant service worker wakes up.

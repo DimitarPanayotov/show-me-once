@@ -1,11 +1,12 @@
 export type RecordedAction = {
   id: string;
   at: string;
-  kind: 'navigation' | 'click' | 'input';
+  kind: 'navigation' | 'click' | 'input' | 'key';
   url: string;
   selector?: string;
   inputKind?: 'text' | 'search' | 'checkbox' | 'radio' | 'select';
   checked?: boolean;
+  key?: 'Enter';
 };
 
 export type Recording = {
@@ -21,10 +22,11 @@ export type SkillParameter = { name: string; type: 'string' | 'boolean' };
 export type SkillStep =
   | { kind: 'navigation'; url: string }
   | { kind: 'click'; url: string; selector: string; parameter?: string }
-  | { kind: 'input'; url: string; selector: string; inputKind: NonNullable<RecordedAction['inputKind']>; parameter: string };
+  | { kind: 'input'; url: string; selector: string; inputKind: NonNullable<RecordedAction['inputKind']>; parameter: string }
+  | { kind: 'key'; url: string; selector: string; key: 'Enter' };
 export type SkillPlan = { schemaVersion: 1; parameters: SkillParameter[]; steps: SkillStep[] };
 export type RunLog = { step: number; kind: SkillStep['kind']; status: 'done' | 'blocked' | 'confirmation-required'; at: string; detail: string };
-export type RunState = { id: string; tabId: number; active: boolean; nextStep: number; totalSteps: number; confirmationStep?: number; logs: RunLog[] };
+export type RunState = { id: string; tabId: number; active: boolean; nextStep: number; totalSteps: number; confirmationStep?: number; awaitingNavigation?: boolean; navigationObserved?: boolean; logs: RunLog[] };
 
 export function appendAction(
   recording: Recording,
@@ -76,7 +78,7 @@ export function structuralSelector(element: Element): string {
 export function sanitizedAction(value: unknown): Omit<RecordedAction, 'id' | 'at'> | null {
   if (!value || typeof value !== 'object') return null;
   const input = value as Record<string, unknown>;
-  if (input.kind !== 'navigation' && input.kind !== 'click' && input.kind !== 'input') return null;
+  if (input.kind !== 'navigation' && input.kind !== 'click' && input.kind !== 'input' && input.kind !== 'key') return null;
   const url = typeof input.url === 'string' ? sanitizeUrl(input.url) : null;
   if (!url) return null;
   const action: Omit<RecordedAction, 'id' | 'at'> = { kind: input.kind, url };
@@ -88,6 +90,10 @@ export function sanitizedAction(value: unknown): Omit<RecordedAction, 'id' | 'at
     if (input.inputKind !== 'text' && input.inputKind !== 'search' && input.inputKind !== 'checkbox' && input.inputKind !== 'radio' && input.inputKind !== 'select') return null;
     action.inputKind = input.inputKind;
     if ((input.inputKind === 'checkbox' || input.inputKind === 'radio') && typeof input.checked === 'boolean') action.checked = input.checked;
+  }
+  if (input.kind === 'key') {
+    if (input.key !== 'Enter') return null;
+    action.key = 'Enter';
   }
   return action;
 }
@@ -120,6 +126,9 @@ export function createSkillMarkdown(recording: Recording, name: string, descript
       steps.push(`${number}. Find one visible ${action.inputKind} control at \`${action.selector}\`. Set it from \`{{${parameter}}}\`; verify the control accepted it locally without logging the value.`);
       plan.parameters.push({ name: parameter, type });
       plan.steps.push({ kind: 'input', url: action.url, selector: action.selector!, inputKind: action.inputKind!, parameter });
+    } else if (action.kind === 'key') {
+      steps.push(`${number}. Press Enter in the visible control at \`${action.selector}\` to submit or apply the supplied input. Confirm before any submission with irreversible effects.`);
+      plan.steps.push({ kind: 'key', url: action.url, selector: action.selector!, key: 'Enter' });
     } else {
       const selector = `\`${action.selector}\``;
       if (!hasInput) {
@@ -189,10 +198,11 @@ export function parseSkillPlan(markdown: string): SkillPlan {
     if (!item || typeof item !== 'object') throw new Error('Invalid skill step.');
     const step = item as Record<string, unknown>;
     const clean = sanitizedAction(step);
-    if (!clean || clean.url !== step.url || Object.keys(step).some(key => !['kind', 'url', 'selector', 'inputKind', 'parameter'].includes(key))) {
+    if (!clean || clean.url !== step.url || Object.keys(step).some(key => !['kind', 'url', 'selector', 'inputKind', 'parameter', 'key'].includes(key))) {
       throw new Error('Unsafe or invalid skill step.');
     }
     if (clean.kind === 'navigation') return { kind: 'navigation', url: clean.url };
+    if (clean.kind === 'key') return { kind: 'key', url: clean.url, selector: clean.selector!, key: 'Enter' };
     if (clean.kind === 'click') {
       if (step.parameter !== undefined && (typeof step.parameter !== 'string' || !parameters.some(parameter => parameter.name === step.parameter && parameter.type === 'string'))) {
         throw new Error('Invalid click parameter.');

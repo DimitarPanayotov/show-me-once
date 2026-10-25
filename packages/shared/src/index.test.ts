@@ -63,3 +63,19 @@ test('runner rejects a skill plan containing an unredacted URL or raw field valu
   assert.throws(() => parseSkillPlan(wrap({ kind: 'navigation', url: 'https://example.com/private?token=secret' })), /Unsafe/);
   assert.throws(() => parseSkillPlan(wrap({ kind: 'input', url: 'https://example.com', selector: 'input:nth-of-type(1)', inputKind: 'search', parameter: 'search_1', value: 'secret' })), /Unsafe/);
 });
+
+test('Enter is recorded as a safe executable step after the input', () => {
+  const recording: Recording = {
+    id: 'search', active: false, tabId: 1, startedAt: '2026-10-25T00:00:00Z',
+    actions: [
+      { id: 'nav-1', at: '2026-10-25T00:00:01Z', kind: 'navigation', url: 'https://github.com/…/…/…' },
+      { id: 'input', at: '2026-10-25T00:00:02Z', kind: 'input', url: 'https://github.com/…/…/…', selector: 'input:nth-of-type(1)', inputKind: 'text' },
+      { id: 'enter', at: '2026-10-25T00:00:03Z', kind: 'key', key: 'Enter', url: 'https://github.com/…/…/…', selector: 'input:nth-of-type(1)' },
+      { id: 'nav-2', at: '2026-10-25T00:00:04Z', kind: 'navigation', url: 'https://github.com/…/…/…' },
+    ],
+  };
+  const markdown = createSkillMarkdown(recording, 'github-search', 'Search public repositories');
+  assert.deepEqual(parseSkillPlan(markdown).steps.map(step => step.kind), ['navigation', 'input', 'key', 'navigation']);
+  assert.match(markdown, /Press Enter/);
+  assert.equal(sanitizedAction({ kind: 'key', key: 'A', url: 'https://github.com', selector: 'input:nth-of-type(1)' }), null);
+});

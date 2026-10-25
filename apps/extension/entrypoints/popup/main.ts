@@ -72,6 +72,7 @@ async function renderRun() {
     const upcoming = (stored.runPlan as SkillPlan | undefined)?.steps[run.nextStep];
     const action = upcoming?.kind === 'navigation' ? `Check ${upcoming.url}`
       : upcoming?.kind === 'input' ? `Fill ${upcoming.inputKind} control (value hidden)`
+      : upcoming?.kind === 'key' ? 'Press Enter in the matched control'
       : upcoming?.kind === 'click' ? 'Click the matched control' : 'Unknown step';
     runStatus.textContent = `Step ${run.nextStep + 1} of ${run.totalSteps}: ${action}`;
   } else {
@@ -106,7 +107,7 @@ async function render() {
   for (const action of recording?.actions ?? []) {
     const item = document.createElement('li');
     const label = document.createElement('strong');
-    label.textContent = action.kind === 'input' ? `${action.inputKind} input (value omitted)` : action.kind;
+    label.textContent = action.kind === 'input' ? `${action.inputKind} input (value omitted)` : action.kind === 'key' ? 'press Enter' : action.kind;
     const detail = document.createElement('span');
     detail.textContent = action.selector ?? action.url;
     const time = document.createElement('time');
