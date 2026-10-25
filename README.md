@@ -1,62 +1,61 @@
 # Show Me Once
 
-One demonstration becomes a reusable browser skill. This repository is an in-progress Juma Labs take-home project. Recording is working, and the extension can now generate an editable local `SKILL.md` draft.
+One browser demonstration becomes a reusable `SKILL.md` and a step-by-step Chrome run. This is the Juma Labs AI Engineer take-home project.
 
-## What works now
+## Current state
 
-- Manifest V3 extension built with WXT and TypeScript.
-- Start and stop recording from the popup in an ordinary `http` or `https` tab.
-- Capture clicks, changed form controls, Enter in a nonsensitive input, full-page navigation and SPA URL changes in that tab.
-- Persist the timeline in `chrome.storage.local` after each action, including across service-worker suspension and page navigation.
-- Show the timeline in the popup after it is reopened.
-- Start recording in a tab that was already open when the extension was loaded, without refreshing the page.
-- Generate, edit, retain locally and download a `SKILL.md` draft with `name` and `description` frontmatter, parameters, steps and checkpoints.
-- Run the generated plan one step at a time in the extension, with visible logs, Stop, page checkpoints and explicit confirmation for detected submit, destructive and payment actions.
-- Never save recorded form values, page text, URL queries, fragments, credentials or path values. Password and other sensitive controls are ignored entirely. During a run, interactive labels are compared locally for target selection and never logged or sent to a model.
+- WXT/TypeScript Manifest V3 extension records sanitized clicks, inputs, Enter and navigation. The timeline survives page changes and service-worker suspension.
+- Local deterministic generation produces editable `SKILL.md` instructions, parameters, checkpoints and a validated executable plan. Form values, page text and unredacted URLs are excluded.
+- The extension executes one step at a time, shows each action, asks before submission or detected destructive/payment actions, and can stop a run.
+- Next.js/shadcn web app uses oRPC, Prisma and PostgreSQL for accounts, skill versions, sharing and per-step run history. Web sessions use HttpOnly cookies; extension sessions are held in `chrome.storage.session`.
+- The candidate manually reported successful replay of one skill with two inputs on each of Wikipedia, GitHub and Open Library. See [verification](docs/verification.md).
 
-The recording, draft and run log are local to the extension. The backend library, auth, sharing and deployment are the next milestones.
+The local API and database have been smoke tested. Chrome testing of the new account/library sync and production deployment remain to be completed.
 
-## Run locally
+## Local setup
 
-Requires Node.js 24.11+ and pnpm 10.
+Requires Node.js 24.11+, pnpm 10, Docker and Chrome.
 
 ```powershell
 pnpm install
-pnpm test
-pnpm --filter @show-me-once/extension build
-pnpm --filter @show-me-once/web dev
+Copy-Item apps/web/.env.example apps/web/.env
+docker compose up -d
+pnpm --filter @show-me-once/web exec prisma migrate deploy
+pnpm dev:web
 ```
 
-In Chrome, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `apps/extension/.output/chrome-mv3`. Open a public website, click the extension icon, start recording, complete a task in that tab, and reopen the popup to stop and inspect the timeline. After stopping, edit the suggested name and description, click **Generate SKILL.md**, review or edit the draft, then click **Download SKILL.md**. A draft stays in extension storage if the popup closes.
+In another terminal:
 
-To test generalization, record a public search task. The query value is omitted from the timeline. Its generated step should use a placeholder such as `{{search_1}}`. A recording made only of clicks instead asks for target descriptions such as `{{target_1}}`.
+```powershell
+pnpm --filter @show-me-once/extension build
+```
 
-Search forms submitted with Enter produce a separate **press Enter** step. The runner requires explicit confirmation before submitting it. A navigation checkpoint after a click or Enter must observe an actual page or SPA URL change, even when redacted URLs have the same shape.
+Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select `apps/extension/.output/chrome-mv3`. The web library runs at `http://localhost:3000`. Register an account in the web app, then sign in with the same account in the extension popup. The extension can save the current skill to the library and load owned or shared skills. Share a saved skill with a second registered account from the web app.
 
-To run a new input, regenerate a skill made before the runner was added so it includes the `json show-me-once` plan block. Navigate to the starting site, enter new parameters under **Run this skill**, and click **Start run**. Click **Next step** once for each action. A submit button or detected destructive/payment target requires **Confirm this action** before it is clicked. Reopen the popup after navigation to continue. **Stop run** prevents later steps. Parameter values live only in `chrome.storage.session` for the run and are removed on stop or completion; they are not written to the local run log.
+The extension defaults to `http://localhost:3000`. To build it for a deployed app, set `WXT_API_BASE_URL` to the HTTPS Vercel origin before `pnpm --filter @show-me-once/extension build` or `zip`. The generated manifest grants host access only to that API origin.
 
-The web app runs at `http://localhost:3000`. Its oRPC health procedure accepts POST at `/api/rpc/health`. The web app currently has no account or skill UI.
+## Use the extension
 
-## Architecture
+1. Open an ordinary public website, choose **Start recording**, perform one task, and choose **Stop**. The timeline omits field values.
+2. Set a skill name and description; choose **Generate SKILL.md**. Review the Markdown and download it if desired.
+3. Sign in and choose **Save to library**. The web app can show versions and share the skill with another account.
+4. Return to the starting page, enter new parameter values and choose **Start run**. Use **Next step** to execute one action at a time; confirm submissions when prompted. Reopen the popup after navigation. **Stop run** prevents later actions.
+5. Load a saved or shared skill from the popup to run it. Values used during a run live only in browser session storage and are omitted from server run logs.
 
-| Layer | Responsibility |
-| --- | --- |
-| Content script | Observe click, change and same-document navigation events. It sends only structural selectors, control types, checkbox state and page URL to the background worker. During a run, it executes one validated step and compares interactive labels locally when needed. |
-| MV3 service worker | Validate/sanitize every incoming event, bind it to the tab where recording began, serialize writes, persist the timeline and manage one-step run state. Browser navigation events are captured here too. |
-| Popup | Start/stop recording, display the timeline, generate/edit/download a local skill draft, and control a step-by-step run. |
-| Next.js + oRPC | Future skill library and run APIs. A health procedure is wired now. |
-| PostgreSQL + Prisma | Schema for users, skills, versions, shares, runs and per-step logs. A connection is required when migrations and persistence are enabled. |
+## Architecture and safety
 
-The generated skill uses YAML `name` and `description` frontmatter, explicit parameters, step instructions, checkpoints and a validated JSON executable plan. Generation is deterministic and local. Input values are not inferred from recorded form contents. Structural selectors are hints that the runner validates before acting. Because URL paths are redacted, navigation steps are checkpoints rather than executable URLs; the user starts on the intended site. The runner reads the JSON block; edits to the prose alone do not change executable actions. The skill is not yet saved to the backend.
+See [architecture](docs/architecture.md) for the content script, service worker, backend, skill format and safety boundaries.
 
-## Deployment preparation
+## Checks
 
-The Next.js app is under `apps/web`. Set the Vercel project root to that directory, use the pnpm workspace install, and configure `DATABASE_URL` for a PostgreSQL database. The web build generates the Prisma client. Apply migrations before using database-backed endpoints. The current web app can build without a database but is not yet the final deliverable.
+```powershell
+pnpm test
+pnpm typecheck
+pnpm build
+```
 
-## Next milestones
+## Deployment
 
-1. Verify the step-by-step runner on the three public websites with two distinct inputs each and improve selectors where checkpoints block.
-2. Add accounts, backend persistence, sharing and database-backed step logs.
-3. Deploy to Vercel, provide a test account, build a zip and record a demo under five minutes.
+The Vercel project root is `apps/web`. Configure a PostgreSQL `DATABASE_URL`, apply `prisma migrate deploy`, then build the web app. Build the extension with `WXT_API_BASE_URL` set to the deployed HTTPS origin and distribute its `.output/chrome-mv3` folder or WXT zip. The app must be deployed and a reviewer test account provisioned before submission.
 
-The required personal report about challenges and decisions must be written by the candidate in their own words.
+The required short personal report about what was hard and how it was tackled must be written by the candidate in their own words.

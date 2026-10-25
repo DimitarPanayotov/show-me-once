@@ -11,11 +11,23 @@ model User {
   id             String       @id @default(cuid())
   email          String       @unique
   name           String?
-  passwordHash   String?
+  passwordHash   String
   createdAt      DateTime     @default(now())
+  sessions       Session[]
   ownedSkills    Skill[]
   receivedShares SkillShare[]
   runs           Run[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([userId])
 }
 
 model Skill {
@@ -24,6 +36,7 @@ model Skill {
   owner       User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   title       String
   description String
+  currentVersion Int          @default(1)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   versions    SkillVersion[]
@@ -65,7 +78,6 @@ model Run {
   skillVersion   SkillVersion @relation(fields: [skillVersionId], references: [id])
   userId         String
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  inputs         Json
   status         RunStatus    @default(PENDING)
   createdAt      DateTime     @default(now())
   finishedAt     DateTime?
@@ -79,7 +91,8 @@ model StepLog {
   runId     String
   run       Run        @relation(fields: [runId], references: [id], onDelete: Cascade)
   sequence  Int
-  summary   String
+  stepNumber Int
+  kind      String
   status    StepStatus
   createdAt DateTime   @default(now())
 
@@ -96,9 +109,7 @@ enum RunStatus {
 }
 
 enum StepStatus {
-  PENDING
-  RUNNING
-  COMPLETED
-  SKIPPED
-  FAILED
+  DONE
+  BLOCKED
+  CONFIRMATION_REQUIRED
 }

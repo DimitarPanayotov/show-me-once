@@ -2,6 +2,8 @@ import { browser } from 'wxt/browser';
 import { appendAction, parseSkillPlan, sanitizeUrl, sanitizedAction, type RecordedAction, type Recording, type RunState, type SkillPlan } from '@show-me-once/shared';
 
 const STORAGE_KEY = 'recording';
+const API_BASE = (import.meta.env.WXT_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+type Account = { token: string; user: { id: string; email: string; name: string | null } };
 let pending: Promise<unknown> = Promise.resolve();
 
 function serial<T>(work: () => Promise<T>): Promise<T> {
@@ -29,6 +31,40 @@ async function saveRun(run: RunState): Promise<RunState> {
   return run;
 }
 
+async function readAccount(): Promise<Account | null> {
+  const stored = await browser.storage.session.get('account');
+  return (stored.account as Account | undefined) ?? null;
+}
+
+async function api<T>(path: string, input: object, account?: Account | null): Promise<T> {
+  const response = await fetch(`${API_BASE}/api/rpc/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(account ? { Authorization: `Bearer ${account.token}` } : {}) },
+    body: JSON.stringify({ json: input }), signal: AbortSignal.timeout(8000),
+  });
+  const payload = await response.json() as { json?: T & { message?: string } };
+  if (!response.ok) throw new Error(payload.json?.message ?? `Library request failed (${response.status}).`);
+  return payload.json as T;
+}
+
+async function requiredAccount(): Promise<Account> {
+  const account = await readAccount();
+  if (!account) throw new Error('Sign in to the library first.');
+  return account;
+}
+
+async function syncRunLogs(run: RunState): Promise<RunState> {
+  if (!run.remoteRunId) return run;
+  const account = await requiredAccount();
+  let current = run;
+  for (let index = run.remoteSyncedLogs ?? 0; index < run.logs.length; index++) {
+    const entry = run.logs[index]!;
+    await api('run/log', { runId: run.remoteRunId, stepNumber: entry.step, kind: entry.kind, status: entry.status }, account);
+    current = await saveRun({ ...current, remoteSyncedLogs: index + 1, syncError: undefined });
+  }
+  return current;
+}
+
 function append(recording: Recording, action: Omit<RecordedAction, 'id' | 'at'>): Recording {
   return appendAction(recording, action, crypto.randomUUID(), new Date().toISOString());
 }
@@ -50,8 +86,50 @@ export default defineBackground(() => {
     if (!message || typeof message !== 'object') return;
     const request = message as Record<string, unknown>;
 
+    if (typeof request.type === 'string' && (request.type.startsWith('account-') || request.type.startsWith('library-'))) {
+      if (sender.tab || sender.id !== browser.runtime.id) throw new Error('Only the extension popup may access the library.');
+      if (request.type === 'account-status') return readAccount().then(account => account?.user ?? null);
+      if (request.type === 'account-login') return serial(async () => {
+        if (typeof request.email !== 'string' || typeof request.password !== 'string') throw new Error('Enter email and password.');
+        const account = await api<Account>('auth/login', { email: request.email, password: request.password });
+        await browser.storage.session.set({ account });
+        return account.user;
+      });
+      if (request.type === 'account-logout') return serial(async () => {
+        const account = await readAccount();
+        if (account) await api('auth/logout', {}, account).catch(() => undefined);
+        await browser.storage.session.remove('account');
+        return true;
+      });
+      if (request.type === 'library-list') return requiredAccount().then(account => api('skill/list', {}, account));
+      if (request.type === 'library-load') return serial(async () => {
+        if (typeof request.id !== 'string') throw new Error('Choose a skill.');
+        const skill = await api<{ id: string; title: string; description: string; ownerId: string; versions: { markdown: string }[] }>(
+          'skill/get', { id: request.id }, await requiredAccount());
+        if (!skill.versions[0]) throw new Error('The skill has no saved version.');
+        return { id: skill.id, name: skill.title, description: skill.description, markdown: skill.versions[0].markdown, ownerId: skill.ownerId };
+      });
+      if (request.type === 'library-save') return serial(async () => {
+        if (typeof request.name !== 'string' || typeof request.description !== 'string' || typeof request.markdown !== 'string') {
+          throw new Error('Generate a skill first.');
+        }
+        parseSkillPlan(request.markdown);
+        const account = await requiredAccount();
+        const path = typeof request.remoteSkillId === 'string' ? 'skill/update' : 'skill/create';
+        return api<{ id: string; currentVersion: number }>(path, {
+          ...(path === 'skill/update' ? { id: request.remoteSkillId } : {}),
+          title: request.name, description: request.description, markdown: request.markdown,
+        }, account);
+      });
+    }
+
     if (request.type === 'get-recording') return read();
-    if (request.type === 'get-run') return readRun();
+    if (request.type === 'get-run') return serial(async () => {
+      const run = await readRun();
+      if (!run?.remoteRunId || (run.remoteSyncedLogs ?? 0) >= run.logs.length) return run;
+      try { return await syncRunLogs(run); }
+      catch { return run; }
+    });
     if (request.type === 'get-recording-status') {
       return read().then(recording => ({ active: !!recording?.active, tabId: recording?.tabId ?? null }));
     }
@@ -120,7 +198,16 @@ export default defineBackground(() => {
         const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
         if (tab?.id === undefined || !tab.url || !sanitizeUrl(tab.url)) throw new Error('Open an http(s) page before running.');
         await ensureRecorder(tab.id);
-        const run: RunState = { id: crypto.randomUUID(), tabId: tab.id, active: true, nextStep: 0, totalSteps: plan.steps.length, logs: [] };
+        let remoteRunId: string | undefined;
+        if (typeof request.remoteSkillId === 'string') {
+          const account = await requiredAccount();
+          const skill = await api<{ versions: { markdown: string }[] }>('skill/get', { id: request.remoteSkillId }, account);
+          if (skill.versions[0]?.markdown !== request.markdown) throw new Error('Save this skill version before running it.');
+          const remote = await api<{ id: string }>('run/start', { skillId: request.remoteSkillId }, account);
+          remoteRunId = remote.id;
+        }
+        const run: RunState = { id: crypto.randomUUID(), tabId: tab.id, active: true, nextStep: 0, totalSteps: plan.steps.length,
+          ...(remoteRunId ? { remoteRunId, remoteSyncedLogs: 0 } : {}), logs: [] };
         await browser.storage.local.set({ runPlan: plan });
         await browser.storage.session.set({ runParameters: parameters });
         return saveRun(run);
@@ -175,14 +262,24 @@ export default defineBackground(() => {
           logs: [...run.logs, { step: run.nextStep + 1, kind: step.kind, status, at: new Date().toISOString(), detail }],
         };
         if (!updated.active) await browser.storage.session.remove('runParameters');
-        return saveRun(updated);
+        const saved = await saveRun(updated);
+        try { return await syncRunLogs(saved); }
+        catch { return saveRun({ ...saved, syncError: 'Server log could not sync. It will retry when this popup reopens.' }); }
       });
     }
     if (request.type === 'stop-run') {
       return serial(async () => {
         const run = await readRun();
         await browser.storage.session.remove('runParameters');
-        return run ? saveRun({ ...run, active: false, confirmationStep: undefined }) : null;
+        if (!run) return null;
+        const stopped = await saveRun({ ...run, active: false, confirmationStep: undefined });
+        if (stopped.remoteRunId) {
+          try {
+            await syncRunLogs(stopped);
+            await api('run/stop', { runId: stopped.remoteRunId }, await requiredAccount());
+          } catch { return saveRun({ ...stopped, syncError: 'Server run status could not sync.' }); }
+        }
+        return stopped;
       });
     }
   });

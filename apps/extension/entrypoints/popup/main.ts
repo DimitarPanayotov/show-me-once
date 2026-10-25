@@ -6,6 +6,7 @@ const start = document.querySelector<HTMLButtonElement>('#start')!;
 const stop = document.querySelector<HTMLButtonElement>('#stop')!;
 const status = document.querySelector<HTMLElement>('#status')!;
 const error = document.querySelector<HTMLElement>('#error')!;
+const notice = document.querySelector<HTMLElement>('#notice')!;
 const timeline = document.querySelector<HTMLOListElement>('#timeline')!;
 const count = document.querySelector<HTMLElement>('#count')!;
 const skillSection = document.querySelector<HTMLElement>('#skill-section')!;
@@ -15,6 +16,17 @@ const skillDescription = document.querySelector<HTMLInputElement>('#skill-descri
 const skillMarkdown = document.querySelector<HTMLTextAreaElement>('#skill-markdown')!;
 const generate = document.querySelector<HTMLButtonElement>('#generate')!;
 const download = document.querySelector<HTMLButtonElement>('#download')!;
+const saveLibrary = document.querySelector<HTMLButtonElement>('#save-library')!;
+const accountStatus = document.querySelector<HTMLElement>('#account-status')!;
+const accountForm = document.querySelector<HTMLFormElement>('#account-form')!;
+const accountEmail = document.querySelector<HTMLInputElement>('#account-email')!;
+const accountPassword = document.querySelector<HTMLInputElement>('#account-password')!;
+const accountLogout = document.querySelector<HTMLButtonElement>('#account-logout')!;
+const libraryControls = document.querySelector<HTMLElement>('#library-controls')!;
+const libraryRefresh = document.querySelector<HTMLButtonElement>('#library-refresh')!;
+const librarySkills = document.querySelector<HTMLSelectElement>('#library-skills')!;
+const libraryLoad = document.querySelector<HTMLButtonElement>('#library-load')!;
+const webApp = document.querySelector<HTMLAnchorElement>('#web-app')!;
 const runParameters = document.querySelector<HTMLElement>('#run-parameters')!;
 const runStart = document.querySelector<HTMLButtonElement>('#run-start')!;
 const runControls = document.querySelector<HTMLElement>('#run-controls')!;
@@ -23,10 +35,13 @@ const runNext = document.querySelector<HTMLButtonElement>('#run-next')!;
 const runConfirm = document.querySelector<HTMLButtonElement>('#run-confirm')!;
 const runStop = document.querySelector<HTMLButtonElement>('#run-stop')!;
 const runLog = document.querySelector<HTMLOListElement>('#run-log')!;
-type SkillDraft = { sourceRecordingId: string; name: string; description: string; markdown: string };
+type SkillDraft = { sourceRecordingId: string; name: string; description: string; markdown: string; remoteSkillId?: string; readOnly?: boolean };
 let shownRecordingId: string | null = null;
 let parameterDefinitions: SkillParameter[] = [];
 let planValid = false;
+let currentDraft: SkillDraft | null = null;
+let signedInUser: { id: string; email: string } | null = null;
+webApp.href = import.meta.env.WXT_API_BASE_URL || 'http://localhost:3000';
 
 function showParameters(markdown: string) {
   runParameters.replaceChildren();
@@ -51,12 +66,48 @@ function showParameters(markdown: string) {
 }
 
 function showDraft(draft: SkillDraft | null) {
+  currentDraft = draft;
   draftSection.hidden = !draft;
   if (!draft) return;
   skillName.value = draft.name;
   skillDescription.value = draft.description;
   skillMarkdown.value = draft.markdown;
+  skillName.disabled = !!draft.readOnly;
+  skillDescription.disabled = !!draft.readOnly;
+  skillMarkdown.disabled = !!draft.readOnly;
   showParameters(draft.markdown);
+}
+
+async function refreshLibrary() {
+  if (!signedInUser) return;
+  const skills = await browser.runtime.sendMessage({ type: 'library-list' }) as
+    { id: string; title: string; ownerId: string; currentVersion: number }[];
+  librarySkills.replaceChildren();
+  for (const skill of skills) {
+    const option = document.createElement('option');
+    option.value = skill.id;
+    option.textContent = `${skill.title} · v${skill.currentVersion}${skill.ownerId === signedInUser.id ? '' : ' · shared'}`;
+    librarySkills.append(option);
+  }
+  libraryLoad.disabled = skills.length === 0;
+}
+
+async function renderAccount() {
+  signedInUser = await browser.runtime.sendMessage({ type: 'account-status' }) as typeof signedInUser;
+  accountStatus.textContent = signedInUser ? `Signed in as ${signedInUser.email}` : 'Sign in to save and load shared skills.';
+  accountForm.hidden = !!signedInUser;
+  libraryControls.hidden = !signedInUser;
+  if (signedInUser) await refreshLibrary();
+  await renderRun();
+}
+
+function persistDraft() {
+  if (!currentDraft || currentDraft.readOnly) return;
+  const draft: SkillDraft = { ...currentDraft, name: skillName.value.trim(),
+    description: skillDescription.value.trim(), markdown: skillMarkdown.value };
+  currentDraft = draft;
+  showParameters(draft.markdown);
+  void browser.storage.local.set({ skillDraft: draft });
 }
 
 async function renderRun() {
@@ -65,9 +116,11 @@ async function renderRun() {
     browser.storage.local.get('runPlan'),
   ]);
   runControls.hidden = !run?.active;
+  if (run?.syncError) error.textContent = run.syncError;
   runStart.disabled = !!run?.active || draftSection.hidden || !planValid;
-  skillMarkdown.disabled = !!run?.active;
+  skillMarkdown.disabled = !!run?.active || !!currentDraft?.readOnly;
   generate.disabled = !!run?.active;
+  saveLibrary.disabled = !!run?.active || !signedInUser || !planValid || !!currentDraft?.readOnly;
   if (run?.active) {
     const upcoming = (stored.runPlan as SkillPlan | undefined)?.steps[run.nextStep];
     const action = upcoming?.kind === 'navigation' && run.awaitingNavigation && !run.navigationObserved
@@ -117,19 +170,21 @@ async function render() {
     item.append(label, detail, time);
     timeline.append(item);
   }
-  skillSection.hidden = !recording || recording.active || recording.actions.length === 0;
+  skillSection.hidden = !!recording?.active || (!currentDraft && (!recording || recording.actions.length === 0) && !stored.skillDraft);
   if (recording && recording.id !== shownRecordingId) {
     shownRecordingId = recording.id;
-    skillName.value = defaultName(recording);
-    skillDescription.value = `Repeat the demonstrated task on ${new URL(recording.actions[0]!.url).hostname} with new inputs.`;
-    const draft = stored.skillDraft as SkillDraft | undefined;
-    showDraft(draft?.sourceRecordingId === recording.id ? draft : null);
+    if (!currentDraft && recording.actions.length) {
+      skillName.value = defaultName(recording);
+      skillDescription.value = `Repeat the demonstrated task on ${new URL(recording.actions[0]!.url).hostname} with new inputs.`;
+    }
   }
+  if (!currentDraft && stored.skillDraft) showDraft(stored.skillDraft as SkillDraft);
   await renderRun();
 }
 
 async function execute(type: 'start-recording' | 'stop-recording') {
   error.textContent = '';
+  notice.textContent = '';
   start.disabled = true;
   stop.disabled = true;
   try {
@@ -157,22 +212,16 @@ generate.addEventListener('click', () => {
       };
       await browser.storage.local.set({ skillDraft: draft });
       showDraft(draft);
+      skillSection.hidden = false;
       await renderRun();
     } catch (cause) {
       error.textContent = cause instanceof Error ? cause.message : String(cause);
     }
   })();
 });
-skillMarkdown.addEventListener('input', () => {
-  if (!shownRecordingId) return;
-  showParameters(skillMarkdown.value);
-  void browser.storage.local.set({ skillDraft: {
-    sourceRecordingId: shownRecordingId,
-    name: skillName.value.trim(),
-    description: skillDescription.value.trim(),
-    markdown: skillMarkdown.value,
-  } satisfies SkillDraft });
-});
+skillMarkdown.addEventListener('input', persistDraft);
+skillName.addEventListener('input', persistDraft);
+skillDescription.addEventListener('input', persistDraft);
 runStart.addEventListener('click', () => {
   void (async () => {
     error.textContent = '';
@@ -182,7 +231,8 @@ runStart.addEventListener('click', () => {
         const input = runParameters.querySelector<HTMLInputElement>(`[data-parameter="${definition.name}"]`)!;
         parameters[definition.name] = definition.type === 'boolean' ? input.checked : input.value;
       }
-      await browser.runtime.sendMessage({ type: 'start-run', markdown: skillMarkdown.value, parameters });
+      await browser.runtime.sendMessage({ type: 'start-run', markdown: skillMarkdown.value, parameters,
+        remoteSkillId: currentDraft?.remoteSkillId });
       await renderRun();
     } catch (cause) {
       error.textContent = cause instanceof Error ? cause.message : String(cause);
@@ -209,9 +259,64 @@ download.addEventListener('click', () => {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
+accountForm.addEventListener('submit', event => {
+  event.preventDefault();
+  void (async () => {
+    error.textContent = '';
+    try {
+      await browser.runtime.sendMessage({ type: 'account-login', email: accountEmail.value, password: accountPassword.value });
+      accountPassword.value = '';
+      await renderAccount();
+    } catch (cause) { error.textContent = cause instanceof Error ? cause.message : String(cause); }
+  })();
+});
+accountLogout.addEventListener('click', () => {
+  void (async () => {
+    error.textContent = '';
+    try { await browser.runtime.sendMessage({ type: 'account-logout' }); await renderAccount(); }
+    catch (cause) { error.textContent = cause instanceof Error ? cause.message : String(cause); }
+  })();
+});
+libraryRefresh.addEventListener('click', () => {
+  void refreshLibrary().catch(cause => { error.textContent = cause instanceof Error ? cause.message : String(cause); });
+});
+libraryLoad.addEventListener('click', () => {
+  void (async () => {
+    error.textContent = '';
+    try {
+      const loaded = await browser.runtime.sendMessage({ type: 'library-load', id: librarySkills.value }) as
+        { id: string; name: string; description: string; markdown: string; ownerId: string };
+      const draft: SkillDraft = { sourceRecordingId: `library:${loaded.id}`, remoteSkillId: loaded.id,
+        name: loaded.name, description: loaded.description, markdown: loaded.markdown,
+        readOnly: loaded.ownerId !== signedInUser?.id };
+      await browser.storage.local.set({ skillDraft: draft });
+      showDraft(draft);
+      skillSection.hidden = false;
+      await renderRun();
+    } catch (cause) { error.textContent = cause instanceof Error ? cause.message : String(cause); }
+  })();
+});
+saveLibrary.addEventListener('click', () => {
+  void (async () => {
+    error.textContent = '';
+    notice.textContent = '';
+    try {
+      const saved = await browser.runtime.sendMessage({ type: 'library-save',
+        name: skillName.value.trim(), description: skillDescription.value.trim(), markdown: skillMarkdown.value,
+        remoteSkillId: currentDraft?.remoteSkillId }) as { id: string; currentVersion: number };
+      const draft: SkillDraft = { sourceRecordingId: currentDraft?.sourceRecordingId ?? 'library',
+        remoteSkillId: saved.id, name: skillName.value.trim(), description: skillDescription.value.trim(),
+        markdown: skillMarkdown.value };
+      await browser.storage.local.set({ skillDraft: draft });
+      showDraft(draft);
+      await refreshLibrary();
+      notice.textContent = `Saved to library as version ${saved.currentVersion}.`;
+    } catch (cause) { error.textContent = cause instanceof Error ? cause.message : String(cause); }
+  })();
+});
 browser.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if (changes.recording) void render();
   else if (changes.runState) void renderRun();
 });
-void render();
+void render().then(renderAccount).catch(cause => { error.textContent = cause instanceof Error ? cause.message : String(cause); });

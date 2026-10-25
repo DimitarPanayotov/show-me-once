@@ -13,6 +13,7 @@ button { border: 0; border-radius: 8px; padding: 10px 12px; cursor: pointer; fon
 #stop { background: #fee2e2; color: #9f2121; }
 button:disabled { opacity: .45; cursor: default; }
 #error { color: #a61e2b; min-height: 16px; }
+#notice { color: #0c705a; min-height: 16px; }
 ol { margin: 0; padding-left: 25px; max-height: 320px; overflow-y: auto; }
 li { padding: 8px 0; border-bottom: 1px solid #dde4ed; font-size: 11px; }
 li strong, li span, li time { display: block; overflow-wrap: anywhere; }
@@ -21,9 +22,11 @@ li span { color: #5d6978; margin: 2px 0; }
 li time { color: #8b96a4; }
 section { margin-top: 18px; border-top: 1px solid #dde4ed; }
 label { display: block; margin: 10px 0 4px; font-size: 11px; font-weight: 700; }
-input, textarea { width: 100%; border: 1px solid #c8d1df; border-radius: 7px; padding: 8px; font: inherit; font-size: 12px; }
+input, textarea, select { width: 100%; border: 1px solid #c8d1df; border-radius: 7px; padding: 8px; font: inherit; font-size: 12px; }
 textarea { min-height: 230px; resize: vertical; }
-#generate, #download { margin-top: 10px; background: #2463eb; color: white; }
+#generate, #download, #save-library, #account-login, #library-load { margin-top: 10px; background: #2463eb; color: white; }
+#account-logout, #library-refresh { margin-top: 8px; margin-right: 6px; background: #e8eef8; color: #223f66; }
+#web-app { color: #1d4ed8; }
 #draft-section { margin-top: 14px; }
 #run-start, #run-next { margin-top: 8px; background: #0c705a; color: white; }
 #run-confirm { margin-top: 8px; background: #a61e2b; color: white; }
