@@ -10,6 +10,7 @@ export async function requestApi<T>(
   input: object,
   token?: string,
   fetcher: typeof fetch = fetch,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<T> {
   const response = await fetcher(`${baseUrl}/api/rpc/${path}`, {
     method: 'POST',
@@ -17,7 +18,7 @@ export async function requestApi<T>(
     credentials: 'omit',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ json: input }),
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.any([AbortSignal.timeout(options.timeoutMs ?? 8000), ...(options.signal ? [options.signal] : [])]),
   });
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {

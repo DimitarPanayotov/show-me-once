@@ -1,5 +1,5 @@
 import { writeFile } from "node:fs/promises";
-export const debugBase = "http://localhost:9226";
+export const debugBase = process.env.SMO_CDP_BASE || "http://localhost:9226";
 export async function targets() {
   return fetch(`${debugBase}/json/list`).then((r) => r.json());
 }

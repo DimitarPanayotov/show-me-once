@@ -55,3 +55,11 @@ With the same fixture and isolated browser running, use `pnpm --filter @show-me-
 ## Production verification
 
 The current production build was tested with an explicit production origin and temporary accounts. The original real-site verification remains a separate manual evidence table; the controlled browser tests do not claim unrestricted website compatibility.
+
+## AI agent tests
+
+Start the token-protected local helper described in [agent setup](agent.md). Set `SMO_BRIDGE_TOKEN` to its pairing code, and use `pnpm --filter @show-me-once/extension test:agent` for the controlled fixture with a real model. Set `SMO_EXTENSION_ID` if the worker is inactive. The agent test checks extraction from a task request, a shifted search control, two inputs, popup closure, protected-action confirmation, cancellation during inference, and excluded values in persistent state.
+
+`test:agent:sites` records one fresh workflow each on Wikipedia, GitHub, Open Library, and Python documentation, then runs two new inputs per recording through the connected model. `SMO_SITE_FILTER` can select one case (for example `python-docs-search`); filtered evidence uses its own filename. `SMO_SKILL_OUTPUT` optionally saves generated skills and results. `SMO_CDP_BASE` selects a different isolated browser debugging address. Human-verification challenges require user intervention; the test does not bypass them. Open Library's final agent results are pending because its challenge and connection-error pages prevented completion; the three verified sites are Wikipedia, GitHub, and Python documentation.
+
+The replay/confirmation suites explicitly select **Recorded steps (no AI)**. Their successful results should not be presented as agent execution evidence. Hosted provider tests use mocked network responses and do not establish live account/model access.

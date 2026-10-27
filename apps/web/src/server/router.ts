@@ -3,9 +3,10 @@ import { parseSkillPlan } from '@show-me-once/shared';
 import { z } from 'zod';
 import { loginAccount, registerAccount, revokeSession } from './auth';
 import { db } from './db';
+import { checkedInput, hostedProvider } from '@show-me-once/agent';
 
 type Identity = { id: string; email: string; name: string | null };
-type Context = { user: Identity | null; token: string | null };
+type Context = { user: Identity | null; token: string | null; signal?: AbortSignal };
 const base = os.$context<Context>();
 
 function requireUser(user: Identity | null): Identity {
@@ -31,6 +32,26 @@ const id = z.object({ id: z.string().min(1) });
 
 export const router = {
   health: base.handler(async () => ({ status: 'ok' as const, service: 'show-me-once' })),
+  agent: {
+    providers: base.handler(async ({ context }) => {
+      requireUser(context.user);
+      return [
+        { id: 'openai', label: 'OpenAI', available: !!process.env.OPENAI_API_KEY && !!process.env.OPENAI_MODEL },
+        { id: 'anthropic', label: 'Anthropic', available: !!process.env.ANTHROPIC_API_KEY && !!process.env.ANTHROPIC_MODEL },
+      ];
+    }),
+    decide: base.input(z.object({ provider: z.enum(['openai', 'anthropic']), input: z.unknown() })).handler(async ({ input, context }) => {
+      requireUser(context.user);
+      const prefix = input.provider === 'openai' ? 'OPENAI' : 'ANTHROPIC';
+      if (!process.env[`${prefix}_API_KEY`] || !process.env[`${prefix}_MODEL`])
+        throw new ORPCError('PRECONDITION_FAILED', { message: `${input.provider} is not configured. Connect a local agent or configure the server provider.` });
+      try {
+        const request = checkedInput(input.input);
+        const provider = hostedProvider(input.provider, { key: process.env[`${prefix}_API_KEY`]!, model: process.env[`${prefix}_MODEL`]! });
+        return { decision: await provider.decide(request, AbortSignal.any([AbortSignal.timeout(25000), ...(context.signal ? [context.signal] : [])])) };
+      } catch (error) { throw new ORPCError('BAD_REQUEST', { message: error instanceof Error ? error.message : 'The agent could not choose an action.' }); }
+    }),
+  },
   auth: {
     register: base.input(credentials.extend({ name: z.string().trim().max(80).optional() }))
       .handler(async ({ input }) => {

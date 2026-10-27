@@ -10,6 +10,13 @@ import {
   type SkillPlan,
 } from "@show-me-once/shared";
 import { requestApi } from "../lib/api";
+import { chooseAgentAction, pairLocalAgent } from "../lib/agent-client";
+import {
+  containsSecret,
+  type AgentObservation,
+  type AgentProviderId,
+  type AgentDecision,
+} from "@show-me-once/shared/agent";
 import {
   isPendingConfirmation,
   type ConfirmationDetails,
@@ -35,6 +42,14 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 let tickQueued = false;
 let interruption: "pause" | "stop" | undefined;
 let controlRevision = 0;
+let agentAbort: AbortController | undefined;
+type AgentSession = {
+  runId: string;
+  markdown: string;
+  request: string;
+  provider: AgentProviderId;
+  selected?: { step: number; observationId: string; targetId: string };
+};
 
 function serial<T>(work: () => Promise<T>): Promise<T> {
   const next = pending.then(work, work);
@@ -211,6 +226,8 @@ async function performStep(
   };
   if (!runParameters)
     throw new Error("Run inputs expired. Stop and start the run again.");
+  if (run.engine === "agent")
+    await browser.storage.session.remove("agentError");
   const approved = confirmed && run.confirmationStep === run.nextStep;
   if (
     approved &&
@@ -234,17 +251,90 @@ async function performStep(
     ? "Navigation did not finish. Check the page, then retry."
     : "The page does not match the recorded checkpoint.";
   if (!waiting && (tab.url ? sanitizeUrl(tab.url) : null) === step.url) {
-    if (step.kind === "navigation") {
+    await ensureRecorder(run.tabId);
+    const pageSafety = (await browser.tabs.sendMessage(run.tabId, {
+      type: "check-run-page",
+    })) as { humanVerification?: boolean; connectionError?: boolean };
+    if (pageSafety?.humanVerification) {
+      detail =
+        "Human verification is required. Complete it yourself on the page, then retry this step.";
+    } else if (pageSafety?.connectionError) {
+      detail =
+        "The page could not load. Check its connection and reload it, then retry this step.";
+    } else if (step.kind === "navigation") {
       status = "done";
       detail = "Navigation checkpoint matched.";
     } else {
-      await ensureRecorder(run.tabId);
+      let agentSelection: AgentSession["selected"];
+      if (run.engine === "agent") {
+        const stored = await browser.storage.session.get("agentSession");
+        const session = stored.agentSession as AgentSession | undefined;
+        if (!session || session.runId !== run.id)
+          throw new Error(
+            "Agent session expired. Stop and start the run again.",
+          );
+        if (
+          (approved || previewOnly) &&
+          session.selected?.step === run.nextStep
+        )
+          agentSelection = session.selected;
+        else {
+          const observation = (await browser.tabs.sendMessage(run.tabId, {
+            type: "observe-agent-page",
+            step,
+          })) as AgentObservation;
+          await saveRun({ ...run, thinking: true });
+          agentAbort = new AbortController();
+          let decision: AgentDecision;
+          try {
+            decision = await chooseAgentAction(
+              session.provider,
+              {
+                markdown: session.markdown,
+                request: session.request,
+                stepIndex: run.nextStep,
+                plan: runPlan,
+                observation,
+                supplied: Object.keys(runParameters),
+              },
+              API_BASE,
+              (await readAccount())?.token,
+              AbortSignal.any([agentAbort.signal, AbortSignal.timeout(28000)]),
+            );
+          } finally {
+            agentAbort = undefined;
+          }
+          if (interruption) return saveRun({ ...run, thinking: false });
+          if (decision.action === "ask_user" || !decision.targetId)
+            throw new Error(
+              "The agent needs you to identify the intended control. Check the page, then retry or stop.",
+            );
+          if (decision.parameter && decision.value !== null) {
+            runParameters[decision.parameter] = decision.value;
+            await browser.storage.session.set({ runParameters });
+          }
+          agentSelection = {
+            step: run.nextStep,
+            observationId: observation.id,
+            targetId: decision.targetId,
+          };
+          await browser.storage.session.set({
+            agentSession: { ...session, selected: agentSelection },
+          });
+        }
+      }
       // Stop and Pause take effect before another browser action, even during an in-flight API request.
       if (interruption) return run;
-      await saveRun({ ...run, inFlightStep: run.nextStep });
+      await saveRun({ ...run, thinking: false, inFlightStep: run.nextStep });
       if (interruption) return saveRun({ ...run, inFlightStep: undefined });
       const response = (await browser.tabs.sendMessage(run.tabId, {
-        type: "execute-skill-step",
+        type: agentSelection ? "execute-agent-action" : "execute-skill-step",
+        ...(agentSelection
+          ? {
+              observationId: agentSelection.observationId,
+              targetId: agentSelection.targetId,
+            }
+          : {}),
         executionKey: `${run.id}:${run.nextStep}`,
         step,
         value:
@@ -259,7 +349,7 @@ async function performStep(
         | undefined;
       if (response?.status === "done") {
         status = "done";
-        detail = `${step.kind} dispatched.`;
+        detail = `${step.kind} dispatched${run.engine === "agent" ? ` by ${run.provider} agent` : ""}.`;
       } else if (response?.status === "confirmation-required") {
         const pending = {
           runId: run.id,
@@ -282,9 +372,15 @@ async function performStep(
     await browser.storage.session.set({ runConfirmation: confirmation });
   else await browser.storage.session.remove("runConfirmation");
   const updated = applyStepOutcome(run, runPlan, status, detail);
+  updated.thinking = false;
   if (interruption === "pause" && updated.active && !updated.pauseReason)
     updated.pauseReason = "user";
-  if (!updated.active) await browser.storage.session.remove("runParameters");
+  if (!updated.active)
+    await browser.storage.session.remove([
+      "runParameters",
+      "agentSession",
+      "agentError",
+    ]);
   const saved = await saveRun(updated);
   try {
     return await syncRunLogs(saved);
@@ -308,21 +404,36 @@ async function automaticTick(): Promise<void> {
       }
       try {
         await scheduleRun(await performStep());
-      } catch {
+      } catch (error) {
+        if (interruption) {
+          await scheduleRun(null);
+          return;
+        }
         const current = await readRun();
         if (current?.active) {
+          if (current.engine === "agent")
+            await browser.storage.session.set({
+              agentError: {
+                runId: current.id,
+                message:
+                  error instanceof Error
+                    ? error.message
+                    : "The agent could not choose a safe action.",
+              },
+            });
           const plan = (await browser.storage.local.get("runPlan")).runPlan as
             | SkillPlan
             | undefined;
           if (plan?.steps[current.nextStep]) {
-            await saveRun(
-              applyStepOutcome(
+            await saveRun({
+              ...applyStepOutcome(
                 current,
                 plan,
                 "blocked",
-                "Could not continue on this page. Check the tab and retry, or stop this run.",
+                "Could not continue safely. Check the page and agent connection, then retry or stop.",
               ),
-            );
+              thinking: false,
+            });
           } else await saveRun({ ...current, pauseReason: "blocked" });
         }
         await scheduleRun(null);
@@ -335,6 +446,7 @@ async function automaticTick(): Promise<void> {
 
 async function recoverRun(): Promise<void> {
   let run = await readRun();
+  if (run?.thinking) run = await saveRun({ ...run, thinking: false });
   if (run?.active && run.inFlightStep !== undefined) {
     const plan = (await browser.storage.local.get("runPlan")).runPlan as
       | SkillPlan
@@ -370,6 +482,46 @@ export default defineBackground(() => {
       !fromOwnPage
     ) {
       throw new Error("Only extension pages may control a recording or run.");
+    }
+    if (typeof request.type === "string" && request.type.startsWith("agent-")) {
+      if (!fromOwnPage)
+        throw new Error("Only extension pages may configure an agent.");
+      if (request.type === "agent-status")
+        return (async () => {
+          const local = await browser.storage.session.get("localAgentToken");
+          const account = await readAccount();
+          const hosted = account
+            ? await api<{ id: string; label: string; available: boolean }[]>(
+                "agent/providers",
+                {},
+                account,
+              ).catch(() => [])
+            : [];
+          return {
+            hosted,
+            localPaired: typeof local.localAgentToken === "string",
+            extensionOrigin: browser.runtime.getURL("").replace(/\/$/, ""),
+          };
+        })();
+      if (request.type === "agent-pair")
+        return serial(async () => {
+          if (
+            typeof request.token !== "string" ||
+            request.token.length < 16 ||
+            request.token.length > 128
+          )
+            throw new Error(
+              "Enter the pairing code from the local agent process.",
+            );
+          return pairLocalAgent(request.token);
+        });
+      if (request.type === "agent-disconnect")
+        return serial(async () => {
+          if ((await readRun())?.active)
+            throw new Error("Stop the run before disconnecting its agent.");
+          await browser.storage.session.remove("localAgentToken");
+          return true;
+        });
     }
     if (
       typeof request.type === "string" &&
@@ -579,6 +731,41 @@ export default defineBackground(() => {
         if (typeof request.markdown !== "string")
           throw new Error("Choose a skill first.");
         const plan = parseSkillPlan(request.markdown);
+        const engine = request.engine === "agent" ? "agent" : "recorded";
+        const provider = request.provider as AgentProviderId;
+        const taskRequest =
+          typeof request.taskRequest === "string"
+            ? request.taskRequest.trim()
+            : "";
+        if (engine === "agent") {
+          if (!["openai", "anthropic", "codex-local"].includes(provider))
+            throw new Error("Choose an agent provider.");
+          if (
+            taskRequest.length > 2000 ||
+            containsSecret(taskRequest) ||
+            containsSecret(request.markdown)
+          )
+            throw new Error(
+              "Use a task request and skill without passwords or secrets.",
+            );
+          if (
+            provider === "codex-local" &&
+            !(await browser.storage.session.get("localAgentToken"))
+              .localAgentToken
+          )
+            throw new Error("Connect your local agent first.");
+          if (provider !== "codex-local") {
+            const options = await api<{ id: string; available: boolean }[]>(
+              "agent/providers",
+              {},
+              await requiredAccount(),
+            );
+            if (!options.some((item) => item.id === provider && item.available))
+              throw new Error(
+                "This hosted provider is not configured. Connect a local agent or configure the server.",
+              );
+          }
+        }
         const provided =
           request.parameters && typeof request.parameters === "object"
             ? (request.parameters as Record<string, unknown>)
@@ -586,6 +773,17 @@ export default defineBackground(() => {
         const parameters: Record<string, string | boolean> = {};
         for (const parameter of plan.parameters) {
           const value = provided[parameter.name];
+          if (
+            engine === "agent" &&
+            (value === undefined ||
+              (typeof value === "string" && !value.trim()))
+          ) {
+            if (!taskRequest)
+              throw new Error(
+                "Describe your task or supply the required parameters.",
+              );
+            continue;
+          }
           if (
             parameter.type === "string" &&
             (typeof value !== "string" || !value.trim())
@@ -626,6 +824,8 @@ export default defineBackground(() => {
           tabId: tab.id,
           active: true,
           mode: request.mode === "manual" ? "manual" : "automatic",
+          engine,
+          ...(engine === "agent" ? { provider } : {}),
           skillKey:
             typeof request.skillKey === "string" ? request.skillKey : undefined,
           nextStep: 0,
@@ -635,6 +835,17 @@ export default defineBackground(() => {
         };
         await browser.storage.local.set({ runPlan: plan });
         await browser.storage.session.remove("runConfirmation");
+        await browser.storage.session.remove("agentError");
+        if (engine === "agent")
+          await browser.storage.session.set({
+            agentSession: {
+              runId: run.id,
+              markdown: request.markdown,
+              request:
+                taskRequest || "Run this skill using the supplied parameters.",
+              provider,
+            } satisfies AgentSession,
+          });
         await browser.storage.session.set({ runParameters: parameters });
         await saveRun(run);
         await scheduleRun(run);
@@ -658,20 +869,28 @@ export default defineBackground(() => {
     if (request.type === "pause-run" || request.type === "stop-run") {
       controlRevision++;
       interruption = request.type === "stop-run" ? "stop" : "pause";
+      agentAbort?.abort();
       clearTimer();
       void browser.alarms.clear(AUTO_ALARM);
       return serial(async () => {
         const run = await readRun();
         if (!run?.active) return run;
         if (request.type === "pause-run")
-          return saveRun({ ...run, pauseReason: run.pauseReason ?? "user" });
+          return saveRun({
+            ...run,
+            thinking: false,
+            pauseReason: run.pauseReason ?? "user",
+          });
         await browser.storage.session.remove([
           "runParameters",
           "runConfirmation",
+          "agentSession",
+          "agentError",
         ]);
         const stopped = await saveRun({
           ...run,
           active: false,
+          thinking: false,
           confirmationStep: undefined,
           pauseReason: undefined,
         });

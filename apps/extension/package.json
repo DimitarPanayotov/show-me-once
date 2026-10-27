@@ -1,12 +1,14 @@
 {
   "name": "@show-me-once/extension",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test:fixture": "node tests/fixture.cjs",
     "test:browser": "node tests/browser-smoke.mjs",
     "test:confirmation": "node tests/confirmation-smoke.mjs",
+    "test:agent": "node tests/agent-smoke.mjs",
+    "test:agent:sites": "node tests/real-sites-agent.mjs",
     "test": "node --experimental-strip-types --test lib/*.test.ts",
     "dev": "wxt --browser chrome",
     "build": "wxt build --browser chrome",

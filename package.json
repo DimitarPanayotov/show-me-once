@@ -5,11 +5,14 @@
   "scripts": {
     "build": "pnpm --filter @show-me-once/shared build && pnpm --filter @show-me-once/extension build && pnpm --filter @show-me-once/web build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm --filter @show-me-once/shared test && pnpm --filter @show-me-once/extension test",
+    "test": "pnpm --filter @show-me-once/shared test && pnpm --filter @show-me-once/agent test && pnpm --filter @show-me-once/extension test",
+    "agent:local": "pnpm --filter @show-me-once/agent bridge",
+    "agent:bundle": "rolldown packages/agent/src/bridge.ts --platform node --format esm --file dist/local-agent/bridge.mjs && node scripts/package-agent.mjs",
     "dev:extension": "pnpm --filter @show-me-once/extension dev",
     "dev:web": "pnpm --filter @show-me-once/web dev"
   },
   "devDependencies": {
+    "rolldown": "1.2.15",
     "typescript": "5.9.3"
   }
 }

@@ -14,6 +14,7 @@ assert.ok(extensionId, "Load the extension or set SMO_EXTENSION_ID first.");
 const popupUrl = `chrome-extension://${extensionId}/popup.html`;
 let popup = await open(popupUrl);
 await popup.until("document.documentElement.dataset.ready==='true'");
+await popup.evaluate("document.querySelector('#run-engine').value='recorded';document.querySelector('#run-engine').dispatchEvent(new Event('change'));true");
 const page = await open(fixtureBase);
 const inputSelector =
   "body:nth-of-type(1) > form:nth-of-type(1) > label:nth-of-type(1) > input:nth-of-type(1)";

@@ -53,8 +53,27 @@ Each run advanced safe steps automatically, paused for explicit submission confi
 - Focused browser checks passed for search/delete/payment/Enter previews, popup reopening, changed-label and replaced-element reapproval, expired-preview rebuilding without execution, stale consent rejection, Stop, and excluding preview labels/input values from persistent logs. These tests use a controlled local fixture and require no new account.
 - A fresh real Wikipedia recording produced the live preview **Submit search on www.wikipedia.org**, **Click the “Search” button**, and **Submit search & continue**. Approval completed the automatic Grace Hopper search. The popup was visually checked at 420 × 600.
 
+## In-extension AI agent — extension 0.3.0 (27 October 2026)
+
+- Local Codex is a real model provider under the existing ChatGPT sign-in. The extension passes SKILL.md, the task request, and safe live controls to a normalized provider adapter; it validates and executes the returned action. These runs do not use recorded replay mode.
+- The controlled browser test passed with six real Codex decisions: extraction of Foundation/Frankenstein from task requests, a moved search input, an untouched decoy field, popup closure during inference, protected-action confirmation, Stop during inference, and omitted input/password values in persistent extension state. The standalone bundled helper was used in the final fixture check.
+- Known human-verification and browser connection-error pages now block a checkpoint. A verification page must not be reported as a successful search merely because its origin/path depth matches.
+- Thirty-one unit tests and the workspace typecheck pass. OpenAI and Anthropic adapters have network-contract tests; they have not been exercised with live provider credentials.
+
+| Site | New inputs through the Codex agent | Verified outcome |
+| --- | --- | --- |
+| Wikipedia | Grace Hopper; Alan Turing | Both reached the correct article URLs. |
+| GitHub | actions; docs | Both reached the expected organization repository search URLs. |
+| Python documentation | asyncio; pathlib | Both reached the correct query URLs and populated visible search results. One freshly recorded json search skill was reused unchanged for both requests. |
+| Open Library | Foundation; Frankenstein | The agent filled and submitted both titles, but the site redirected to human verification. These are not completed searches. A subsequent manual attempt encountered a connection-error page, and independent requests timed out. Live end-result verification remains pending. |
+
+The eight attempts used 24 real model decisions. Six runs on three live websites completed. Earlier Open Library evidence above belongs to the previous recorded executor and must not be presented as successful 0.3.0 agent verification. Python documentation was added as the third verified agent demonstration because Open Library was unavailable.
+
+The selected demo mode requires Node.js and a local Codex helper. This is a documented deviation from the original extension-only setup goal. A hosted provider can use the same browser action contract once server credentials are configured. The candidate's personal report and demo video remain separate deliverables.
+
 ## Remaining manual evidence
 
 - Perform a final user acceptance check of the redesigned popup in regular Chrome.
+- Complete Open Library's human check once the site is reachable, then verify the Foundation/Frankenstein result pages through the AI agent.
 - Exercise a dummy destructive/payment control manually when preparing the demonstration; automated tests already cover protected submission, privacy, ambiguous targets, and Stop.
 - Save screenshots or a short video of the final runs for the submission.

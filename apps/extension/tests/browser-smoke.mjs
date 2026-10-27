@@ -39,6 +39,7 @@ const waitRun = (condition, timeout = 25000) =>
   );
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 await ready();
+await popup.evaluate("document.querySelector('#run-engine').value='recorded';document.querySelector('#run-engine').dispatchEvent(new Event('change'));true");
 assert.equal(
   await popup.evaluate(
     "document.querySelector('#tab-run').getAttribute('aria-selected')",

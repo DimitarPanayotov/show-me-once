@@ -21,7 +21,7 @@ async function handleRequest(request: Request) {
   }
   const { response } = await handler.handle(request, {
     prefix: '/api/rpc',
-    context: { user: await sessionUser(token), token },
+    context: { user: await sessionUser(token), token, signal: request.signal },
   });
   const result = response ?? new Response('Not found', { status: 404 });
   for (const [name, value] of Object.entries(cors)) result.headers.set(name, value);

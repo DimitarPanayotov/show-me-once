@@ -630,6 +630,18 @@ body {
 #record-footer {
   margin-top: 12px;
 }
+#task-request {
+  min-height: 72px;
+  max-height: 140px;
+  resize: vertical;
+  font: inherit;
+}
+#agent-connection code {
+  overflow-wrap: anywhere;
+}
+#agent-connection .text-link {
+  margin-top: 10px;
+}
 .confirmation-preview {
   margin: 12px 0;
   padding: 13px;

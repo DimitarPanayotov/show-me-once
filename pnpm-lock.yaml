@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      rolldown:
+        specifier: 1.2.15
+        version: 1.2.15
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -39,6 +42,9 @@ importers:
       '@radix-ui/react-slot':
         specifier: ^1.2.4
         version: 1.5.0(@types/react@19.3.0)(react@19.3.1)
+      '@show-me-once/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
       '@show-me-once/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -100,6 +106,19 @@ importers:
       tailwindcss:
         specifier: 4.3.3
         version: 4.3.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
+  packages/agent:
+    dependencies:
+      '@show-me-once/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
       typescript:
         specifier: 5.9.3
         version: 5.9.3

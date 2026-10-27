@@ -27,6 +27,13 @@ const skillMarkdown = element<HTMLTextAreaElement>("skill-markdown");
 const saveLibrary = element<HTMLButtonElement>("save-library");
 const runParameters = element<HTMLElement>("run-parameters");
 const runMode = element<HTMLSelectElement>("run-mode");
+const runEngine = element<HTMLSelectElement>("run-engine");
+const agentProvider = element<HTMLSelectElement>("agent-provider");
+const taskRequest = element<HTMLTextAreaElement>("task-request");
+let agentStatus: {
+  hosted: { id: string; available: boolean }[];
+  localPaired: boolean;
+} = { hosted: [], localPaired: false };
 const runStart = element<HTMLButtonElement>("run-start");
 const runControls = element<HTMLElement>("run-controls");
 const runNext = element<HTMLButtonElement>("run-next");
@@ -249,7 +256,60 @@ async function renderAccount() {
   element("library-controls").hidden = !signedInUser || !!activeRun?.active;
   element("sign-in-prompt").hidden = !!signedInUser;
   if (signedInUser) await refreshLibrary();
+  await refreshAgent();
   renderSave();
+}
+
+function agentReady() {
+  return agentProvider.value === "codex-local"
+    ? agentStatus.localPaired
+    : agentStatus.hosted.some(
+        (p) => p.id === agentProvider.value && p.available,
+      );
+}
+
+function renderAgentSettings() {
+  const agent = runEngine.value === "agent";
+  element("agent-setup").hidden = !agent;
+  element("run-mode-row").hidden = agent;
+  if (agent) runMode.value = "automatic";
+  for (const option of agentProvider.options)
+    option.disabled =
+      option.value === "codex-local"
+        ? !agentStatus.localPaired
+        : !agentStatus.hosted.some((p) => p.id === option.value && p.available);
+  // Keep the local option selectable while disconnected so its pairing instructions remain reachable.
+  agentProvider.options[0]!.disabled = false;
+  element("agent-help").textContent = agentReady()
+    ? "The agent reads your skill, inspects safe page controls, and chooses each action."
+    : "Connect a local agent below, or configure a hosted provider on the server.";
+  element("agent-disconnect").hidden = !agentStatus.localPaired;
+  element<HTMLDetailsElement>("parameter-options").open = !agent;
+  if (!agent)
+    element("run-help").textContent =
+      "Replays the recorded plan. This mode does not use an AI agent.";
+  else
+    element("run-help").textContent =
+      "The agent runs automatically and pauses before protected actions.";
+}
+
+async function refreshAgent() {
+  try {
+    const status = await browser.runtime.sendMessage({ type: "agent-status" });
+    agentStatus = status;
+    element("extension-origin").textContent = status.extensionOrigin;
+    if (!agentReady()) {
+      const hosted = status.hosted.find(
+        (p: { id: string; available: boolean }) => p.available,
+      );
+      if (hosted) agentProvider.value = hosted.id;
+      else if (status.localPaired) agentProvider.value = "codex-local";
+    }
+  } catch {
+    /* Connection errors are shown when pairing or starting. */
+  }
+  renderAgentSettings();
+  await render();
 }
 
 function renderRun(
@@ -258,6 +318,9 @@ function renderRun(
   pending?: PendingConfirmation,
 ) {
   activeRun = run;
+  if (run?.active && run.engine === "agent")
+    element("current-meta").textContent =
+      `AI agent · ${run.provider === "codex-local" ? "Codex subscription" : run.provider === "anthropic" ? "Anthropic" : "OpenAI"}`;
   approvalToken = undefined;
   element("run-confirmation").hidden = true;
   const active = !!run?.active;
@@ -274,7 +337,11 @@ function renderRun(
   runControls.hidden = !active;
   element("run-editor-details").hidden = active;
   runStart.disabled =
-    starting || active || !!currentRecording?.active || !planValid;
+    starting ||
+    active ||
+    !!currentRecording?.active ||
+    !planValid ||
+    (runEngine.value === "agent" && !agentReady());
   runStart.dataset.busy = String(starting);
   runStart.textContent = starting
     ? "Starting…"
@@ -326,7 +393,9 @@ function renderRun(
           ? "Paused"
           : manual
             ? "Ready for your next step"
-            : "Running automatically";
+            : run.engine === "agent"
+              ? `Agent running · ${run.provider === "codex-local" ? "Codex" : run.provider === "anthropic" ? "Anthropic" : "OpenAI"}`
+              : "Running recorded steps";
     element("run-step-count").textContent =
       `${run.nextStep} / ${run.totalSteps}`;
     runControls.dataset.state = confirmation
@@ -340,7 +409,7 @@ function renderRun(
     progress.max = run.totalSteps;
     progress.value = run.nextStep;
     element("run-status").textContent =
-      `Step ${run.nextStep + 1}: ${copy ? "Waiting for your approval" : waiting ? "Waiting for navigation…" : upcoming?.kind === "navigation" ? "Checking the page" : upcoming?.kind === "input" ? "Filling the supplied input" : upcoming?.kind === "key" ? "Pressing Enter" : "Clicking the target"}`;
+      `Step ${run.nextStep + 1}: ${copy ? "Waiting for your approval" : run.thinking ? "Agent is choosing a safe action…" : waiting ? "Waiting for navigation…" : upcoming?.kind === "navigation" ? "Checking the page" : upcoming?.kind === "input" ? "Filling the supplied input" : upcoming?.kind === "key" ? "Pressing Enter" : "Clicking the target"}`;
     element("run-context").textContent = confirmation
       ? (copy?.continuation ??
         "Preparing the action preview. Approval is unavailable until it is ready.")
@@ -392,7 +461,7 @@ async function render() {
       "runState",
       "runPlan",
     ]),
-    browser.storage.session.get("runConfirmation"),
+    browser.storage.session.get(["runConfirmation", "agentError"]),
   ]);
   if (revision !== renderRevision) return;
   currentRecording = (stored.recording as Recording | undefined) ?? null;
@@ -475,6 +544,16 @@ async function render() {
     stored.runPlan as SkillPlan | undefined,
     session.runConfirmation as PendingConfirmation | undefined,
   );
+  const agentError = session.agentError as
+    | { runId?: string; message?: string }
+    | undefined;
+  if (
+    run?.active &&
+    run.pauseReason === "blocked" &&
+    agentError?.runId === run.id
+  )
+    element("run-context").textContent =
+      agentError.message ?? "Check the agent connection and retry.";
 }
 
 function persistDraft() {
@@ -639,6 +718,43 @@ runMode.addEventListener("change", () => {
       : "Runs all steps and pauses when it needs your confirmation.";
   renderRun(activeRun, undefined);
 });
+runEngine.addEventListener("change", () => {
+  renderAgentSettings();
+  void browser.storage.local.set({ runEngine: runEngine.value });
+  void render();
+});
+agentProvider.addEventListener("change", () => {
+  renderAgentSettings();
+  void browser.storage.local.set({ agentProvider: agentProvider.value });
+  void render();
+});
+element("agent-pair").addEventListener("click", () => {
+  void (async () => {
+    const button = element<HTMLButtonElement>("agent-pair");
+    button.disabled = true;
+    error.textContent = "";
+    try {
+      await browser.runtime.sendMessage({
+        type: "agent-pair",
+        token: element<HTMLInputElement>("agent-pair-code").value.trim(),
+      });
+      element<HTMLInputElement>("agent-pair-code").value = "";
+      agentProvider.value = "codex-local";
+      element<HTMLDetailsElement>("agent-connection").open = false;
+      await refreshAgent();
+    } catch (cause) {
+      report(cause);
+    } finally {
+      button.disabled = false;
+    }
+  })();
+});
+element("agent-disconnect").addEventListener("click", () => {
+  void browser.runtime
+    .sendMessage({ type: "agent-disconnect" })
+    .then(refreshAgent)
+    .catch(report);
+});
 runStart.addEventListener("click", () => {
   void (async () => {
     if (starting) return;
@@ -656,6 +772,9 @@ runStart.addEventListener("click", () => {
       }
       await browser.runtime.sendMessage({
         type: "start-run",
+        engine: runEngine.value,
+        provider: agentProvider.value,
+        taskRequest: taskRequest.value,
         markdown: skillMarkdown.value,
         parameters,
         mode: runMode.value,
@@ -816,9 +935,21 @@ browser.storage.onChanged.addListener((changes, area) => {
   if (area === "session" && changes.runConfirmation) void render();
 });
 void (async () => {
-  const saved = await browser.storage.local.get(["popupView", "runMode"]);
+  const saved = await browser.storage.local.get([
+    "popupView",
+    "runMode",
+    "runEngine",
+    "agentProvider",
+  ]);
   view = saved.popupView === "record" ? "record" : "run";
   runMode.value = saved.runMode === "manual" ? "manual" : "automatic";
+  runEngine.value = saved.runEngine === "recorded" ? "recorded" : "agent";
+  agentProvider.value = ["openai", "anthropic", "codex-local"].includes(
+    saved.agentProvider as string,
+  )
+    ? (saved.agentProvider as string)
+    : "codex-local";
+  renderAgentSettings();
   await render();
   try {
     await renderAccount();

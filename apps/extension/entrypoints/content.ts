@@ -9,6 +9,10 @@ import {
   controlLabel,
   type ConfirmationDetails,
 } from "../lib/confirmation";
+import {
+  safeAgentLabel,
+  type AgentObservation,
+} from "@show-me-once/shared/agent";
 
 function isSensitive(element: Element): boolean {
   if (!(element instanceof HTMLElement)) return true;
@@ -27,6 +31,8 @@ function isSensitive(element: Element): boolean {
     element.getAttribute("name"),
     element.getAttribute("id"),
     element.getAttribute("autocomplete"),
+    element.getAttribute("aria-label"),
+    element.getAttribute("placeholder"),
   ]
     .join(" ")
     .toLowerCase();
@@ -49,6 +55,144 @@ export default defineContentScript({
       signature: string;
       details: ConfirmationDetails;
     } | null = null;
+    let agentSnapshot: {
+      observation: AgentObservation;
+      targets: Map<string, { element: HTMLElement; fingerprint: string }>;
+    } | null = null;
+
+    function agentLabel(target: HTMLElement): string {
+      const field =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement;
+      return safeAgentLabel(
+        target.getAttribute("aria-label") ||
+          target.getAttribute("title") ||
+          (field
+            ? [...(target.labels ?? [])]
+                .map((label) => label.textContent)
+                .join(" ") ||
+              target.getAttribute("placeholder") ||
+              ""
+            : target.innerText || ""),
+      );
+    }
+
+    function fingerprint(target: HTMLElement) {
+      return JSON.stringify([
+        target.tagName,
+        target.getAttribute("type"),
+        agentLabel(target),
+        target.closest("form")?.getAttribute("action"),
+        target.getAttribute("href"),
+      ]);
+    }
+
+    function needsHumanVerification(): boolean {
+      return (
+        /(?:^|\/)(?:verify_human|captcha|challenge)(?:\/|$)/i.test(
+          location.pathname,
+        ) ||
+        /verify (?:you are|you're|that you are) human|human verification|just a moment|security check/i.test(
+          document.title,
+        ) ||
+        [
+          ...document.querySelectorAll(
+            'iframe[src*="recaptcha"],iframe[src*="hcaptcha"],iframe[src*="challenges.cloudflare.com"]',
+          ),
+        ].some(
+          (frame) =>
+            frame instanceof HTMLElement &&
+            frame.getClientRects().length > 0 &&
+            getComputedStyle(frame).visibility !== "hidden",
+        )
+      );
+    }
+
+    function observeAgent(step: SkillStep): AgentObservation {
+      const observation: AgentObservation = {
+        id: crypto.randomUUID(),
+        url: sanitizeUrl(location.href)!,
+        controls: [],
+      };
+      const targets = new Map<
+        string,
+        { element: HTMLElement; fingerprint: string }
+      >();
+      if (observation.url !== step.url) return observation;
+      const hintMatches =
+        step.kind !== "navigation"
+          ? [...document.querySelectorAll(step.selector)]
+          : [];
+      const hintedTag =
+        step.kind !== "navigation"
+          ? step.selector.split(" > ").at(-1)?.split(":")[0]
+          : "";
+      const candidates = [
+        ...document.querySelectorAll(
+          'input,textarea,select,button,a,[role="button"],[role="link"]',
+        ),
+      ]
+        .filter(usable)
+        .filter(
+          (target) =>
+            !target
+              .closest("form")
+              ?.querySelector(
+                'input[type="password"],input[autocomplete^="cc-"]',
+              ),
+        )
+        .sort((a, b) => {
+          const rank = (el: HTMLElement) =>
+            hintMatches.includes(el)
+              ? 0
+              : el.tagName.toLowerCase() === hintedTag
+                ? 1
+                : el.matches('input,textarea,select,button,[role="button"]')
+                  ? 2
+                  : 3;
+          return rank(a) - rank(b);
+        });
+      for (const target of candidates) {
+        if (observation.controls.length >= 60) break;
+        if (
+          target instanceof HTMLInputElement &&
+          !["text", "search", "checkbox", "radio", "submit", "button"].includes(
+            target.type,
+          )
+        )
+          continue;
+        const label = agentLabel(target);
+        if (label.includes("[redacted]")) continue;
+        const role = target.matches(
+          'button,[role="button"],input[type="submit"],input[type="button"]',
+        )
+          ? "button"
+          : target.matches('a,[role="link"]')
+            ? "link"
+            : target instanceof HTMLSelectElement
+              ? "select"
+              : "input";
+        const id = `c${observation.controls.length + 1}`;
+        observation.controls.push({
+          id,
+          role,
+          label,
+          selector: structuralSelector(target),
+          ...(role === "input"
+            ? {
+                inputKind:
+                  target instanceof HTMLInputElement ? target.type : "text",
+              }
+            : role === "select"
+              ? { inputKind: "select" }
+              : {}),
+        });
+        targets.set(id, { element: target, fingerprint: fingerprint(target) });
+      }
+      agentSnapshot = { observation, targets };
+      return observation;
+    }
 
     function usable(element: Element): element is HTMLElement {
       if (!(element instanceof HTMLElement) || isSensitive(element))
@@ -76,6 +220,7 @@ export default defineContentScript({
       approvalToken?: string,
       previewOnly = false,
       executionKey?: string,
+      resolvedTarget?: HTMLElement,
     ): {
       status: "done" | "blocked" | "confirmation-required";
       confirmation?: ConfirmationDetails;
@@ -86,7 +231,10 @@ export default defineContentScript({
         usable,
       );
       let target: HTMLElement | undefined;
-      if (step.kind === "click" && step.parameter) {
+      if (resolvedTarget) {
+        if (usable(resolvedTarget) && resolvedTarget.isConnected)
+          target = resolvedTarget;
+      } else if (step.kind === "click" && step.parameter) {
         if (typeof value !== "string" || !value.trim())
           return { status: "blocked" };
         const wanted = value.trim().toLocaleLowerCase();
@@ -361,6 +509,83 @@ export default defineContentScript({
           );
           return;
         }
+        if ((message as { type?: string }).type === "observe-agent-page") {
+          const request = message as { step: SkillStep };
+          sendResponse(observeAgent(request.step));
+          return;
+        }
+        if ((message as { type?: string }).type === "check-run-page") {
+          const connectionError =
+            /^(?:Hmm(?:\.{3}|…)?|Service Unavailable|403 Forbidden|404 Not Found|502 Bad Gateway|503 Service Unavailable)$/i.test(
+              document.title.trim(),
+            ) || !!document.querySelector("#main-frame-error,body.neterror");
+          sendResponse({
+            humanVerification: needsHumanVerification(),
+            connectionError,
+          });
+          return;
+        }
+        if ((message as { type?: string }).type === "execute-agent-action") {
+          const request = message as {
+            observationId: string;
+            targetId: string;
+            step: SkillStep;
+            value?: unknown;
+            confirmed?: boolean;
+            approvalToken?: string;
+            executionKey?: string;
+            previewOnly?: boolean;
+          };
+          const snapshot = agentSnapshot;
+          const matched =
+            snapshot?.observation.id === request.observationId
+              ? snapshot.targets.get(request.targetId)
+              : undefined;
+          if (
+            !matched ||
+            !matched.element.isConnected ||
+            !usable(matched.element) ||
+            fingerprint(matched.element) !== matched.fingerprint
+          ) {
+            sendResponse({ status: "blocked" });
+            return;
+          }
+          const step = {
+            ...request.step,
+            ...(request.step.kind !== "navigation"
+              ? { selector: structuralSelector(matched.element) }
+              : {}),
+          };
+          if (step.kind === "click") delete step.parameter;
+          if (step.kind === "input") {
+            const currentType =
+              matched.element instanceof HTMLInputElement
+                ? matched.element.type
+                : matched.element instanceof HTMLSelectElement
+                  ? "select"
+                  : "text";
+            if (
+              ["checkbox", "radio", "select"].includes(step.inputKind)
+                ? currentType !== step.inputKind
+                : !["text", "search"].includes(currentType)
+            ) {
+              sendResponse({ status: "blocked" });
+              return;
+            }
+          }
+          sendResponse(
+            executeStep(
+              step,
+              request.value,
+              request.confirmed === true,
+              request.approvalToken,
+              request.previewOnly === true,
+              request.executionKey,
+              matched.element,
+            ),
+          );
+          return;
+        }
         if ((message as { type?: string }).type === "recording-state") {
           const nextActive = !!(message as { active?: boolean }).active;
           if (nextActive && !active) inputSessions = new WeakMap();
@@ -528,6 +753,7 @@ export default defineContentScript({
     ctx.setInterval(() => {
       if (location.href === lastLocation) return;
       lastLocation = location.href;
+      agentSnapshot = null;
       send({ kind: "navigation" });
       void browser.runtime
         .sendMessage({ type: "run-navigation" })

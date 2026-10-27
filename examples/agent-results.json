@@ -1,0 +1,67 @@
+{
+  "date": "2026-10-27",
+  "provider": "codex-local",
+  "realModelDecisions": 24,
+  "completedRuns": 6,
+  "completedSites": 3,
+  "realAgentRuns": [
+    {
+      "site": "wikipedia-search",
+      "input": "Grace Hopper",
+      "url": "https://en.wikipedia.org/wiki/Grace_Hopper",
+      "agent": "codex-local",
+      "completed": true
+    },
+    {
+      "site": "wikipedia-search",
+      "input": "Alan Turing",
+      "url": "https://en.wikipedia.org/wiki/Alan_Turing",
+      "agent": "codex-local",
+      "completed": true
+    },
+    {
+      "site": "github-repository-search",
+      "input": "actions",
+      "url": "https://github.com/orgs/github/repositories?q=actions",
+      "agent": "codex-local",
+      "completed": true
+    },
+    {
+      "site": "github-repository-search",
+      "input": "docs",
+      "url": "https://github.com/orgs/github/repositories?q=docs",
+      "agent": "codex-local",
+      "completed": true
+    },
+    {
+      "site": "open-library-title-search",
+      "input": "Foundation",
+      "url": "https://openlibrary.org/verify_human?next=/search?q=&title=Foundation&author=&isbn=&subject=&place=&person=&publisher=",
+      "agent": "codex-local",
+      "completed": false,
+      "status": "human-verification-required"
+    },
+    {
+      "site": "open-library-title-search",
+      "input": "Frankenstein",
+      "url": "https://openlibrary.org/verify_human?next=/search?q=&title=Frankenstein&author=&isbn=&subject=&place=&person=&publisher=",
+      "agent": "codex-local",
+      "completed": false,
+      "status": "human-verification-required"
+    },
+    {
+      "site": "python-docs-search",
+      "input": "asyncio",
+      "url": "https://docs.python.org/3/search.html?q=asyncio",
+      "agent": "codex-local",
+      "completed": true
+    },
+    {
+      "site": "python-docs-search",
+      "input": "pathlib",
+      "url": "https://docs.python.org/3/search.html?q=pathlib",
+      "agent": "codex-local",
+      "completed": true
+    }
+  ]
+}

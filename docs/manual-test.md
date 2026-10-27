@@ -1,6 +1,6 @@
 # Manual testing
 
-Use the [live app](https://show-me-once-dimitar.vercel.app) and the ZIP from [the current release](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.2.1-demo). Extract it and load the folder containing `manifest.json` through **Load unpacked** at `chrome://extensions`. Existing source installations can use **Reload**. Confirm version 0.2.1.
+Use the [live app](https://show-me-once-dimitar.vercel.app) and both ZIPs from [the current release](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.3.0-demo). Extract the extension and load the folder containing `manifest.json` through **Load unpacked** at `chrome://extensions`. Existing source installations can use **Reload** after stopping a run. Confirm version 0.3.0. Follow [local agent setup](agent.md) to start the helper and pair it. This mode requires Node.js 24 and Codex signed in with ChatGPT.
 
 ## Sign in
 
@@ -18,22 +18,22 @@ Use the [live app](https://show-me-once-dimitar.vercel.app) and the ZIP from [th
 6. Choose **Save to library**. The button should show Saving, then a visible saved state and version message at the same location. It should not require scrolling to find success.
 7. Choose **Run saved skill**. The popup should switch to Run and show the skill inputs.
 
-## Automatic runs
+## AI agent runs
 
-1. Return to the starting Wikipedia page and enter Grace Hopper as the search term.
-2. Keep Execution set to **Automatic** and choose **Run skill**.
+1. Return to the starting Wikipedia page and enter **Search Wikipedia for Grace Hopper** in **What would you like to do?** Leave optional parameters empty to test extraction from the request.
+2. Choose the connected local Codex provider and **Run skill**. **AI agent** is the default executor. During decisions, the popup should show **Agent is choosing a safe action** and identify Codex.
 3. Safe actions should advance without Next. Search submission should pause with **Submit search on www.wikipedia.org**, **Click the “Search” button**, and a description of the effect. The badge should show `!` when attention is needed.
 4. Choose **Submit search & continue**. This approves only the displayed action and resumes automatic execution. Close the popup during navigation; it should continue and finish the checkpoint without requiring the popup to remain open.
 5. Reopen it and verify the completed summary, activity log, and Grace Hopper result.
-6. Return to the starting page and repeat with Alan Turing using the same skill, without recording again.
-7. Repeat the record/save/run flow for GitHub's organization repository search (`https://github.com/orgs/github/repositories`, inputs actions/docs) and Open Library Advanced Search (`https://openlibrary.org/advancedsearch`, Title inputs Foundation/Frankenstein).
-8. If a website shows human verification, complete it yourself and inspect the page before resuming.
+6. Return to the starting page and request **Search Wikipedia for Alan Turing** using the same skill, without recording again.
+7. Repeat the record/save/run flow for GitHub's organization repository search (`https://github.com/orgs/github/repositories`, inputs actions/docs) and Python documentation (`https://docs.python.org/3/search.html`, record json with the search button, then request asyncio/pathlib). These are the other two verified live agent demonstrations.
+8. Open Library Advanced Search (`https://openlibrary.org/advancedsearch`, Title inputs Foundation/Frankenstein) is an additional example whose current final agent verification is pending. If a website shows human verification, complete it yourself and inspect the page before resuming. A connection-error screen is not a successful run; wait for the website to recover before retrying.
 
 ## Pause, Stop, and manual execution
 
 1. Start an automatic run, choose **Pause**, and check that no additional actions execute until **Resume run**.
 2. Stop a run before confirming submission. No later search action should execute; the web history should show a stopped run.
-3. Choose **Step by step** before starting another run. Only **Next step** should advance it; protected actions still require confirmation.
+3. Under **Execution options**, choose **Recorded steps (no AI)** and **Step by step** to test the diagnostic replay mode. Only **Next step** should advance it; protected actions still require confirmation. Switch back to **AI agent** for agent acceptance testing.
 4. Start a Wikipedia skill on `https://example.com`. The first checkpoint should block and nothing should be clicked. Stop afterward.
 
 ## Library, versions, and sharing
