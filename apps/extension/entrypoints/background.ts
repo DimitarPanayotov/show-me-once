@@ -14,6 +14,7 @@ import { ExternalBridgeClient } from "../lib/external-bridge";
 import type { ExternalResult } from "@show-me-once/shared/mcp";
 import {
   ExternalRunController,
+  externalDraft,
   type ExternalSession,
 } from "../lib/external-run";
 import {
@@ -23,7 +24,6 @@ import {
 } from "../lib/agent-client";
 import {
   containsSecret,
-  safeAgentLabel,
   type AgentObservation,
   type AgentProviderId,
   type AgentDecision,
@@ -562,29 +562,23 @@ export default defineBackground(() => {
         );
       await ensureRecorder(tab.id);
       const id = crypto.randomUUID();
+      const previousDraft = (await browser.storage.local.get("skillDraft"))
+        .skillDraft as Record<string, unknown> | undefined;
+      const selection = externalDraft(previousDraft, markdown, id);
       const run: RunState = {
         id,
         tabId: tab.id,
         active: true,
         engine: "external",
         mode: "automatic",
-        skillKey: `mcp:${id}`,
+        skillKey: selection.skillKey,
         nextStep: 0,
         totalSteps: plan.steps.length,
         logs: [],
       };
       await browser.storage.local.set({
         runPlan: plan,
-        skillDraft: {
-          sourceRecordingId: `mcp:${id}`,
-          name: safeAgentLabel(
-            /^name:\s*([^\r\n]+)/m.exec(markdown)?.[1] ??
-              "External agent skill",
-          ),
-          description: "Controlled by your connected coding-agent session.",
-          markdown,
-          dirty: true,
-        },
+        skillDraft: selection.draft,
       });
       await browser.storage.session.set({ runParameters: parameters });
       await browser.storage.session.remove([

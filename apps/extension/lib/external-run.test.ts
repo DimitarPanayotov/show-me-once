@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   ExternalRunController,
+  externalDraft,
   externalStatus,
   type ExternalSession,
 } from "./external-run.ts";
@@ -11,6 +12,41 @@ import {
   recoverInterruptedRun,
 } from "./run-state.ts";
 import { type RunState, type SkillPlan } from "@show-me-once/shared";
+import { withMcpInstructions } from "@show-me-once/shared/mcp";
+
+test("external runs preserve matching edited drafts and reject replacing unrelated unsaved work", () => {
+  const f = fixture();
+  const previous = {
+    sourceRecordingId: "recording",
+    name: "My edited title",
+    description: "My edited description",
+    markdown: f.markdown,
+    dirty: true,
+  };
+  assert.equal(
+    externalDraft(previous, withMcpInstructions(f.markdown), "run").draft,
+    previous,
+  );
+  assert.equal(
+    externalDraft(previous, f.markdown, "run").skillKey,
+    "recording",
+  );
+  assert.throws(() =>
+    externalDraft(
+      { ...previous, markdown: f.markdown + "\nUnsaved edits" },
+      f.markdown,
+      "run",
+    ),
+  );
+  assert.equal(
+    externalDraft(
+      { ...previous, dirty: false },
+      f.markdown + "\nDifferent skill",
+      "run",
+    ).skillKey,
+    "mcp:run",
+  );
+});
 
 function fixture() {
   const plan: SkillPlan = {

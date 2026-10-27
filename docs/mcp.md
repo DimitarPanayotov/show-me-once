@@ -95,6 +95,7 @@ Record actual URLs, tool results and whether the model used the installed skill.
 - **Skill missing:** verify the agent workspace, `.agents/skills/<name>/SKILL.md` path, valid frontmatter and actual selector discovery. Reconnect/reload the client as needed.
 - **Tools missing:** inspect `/mcp`; do not assume a config edit updates a running conversation automatically.
 - **Stale observation:** call `observe_run` again. Do not reuse old control IDs after navigation, approval, Pause or reconnect.
+- **Unsaved draft conflict:** save your current draft before asking the external agent to start a different skill. Running the same exported skill preserves your edited name and description.
 - **Unknown outcome:** inspect the page and extension history before doing anything further. Stop and restart when uncertain; never retry the previous action blindly.
 
 Imported MCP runs currently keep the current run's generic per-step log in the extension. They are not automatically linked to a saved backend skill version; extension-led runs of library skills retain their existing backend history behavior.

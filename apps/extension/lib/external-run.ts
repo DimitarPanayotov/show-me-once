@@ -6,6 +6,7 @@ import {
 } from "@show-me-once/shared";
 import {
   checkedDecision,
+  safeAgentLabel,
   type AgentObservation,
 } from "@show-me-once/shared/agent";
 import {
@@ -13,6 +14,45 @@ import {
   type ExternalIdentity,
   type ExternalResult,
 } from "@show-me-once/shared/mcp";
+
+/** Preserve an existing edited draft when it represents the same exported skill. */
+export function externalDraft(
+  previous: Record<string, unknown> | undefined,
+  markdown: string,
+  runId: string,
+) {
+  const base = (text: string) =>
+    text.split("<!-- show-me-once-mcp -->")[0]!.replace(/\r\n/g, "\n").trim();
+  if (
+    previous &&
+    typeof previous.markdown === "string" &&
+    typeof previous.sourceRecordingId === "string" &&
+    base(previous.markdown) === base(markdown)
+  )
+    return {
+      draft: previous,
+      skillKey:
+        typeof previous.remoteSkillId === "string"
+          ? previous.remoteSkillId
+          : previous.sourceRecordingId,
+    };
+  if (previous?.dirty)
+    throw new Error(
+      "Save your current draft before starting a different external skill.",
+    );
+  return {
+    draft: {
+      sourceRecordingId: `mcp:${runId}`,
+      name: safeAgentLabel(
+        /^name:\s*([^\r\n]+)/m.exec(markdown)?.[1] ?? "External agent skill",
+      ),
+      description: "Controlled by your connected coding-agent session.",
+      markdown,
+      dirty: true,
+    },
+    skillKey: `mcp:${runId}`,
+  };
+}
 
 export type ExternalSession = ExternalIdentity & {
   runId: string;
