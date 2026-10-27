@@ -8,7 +8,7 @@ import {
 import { requestApi } from "./api";
 
 const LOCAL = "http://127.0.0.1:4319";
-export async function pairLocalAgent(token: string) {
+async function checkLocalAgent(token: string) {
   const response = await fetch(`${LOCAL}/health`, {
     credentials: "omit",
     headers: { Authorization: `Bearer ${token}` },
@@ -22,9 +22,27 @@ export async function pairLocalAgent(token: string) {
     ready?: boolean;
     provider?: string;
   };
-  if (!result.ready) throw new Error("The local agent is not ready.");
-  await browser.storage.session.set({ localAgentToken: token });
+  if (!result.ready || result.provider !== "codex-local")
+    throw new Error("The local Codex agent is not ready.");
   return { ready: true, provider: result.provider };
+}
+
+export async function pairLocalAgent(token: string) {
+  const result = await checkLocalAgent(token);
+  await browser.storage.session.set({ localAgentToken: token });
+  return result;
+}
+
+export async function localAgentStatus() {
+  const { localAgentToken } =
+    await browser.storage.session.get("localAgentToken");
+  if (typeof localAgentToken !== "string")
+    return { localPaired: false, localConnected: false };
+  const localConnected = await checkLocalAgent(localAgentToken).then(
+    () => true,
+    () => false,
+  );
+  return { localPaired: true, localConnected };
 }
 
 export async function chooseAgentAction(

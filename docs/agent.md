@@ -9,14 +9,16 @@ The local Codex adapter uses the existing ChatGPT sign-in through the installed 
 ### Standalone helper
 
 1. Install Node.js 24 and have Codex CLI signed in with ChatGPT. Verify `codex login status`.
-2. Extract the extension ZIP and load its `manifest.json` folder at `chrome://extensions`. Confirm version 0.3.0.
+2. Extract the extension ZIP and load its `manifest.json` folder at `chrome://extensions`. Confirm version 0.3.1.
 3. Extract the local-agent helper ZIP. On Windows open `start-local-agent.cmd`; elsewhere run `node start.mjs`.
 4. Paste the extension ID when asked. The process prints a pairing code and stays running.
-5. In the popup's Run view, expand **Connect a local agent**, enter the pairing code, and choose **Connect local agent**. The code is kept in browser session storage.
+5. In the popup's Run view, expand **Connect a local agent**, enter the pairing code, and choose **Connect local agent**. A green **Connected to local Codex. Ready to run.** message confirms success even with the settings collapsed. The code is kept in browser session storage. The helper's version remains 0.3.0 and is compatible with extension 0.3.1.
 6. Open a skill, visit its starting page, and enter a request such as “Search Wikipedia for Katherine Johnson”. Parameters can also be supplied explicitly under the optional parameters section.
 7. Choose **Run skill**. The popup identifies the agent provider and shows each action. A protected submission pauses with its exact target and effect. Stop can cancel an in-flight model request.
 
 The pairing token and origin must both match. The helper binds only to `127.0.0.1:4319`. Close it with Ctrl+C. Restarting it generates a new pairing code. The extension never sends its library password or session token to the helper.
+
+The popup checks the helper when opened. Under **Local agent settings**, **Check connection** verifies it again. An unavailable helper shows an explicit notice and disables starting a local-agent run. Start the helper again and enter its new pairing code if it changed.
 
 ### Run from the repository
 

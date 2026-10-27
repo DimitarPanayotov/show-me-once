@@ -642,6 +642,33 @@ body {
 #agent-connection .text-link {
   margin-top: 10px;
 }
+.agent-connection-status {
+  padding: 10px 12px;
+  border: 1px solid #dce3ee;
+  border-radius: 9px;
+  background: #f1f5f9;
+  color: #52637d;
+  font-size: 11px;
+  font-weight: 600;
+}
+.agent-connection-status[data-state="connected"] {
+  background: #ecfdf3;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+.agent-connection-status[data-state="unavailable"] {
+  background: #fffbeb;
+  border-color: #fcd38a;
+  color: #92400e;
+}
+.agent-connection-status[data-state="error"] {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #b91c1c;
+}
+#agent-check + #agent-disconnect {
+  margin-top: 8px;
+}
 .confirmation-preview {
   margin: 12px 0;
   padding: 13px;

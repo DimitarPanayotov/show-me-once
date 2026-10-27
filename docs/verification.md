@@ -71,6 +71,13 @@ The eight attempts used 24 real model decisions. Six runs on three live websites
 
 The selected demo mode requires Node.js and a local Codex helper. This is a documented deviation from the original extension-only setup goal. A hosted provider can use the same browser action contract once server credentials are configured. The candidate's personal report and demo video remain separate deliverables.
 
+## Popup editor and agent connection — extension 0.3.1
+
+- Reproduced the single-character focus loss against 0.3.0. The editor was reattached on each storage refresh; name/description values were also trimmed on every keystroke.
+- Focused Chromium checks pass for continuous typing in all three fields in both Run and Record, spaces, cursor placement, selection replacement, and persistence after reopening. The editor now moves only when switching views, and editing preserves the entered text.
+- Pairing shows progress and inline failure feedback. A green connected message remains visible outside collapsed settings. The popup verifies helper health on opening and through Check connection; an unavailable helper disables starting a local-agent run. Browser checks cover success, failure, reopening, unavailability, rechecking, and disconnecting with a stubbed health transport, without invoking a model or touching a real helper.
+- All 31 unit tests, workspace typechecks, and the extension ZIP build pass. The existing 0.3.0 helper remains compatible.
+
 ## Remaining manual evidence
 
 - Perform a final user acceptance check of the redesigned popup in regular Chrome.

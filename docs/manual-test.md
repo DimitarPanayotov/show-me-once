@@ -1,6 +1,6 @@
 # Manual testing
 
-Use the [live app](https://show-me-once-dimitar.vercel.app) and both ZIPs from [the current release](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.3.0-demo). Extract the extension and load the folder containing `manifest.json` through **Load unpacked** at `chrome://extensions`. Existing source installations can use **Reload** after stopping a run. Confirm version 0.3.0. Follow [local agent setup](agent.md) to start the helper and pair it. This mode requires Node.js 24 and Codex signed in with ChatGPT.
+Use the [live app](https://show-me-once-dimitar.vercel.app) and both ZIPs from [the current release](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.3.1-demo). Extract the extension and load the folder containing `manifest.json` through **Load unpacked** at `chrome://extensions`. Existing source installations can use **Reload** after stopping a run. Confirm version 0.3.1. Follow [local agent setup](agent.md) to start the helper and pair it. This mode requires Node.js 24 and Codex signed in with ChatGPT.
 
 ## Sign in
 
@@ -17,6 +17,7 @@ Use the [live app](https://show-me-once-dimitar.vercel.app) and both ZIPs from [
 5. Expand the timeline and Markdown to confirm that the search value is absent and the skill uses `search_1`.
 6. Choose **Save to library**. The button should show Saving, then a visible saved state and version message at the same location. It should not require scrolling to find success.
 7. Choose **Run saved skill**. The popup should switch to Run and show the skill inputs.
+8. Edit the name, description, and Markdown in both views. Continuous typing, spaces, selections, and cursor placement should work without refocusing. Reopen the popup and confirm the edits remain.
 
 ## AI agent runs
 

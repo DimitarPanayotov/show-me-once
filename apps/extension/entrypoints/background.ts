@@ -10,7 +10,11 @@ import {
   type SkillPlan,
 } from "@show-me-once/shared";
 import { requestApi } from "../lib/api";
-import { chooseAgentAction, pairLocalAgent } from "../lib/agent-client";
+import {
+  chooseAgentAction,
+  pairLocalAgent,
+  localAgentStatus,
+} from "../lib/agent-client";
 import {
   containsSecret,
   type AgentObservation,
@@ -488,7 +492,7 @@ export default defineBackground(() => {
         throw new Error("Only extension pages may configure an agent.");
       if (request.type === "agent-status")
         return (async () => {
-          const local = await browser.storage.session.get("localAgentToken");
+          const localStatus = localAgentStatus();
           const account = await readAccount();
           const hosted = account
             ? await api<{ id: string; label: string; available: boolean }[]>(
@@ -499,7 +503,7 @@ export default defineBackground(() => {
             : [];
           return {
             hosted,
-            localPaired: typeof local.localAgentToken === "string",
+            ...(await localStatus),
             extensionOrigin: browser.runtime.getURL("").replace(/\/$/, ""),
           };
         })();

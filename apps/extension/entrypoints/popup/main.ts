@@ -33,7 +33,11 @@ const taskRequest = element<HTMLTextAreaElement>("task-request");
 let agentStatus: {
   hosted: { id: string; available: boolean }[];
   localPaired: boolean;
-} = { hosted: [], localPaired: false };
+  localConnected: boolean;
+} = { hosted: [], localPaired: false, localConnected: false };
+let pairingAgent = false;
+let checkingAgent = false;
+let agentConnectionError = "";
 const runStart = element<HTMLButtonElement>("run-start");
 const runControls = element<HTMLElement>("run-controls");
 const runNext = element<HTMLButtonElement>("run-next");
@@ -262,7 +266,7 @@ async function renderAccount() {
 
 function agentReady() {
   return agentProvider.value === "codex-local"
-    ? agentStatus.localPaired
+    ? agentStatus.localConnected
     : agentStatus.hosted.some(
         (p) => p.id === agentProvider.value && p.available,
       );
@@ -284,6 +288,45 @@ function renderAgentSettings() {
     ? "The agent reads your skill, inspects safe page controls, and chooses each action."
     : "Connect a local agent below, or configure a hosted provider on the server.";
   element("agent-disconnect").hidden = !agentStatus.localPaired;
+  const connection = element("agent-connection-status");
+  connection.hidden = !agent || agentProvider.value !== "codex-local";
+  connection.dataset.state =
+    pairingAgent || checkingAgent
+      ? "checking"
+      : agentConnectionError
+        ? "error"
+        : agentStatus.localConnected
+          ? "connected"
+          : agentStatus.localPaired
+            ? "unavailable"
+            : "disconnected";
+  connection.textContent = pairingAgent
+    ? "Connecting to local Codex…"
+    : checkingAgent
+      ? "Checking the local agent connection…"
+      : agentConnectionError
+        ? agentConnectionError
+        : agentStatus.localConnected
+          ? "✓ Connected to local Codex. Ready to run."
+          : agentStatus.localPaired
+            ? "Local agent unavailable. Start the helper and check again, or enter its new pairing code."
+            : "Local agent not connected.";
+  element("agent-connection-summary").textContent = agentStatus.localConnected
+    ? "Local agent settings"
+    : "Connect a local agent";
+  element("agent-pair-form").hidden = agentStatus.localConnected;
+  element("agent-connected-help").hidden = !agentStatus.localConnected;
+  const checkConnection = element<HTMLButtonElement>("agent-check");
+  checkConnection.hidden = !agentStatus.localPaired;
+  checkConnection.disabled = checkingAgent || pairingAgent;
+  checkConnection.dataset.busy = String(checkingAgent);
+  checkConnection.textContent = checkingAgent
+    ? "Checking…"
+    : "Check connection";
+  const pair = element<HTMLButtonElement>("agent-pair");
+  pair.disabled = pairingAgent || checkingAgent;
+  pair.dataset.busy = String(pairingAgent);
+  pair.textContent = pairingAgent ? "Connecting…" : "Connect local agent";
   element<HTMLDetailsElement>("parameter-options").open = !agent;
   if (!agent)
     element("run-help").textContent =
@@ -486,9 +529,10 @@ async function render() {
   element("record-intro").hidden = recording || review;
   element("record-footer").hidden = !review;
   element("privacy-note").hidden = review;
-  (review ? element("record-footer") : element("record-start-slot")).append(
-    start,
-  );
+  const startSlot = review
+    ? element("record-footer")
+    : element("record-start-slot");
+  if (start.parentElement !== startSlot) startSlot.append(start);
   start.hidden = recording;
   start.disabled = !!run?.active;
   start.textContent = review ? "Record another task" : "Start recording";
@@ -530,10 +574,12 @@ async function render() {
     item.append(label, detail, time);
     timeline.append(item);
   }
-  (view === "record"
-    ? element("record-review-slot")
-    : element("run-editor-slot")
-  ).append(skillSection);
+  const editorSlot =
+    view === "record"
+      ? element("record-review-slot")
+      : element("run-editor-slot");
+  if (skillSection.parentElement !== editorSlot)
+    editorSlot.append(skillSection);
   skillSection.hidden =
     !currentDraft || recording || (view === "record" && !review);
   element("editor-title").textContent =
@@ -558,10 +604,11 @@ async function render() {
 
 function persistDraft() {
   if (!currentDraft || currentDraft.readOnly) return;
+  ++renderRevision;
   const draft: SkillDraft = {
     ...currentDraft,
-    name: skillName.value.trim(),
-    description: skillDescription.value.trim(),
+    name: skillName.value,
+    description: skillDescription.value,
     markdown: skillMarkdown.value,
     dirty: true,
   };
@@ -730,9 +777,10 @@ agentProvider.addEventListener("change", () => {
 });
 element("agent-pair").addEventListener("click", () => {
   void (async () => {
-    const button = element<HTMLButtonElement>("agent-pair");
-    button.disabled = true;
-    error.textContent = "";
+    if (pairingAgent || checkingAgent) return;
+    pairingAgent = true;
+    agentConnectionError = "";
+    renderAgentSettings();
     try {
       await browser.runtime.sendMessage({
         type: "agent-pair",
@@ -743,13 +791,31 @@ element("agent-pair").addEventListener("click", () => {
       element<HTMLDetailsElement>("agent-connection").open = false;
       await refreshAgent();
     } catch (cause) {
-      report(cause);
+      agentConnectionError =
+        cause instanceof Error ? cause.message : String(cause);
     } finally {
-      button.disabled = false;
+      pairingAgent = false;
+      renderAgentSettings();
     }
   })();
 });
+element("agent-check").addEventListener("click", () => {
+  void (async () => {
+    if (checkingAgent || pairingAgent) return;
+    checkingAgent = true;
+    agentConnectionError = "";
+    renderAgentSettings();
+    try {
+      await refreshAgent();
+    } finally {
+      checkingAgent = false;
+      renderAgentSettings();
+    }
+  })();
+});
+
 element("agent-disconnect").addEventListener("click", () => {
+  agentConnectionError = "";
   void browser.runtime
     .sendMessage({ type: "agent-disconnect" })
     .then(refreshAgent)

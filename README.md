@@ -2,7 +2,7 @@
 
 Teach a browser task once, save it as a reusable skill, and run it again with new inputs.
 
-[Open the app](https://show-me-once-dimitar.vercel.app) · [Extension and local-agent helper](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.3.0-demo)
+[Open the app](https://show-me-once-dimitar.vercel.app) · [Extension and local-agent helper](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.3.1-demo)
 
 **Current demo:** AI execution uses a local Codex helper and the user's existing ChatGPT sign-in. Node.js 24 and Codex CLI are required. This adds a helper setup step beyond loading the extension and signing into the library. [Agent setup and architecture](docs/agent.md).
 

@@ -157,27 +157,49 @@
                 <option value="anthropic">Anthropic (hosted)</option>
               </select>
               <p id="agent-help" class="hint" role="status"></p>
+              <p
+                id="agent-connection-status"
+                class="agent-connection-status"
+                role="status"
+                aria-live="polite"
+              ></p>
               <details id="agent-connection">
-                <summary>Connect a local agent</summary>
-                <p class="hint">
-                  Start the local bridge using the setup guide, then enter its
-                  pairing code. Your Codex sign-in stays with Codex.
+                <summary id="agent-connection-summary">
+                  Connect a local agent
+                </summary>
+                <div id="agent-pair-form">
+                  <p class="hint">
+                    Start the local bridge using the setup guide, then enter its
+                    pairing code. Your Codex sign-in stays with Codex.
+                  </p>
+                  <p class="hint">
+                    Extension origin: <code id="extension-origin"></code>
+                  </p>
+                  <label for="agent-pair-code">Pairing code</label
+                  ><input
+                    id="agent-pair-code"
+                    type="password"
+                    autocomplete="off"
+                  />
+                  <button
+                    id="agent-pair"
+                    type="button"
+                    class="button secondary full"
+                  >
+                    Connect local agent
+                  </button>
+                </div>
+                <p id="agent-connected-help" class="hint" hidden>
+                  Your local helper is connected. Keep its window open while
+                  running skills.
                 </p>
-                <p class="hint">
-                  Extension origin: <code id="extension-origin"></code>
-                </p>
-                <label for="agent-pair-code">Pairing code</label
-                ><input
-                  id="agent-pair-code"
-                  type="password"
-                  autocomplete="off"
-                />
                 <button
-                  id="agent-pair"
+                  id="agent-check"
                   type="button"
                   class="button secondary full"
+                  hidden
                 >
-                  Connect local agent
+                  Check connection
                 </button>
                 <button
                   id="agent-disconnect"
