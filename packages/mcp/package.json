@@ -1,0 +1,24 @@
+{
+  "name": "@show-me-once/mcp",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/*.test.ts",
+    "bridge": "node --experimental-strip-types src/bridge-cli.ts",
+    "server": "node --experimental-strip-types src/server.ts"
+  },
+  "dependencies": {
+    "@show-me-once/shared": "workspace:*",
+    "@modelcontextprotocol/server": "2.4.0",
+    "zod": "4.6.7",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@types/ws": "^8.18.1",
+    "@types/node": "^24.0.0",
+    "typescript": "5.9.3"
+  }
+}

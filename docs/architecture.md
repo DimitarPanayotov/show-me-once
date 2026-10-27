@@ -1,5 +1,9 @@
 # Architecture
 
+## Agent-led MCP path (0.4.0)
+
+An existing coding-agent session owns the model and loads an exported skill. Its stdio MCP server forwards typed commands through a separate authenticated loopback relay at port 4320. The extension opens the outbound WebSocket and retains run/tab/step binding, fresh control observations, target validation, confirmation, Pause and Stop. This path does not import or invoke the Codex decision adapter. The extension-led modes below remain separate. See [MCP design and setup](mcp.md) for process ownership, pairing, lifecycle, credential storage and exact Codex configuration. Browser acceptance remains pending under the requested non-browser testing constraint.
+
 ## What runs where
 
 | Layer | Responsibility |

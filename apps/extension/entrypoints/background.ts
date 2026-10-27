@@ -10,6 +10,12 @@ import {
   type SkillPlan,
 } from "@show-me-once/shared";
 import { requestApi } from "../lib/api";
+import { ExternalBridgeClient } from "../lib/external-bridge";
+import type { ExternalResult } from "@show-me-once/shared/mcp";
+import {
+  ExternalRunController,
+  type ExternalSession,
+} from "../lib/external-run";
 import {
   chooseAgentAction,
   pairLocalAgent,
@@ -17,6 +23,7 @@ import {
 } from "../lib/agent-client";
 import {
   containsSecret,
+  safeAgentLabel,
   type AgentObservation,
   type AgentProviderId,
   type AgentDecision,
@@ -47,6 +54,12 @@ let tickQueued = false;
 let interruption: "pause" | "stop" | undefined;
 let controlRevision = 0;
 let agentAbort: AbortController | undefined;
+let mcp: ExternalBridgeClient;
+let externalOwner:
+  | { controllerId: string; bridgeId: string; runId: string }
+  | undefined;
+const interruptedControllers = new Set<string>();
+const pendingExternalStarts = new Set<string>();
 type AgentSession = {
   runId: string;
   markdown: string;
@@ -82,6 +95,7 @@ async function readRun(): Promise<RunState | null> {
 }
 
 async function saveRun(run: RunState): Promise<RunState> {
+  if (!run.active || run.engine !== "external") externalOwner = undefined;
   await browser.storage.local.set({ runState: run });
   const paused =
     run.active && (!!run.pauseReason || run.confirmationStep === run.nextStep);
@@ -270,7 +284,23 @@ async function performStep(
       detail = "Navigation checkpoint matched.";
     } else {
       let agentSelection: AgentSession["selected"];
-      if (run.engine === "agent") {
+      if (run.engine === "external") {
+        const session = (await browser.storage.session.get("externalSession"))
+          .externalSession as ExternalSession | undefined;
+        const connection = mcp?.current();
+        if (
+          !session ||
+          session.runId !== run.id ||
+          !connection ||
+          session.bridgeId !== connection.bridgeId ||
+          session.connectionId !== connection.connectionId ||
+          session.selected?.step !== run.nextStep
+        )
+          throw new Error(
+            "External agent selection or connection expired. Observe again after resuming.",
+          );
+        agentSelection = session.selected;
+      } else if (run.engine === "agent") {
         const stored = await browser.storage.session.get("agentSession");
         const session = stored.agentSession as AgentSession | undefined;
         if (!session || session.runId !== run.id)
@@ -340,6 +370,16 @@ async function performStep(
             }
           : {}),
         executionKey: `${run.id}:${run.nextStep}`,
+        ...(run.engine === "external"
+          ? {
+              navigationScope: [
+                step.url,
+                ...(runPlan.steps[run.nextStep + 1]?.kind === "navigation"
+                  ? [runPlan.steps[run.nextStep + 1]!.url]
+                  : []),
+              ],
+            }
+          : {}),
         step,
         value:
           "parameter" in step && step.parameter
@@ -353,7 +393,7 @@ async function performStep(
         | undefined;
       if (response?.status === "done") {
         status = "done";
-        detail = `${step.kind} dispatched${run.engine === "agent" ? ` by ${run.provider} agent` : ""}.`;
+        detail = `${step.kind} dispatched${run.engine === "agent" ? ` by ${run.provider} agent` : run.engine === "external" ? " by external MCP agent" : ""}.`;
       } else if (response?.status === "confirmation-required") {
         const pending = {
           runId: run.id,
@@ -461,10 +501,252 @@ async function recoverRun(): Promise<void> {
         : { ...run, pauseReason: "blocked" },
     );
   }
+  if (run?.active && run.engine === "external") {
+    const session = (await browser.storage.session.get("externalSession"))
+      .externalSession as ExternalSession | undefined;
+    externalOwner = session
+      ? {
+          controllerId: session.controllerId,
+          bridgeId: session.bridgeId,
+          runId: session.runId,
+        }
+      : undefined;
+    if (session)
+      await browser.storage.session.set({
+        externalSession: {
+          ...session,
+          observation: undefined,
+          selected: undefined,
+        },
+      });
+    run = await saveRun({
+      ...run,
+      pauseReason: "user",
+      confirmationStep: undefined,
+    });
+    await browser.storage.session.remove("runConfirmation");
+  }
   await scheduleRun(run);
 }
 
 export default defineBackground(() => {
+  const external = new ExternalRunController({
+    readRun,
+    readSession: async () =>
+      (await browser.storage.session.get("externalSession")).externalSession as
+        | ExternalSession
+        | undefined,
+    saveSession: async (session) => {
+      externalOwner = {
+        controllerId: session.controllerId,
+        bridgeId: session.bridgeId,
+        runId: session.runId,
+      };
+      await browser.storage.session.set({ externalSession: session });
+    },
+    async start(markdown, parameters) {
+      if ((await read())?.active || (await readRun())?.active)
+        throw new Error("Stop the current recording or run first.");
+      const plan = parseSkillPlan(markdown);
+      const [tab] = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      if (
+        tab?.id === undefined ||
+        !tab.url ||
+        sanitizeUrl(tab.url) !== plan.steps[0]?.url
+      )
+        throw new Error(
+          "Open the skill starting page in the active Chrome tab.",
+        );
+      await ensureRecorder(tab.id);
+      const id = crypto.randomUUID();
+      const run: RunState = {
+        id,
+        tabId: tab.id,
+        active: true,
+        engine: "external",
+        mode: "automatic",
+        skillKey: `mcp:${id}`,
+        nextStep: 0,
+        totalSteps: plan.steps.length,
+        logs: [],
+      };
+      await browser.storage.local.set({
+        runPlan: plan,
+        skillDraft: {
+          sourceRecordingId: `mcp:${id}`,
+          name: safeAgentLabel(
+            /^name:\s*([^\r\n]+)/m.exec(markdown)?.[1] ??
+              "External agent skill",
+          ),
+          description: "Controlled by your connected coding-agent session.",
+          markdown,
+          dirty: true,
+        },
+      });
+      await browser.storage.session.set({ runParameters: parameters });
+      await browser.storage.session.remove([
+        "runConfirmation",
+        "agentSession",
+        "agentError",
+      ]);
+      interruption = undefined;
+      return saveRun(run);
+    },
+    async observe(run, step) {
+      const tab = await browser.tabs.get(run.tabId);
+      if (
+        tab.status === "loading" ||
+        !tab.url ||
+        sanitizeUrl(tab.url) !== step.url
+      )
+        throw new Error("The selected tab is not ready for this checkpoint.");
+      await ensureRecorder(run.tabId);
+      const safety = (await browser.tabs.sendMessage(run.tabId, {
+        type: "check-run-page",
+      })) as { humanVerification?: boolean; connectionError?: boolean };
+      if (safety.humanVerification || safety.connectionError)
+        throw new Error("The page needs human attention.");
+      const plan = (await browser.storage.local.get("runPlan"))
+        .runPlan as SkillPlan;
+      return step.kind === "navigation"
+        ? { id: crypto.randomUUID(), url: step.url, controls: [] }
+        : ((await browser.tabs.sendMessage(run.tabId, {
+            type: "observe-agent-page",
+            step,
+            navigationScope: [
+              step.url,
+              ...(plan.steps[run.nextStep + 1]?.kind === "navigation"
+                ? [plan.steps[run.nextStep + 1]!.url]
+                : []),
+            ],
+          })) as AgentObservation);
+    },
+    perform: () => performStep(),
+    async stop() {
+      const run = await readRun();
+      if (!run) throw new Error("No run.");
+      if (externalOwner)
+        interruptedControllers.delete(externalOwner.controllerId);
+      const session = (await browser.storage.session.get("externalSession"))
+        .externalSession as ExternalSession | undefined;
+      if (session)
+        await browser.storage.session.set({
+          externalSession: {
+            ...session,
+            observation: undefined,
+            selected: undefined,
+          },
+        });
+      await browser.storage.session.remove([
+        "runParameters",
+        "runConfirmation",
+      ]);
+      interruption = undefined;
+      return saveRun({
+        ...run,
+        active: false,
+        pauseReason: undefined,
+        confirmationStep: undefined,
+      });
+    },
+  });
+  const pauseExternal = (controllerId?: string) => {
+    if (
+      controllerId &&
+      (externalOwner?.controllerId === controllerId ||
+        pendingExternalStarts.has(controllerId))
+    )
+      interruptedControllers.add(controllerId);
+    if (!controllerId)
+      for (const id of pendingExternalStarts) interruptedControllers.add(id);
+    if (
+      !externalOwner ||
+      (controllerId && controllerId !== externalOwner.controllerId)
+    )
+      return;
+    interruptedControllers.add(externalOwner.controllerId);
+    // Interrupt before awaiting serialized work, just like the popup's Pause/Stop.
+    controlRevision++;
+    interruption = "pause";
+    void serial(async () => {
+      const run = await readRun();
+      const session = (await browser.storage.session.get("externalSession"))
+        .externalSession as ExternalSession | undefined;
+      if (
+        run?.active &&
+        run.engine === "external" &&
+        session &&
+        (!controllerId || session.controllerId === controllerId)
+      ) {
+        await browser.storage.session.set({
+          externalSession: {
+            ...session,
+            observation: undefined,
+            selected: undefined,
+          },
+        });
+        await browser.storage.session.remove("runConfirmation");
+        await saveRun({
+          ...run,
+          pauseReason: "user",
+          confirmationStep: undefined,
+        });
+      } else if (run?.engine !== "external") interruption = undefined;
+    });
+  };
+  mcp = new ExternalBridgeClient((identity, command) => {
+    const kind = (command as { kind?: string }).kind;
+    if (kind === "start") pendingExternalStarts.add(identity.controllerId);
+    if (
+      kind === "stop" &&
+      externalOwner?.controllerId === identity.controllerId &&
+      externalOwner.bridgeId === identity.bridgeId &&
+      (command as { runId?: string }).runId === externalOwner.runId
+    ) {
+      controlRevision++;
+      interruption = "stop";
+    }
+    return serial<ExternalResult>(async () => {
+      const connection = mcp.current();
+      if (
+        !connection ||
+        connection.bridgeId !== identity.bridgeId ||
+        connection.connectionId !== identity.connectionId
+      )
+        return {
+          status: "disconnected",
+          message:
+            "Connection changed. Inspect the extension before continuing.",
+        };
+      if (
+        interruptedControllers.has(identity.controllerId) &&
+        kind !== "status" &&
+        kind !== "stop"
+      )
+        return {
+          status: "paused",
+          message: "Resume in the extension before issuing new actions.",
+        };
+      const result = await external.handle(identity, command);
+      if (
+        interruptedControllers.has(identity.controllerId) &&
+        kind === "start"
+      ) {
+        pauseExternal(identity.controllerId);
+        return { ...result, status: "paused" };
+      }
+      return result;
+    }).finally(() => {
+      if (kind === "start") {
+        pendingExternalStarts.delete(identity.controllerId);
+        if (externalOwner?.controllerId !== identity.controllerId)
+          interruptedControllers.delete(identity.controllerId);
+      }
+    });
+  }, pauseExternal);
   const controls = new Set([
     "start-recording",
     "stop-recording",
@@ -486,6 +768,23 @@ export default defineBackground(() => {
       !fromOwnPage
     ) {
       throw new Error("Only extension pages may control a recording or run.");
+    }
+    if (typeof request.type === "string" && request.type.startsWith("mcp-")) {
+      if (!fromOwnPage)
+        throw new Error("Only extension pages may pair an MCP bridge.");
+      if (request.type === "mcp-status") return mcp.status();
+      if (request.type === "mcp-pair")
+        return serial(async () => {
+          if ((await readRun())?.active)
+            throw new Error(
+              "Stop the current run before changing connections.",
+            );
+          if (typeof request.token !== "string")
+            throw new Error("Enter a pairing code.");
+          await mcp.pair(request.token);
+          return mcp.status();
+        });
+      if (request.type === "mcp-disconnect") return mcp.disconnect();
     }
     if (typeof request.type === "string" && request.type.startsWith("agent-")) {
       if (!fromOwnPage)
@@ -860,6 +1159,13 @@ export default defineBackground(() => {
       return serial(async () => {
         if (revision !== controlRevision) return readRun();
         interruption = undefined;
+        if (
+          (await readRun())?.engine === "external" &&
+          request.confirm !== true
+        )
+          throw new Error(
+            "The external agent chooses actions; approve only through the displayed preview.",
+          );
         const run = await performStep(
           request.confirm === true,
           typeof request.approvalToken === "string"
@@ -879,18 +1185,46 @@ export default defineBackground(() => {
       return serial(async () => {
         const run = await readRun();
         if (!run?.active) return run;
-        if (request.type === "pause-run")
+        if (request.type === "pause-run") {
+          if (run.engine === "external") {
+            const session = (
+              await browser.storage.session.get("externalSession")
+            ).externalSession as ExternalSession | undefined;
+            if (session)
+              await browser.storage.session.set({
+                externalSession: {
+                  ...session,
+                  observation: undefined,
+                  selected: undefined,
+                },
+              });
+          }
           return saveRun({
             ...run,
             thinking: false,
             pauseReason: run.pauseReason ?? "user",
           });
+        }
         await browser.storage.session.remove([
           "runParameters",
           "runConfirmation",
           "agentSession",
           "agentError",
         ]);
+        if (run.engine === "external") {
+          const session = (await browser.storage.session.get("externalSession"))
+            .externalSession as ExternalSession | undefined;
+          if (session)
+            await browser.storage.session.set({
+              externalSession: {
+                ...session,
+                observation: undefined,
+                selected: undefined,
+              },
+            });
+        }
+        if (externalOwner)
+          interruptedControllers.delete(externalOwner.controllerId);
         const stopped = await saveRun({
           ...run,
           active: false,
@@ -926,6 +1260,28 @@ export default defineBackground(() => {
         if (run.confirmationStep === run.nextStep)
           throw new Error("Confirm the pending action before continuing.");
         interruption = undefined;
+        if (run.engine === "external") {
+          const session = (await browser.storage.session.get("externalSession"))
+            .externalSession as ExternalSession | undefined;
+          const connection = mcp.current();
+          if (
+            !session ||
+            !connection ||
+            session.bridgeId !== connection.bridgeId
+          )
+            throw new Error(
+              "Reconnect the original MCP bridge, or Stop and start a new run.",
+            );
+          await browser.storage.session.set({
+            externalSession: {
+              ...session,
+              ...connection,
+              observation: undefined,
+              selected: undefined,
+            },
+          });
+          interruptedControllers.delete(session.controllerId);
+        }
         const resumed = await saveRun({
           ...run,
           pauseReason: undefined,
@@ -959,10 +1315,12 @@ export default defineBackground(() => {
     });
   });
   browser.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === "mcp-reconnect") void mcp.connect().catch(() => {});
     if (alarm.name === AUTO_ALARM) void automaticTick();
   });
   browser.runtime.onStartup.addListener(() => {
     void serial(recoverRun);
   });
   void serial(recoverRun);
+  void mcp.connect().catch(() => {});
 });

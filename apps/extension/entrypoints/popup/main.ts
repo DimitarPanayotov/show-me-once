@@ -13,6 +13,8 @@ import {
   type PendingConfirmation,
 } from "../../lib/confirmation";
 import "./style.css";
+import { withMcpInstructions } from "@show-me-once/shared/mcp";
+import { zipSync, strToU8 } from "fflate";
 
 const element = <T extends HTMLElement>(id: string) =>
   document.getElementById(id)! as T;
@@ -355,12 +357,32 @@ async function refreshAgent() {
   await render();
 }
 
+async function refreshMcp() {
+  const status = (await browser.runtime.sendMessage({
+    type: "mcp-status",
+  })) as { paired: boolean; connected: boolean };
+  const feedback = element("mcp-status");
+  feedback.dataset.state = status.connected
+    ? "connected"
+    : status.paired
+      ? "unavailable"
+      : "disconnected";
+  feedback.textContent = status.connected
+    ? "✓ External agent bridge connected. Your agent can start a skill."
+    : status.paired
+      ? "MCP bridge unavailable. Start the original bridge or pair its new code."
+      : "MCP bridge not connected.";
+  element("mcp-disconnect").hidden = !status.paired;
+}
+
 function renderRun(
   run: RunState | null,
   plan: SkillPlan | undefined,
   pending?: PendingConfirmation,
 ) {
   activeRun = run;
+  if (run?.active && run.engine === "external")
+    element("current-meta").textContent = "External coding agent · MCP";
   if (run?.active && run.engine === "agent")
     element("current-meta").textContent =
       `AI agent · ${run.provider === "codex-local" ? "Codex subscription" : run.provider === "anthropic" ? "Anthropic" : "OpenAI"}`;
@@ -436,9 +458,11 @@ function renderRun(
           ? "Paused"
           : manual
             ? "Ready for your next step"
-            : run.engine === "agent"
-              ? `Agent running · ${run.provider === "codex-local" ? "Codex" : run.provider === "anthropic" ? "Anthropic" : "OpenAI"}`
-              : "Running recorded steps";
+            : run.engine === "external"
+              ? "External agent · MCP"
+              : run.engine === "agent"
+                ? `Agent running · ${run.provider === "codex-local" ? "Codex" : run.provider === "anthropic" ? "Anthropic" : "OpenAI"}`
+                : "Running recorded steps";
     element("run-step-count").textContent =
       `${run.nextStep} / ${run.totalSteps}`;
     runControls.dataset.state = confirmation
@@ -911,6 +935,61 @@ element("download").addEventListener("click", () => {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
+element("download-mcp").addEventListener("click", () => {
+  try {
+    const markdown = withMcpInstructions(skillMarkdown.value);
+    const name = /^name:\s*([a-z0-9-]{1,64})\s*$/m.exec(markdown)?.[1];
+    if (!name)
+      throw new Error(
+        "The SKILL.md frontmatter needs a lowercase name with hyphens.",
+      );
+    const archive = zipSync({
+      [`.agents/skills/${name}/SKILL.md`]: strToU8(markdown),
+      "INSTALL.md": strToU8(
+        `Extract this ZIP in the workspace where you use Codex. The folder must be .agents/skills/${name}/SKILL.md. Configure the show_me_once MCP server using the separate MCP integration bundle; this ZIP contains instructions, not browser capabilities.\n\nCodex MCP command: codex mcp add show_me_once -- node C:/absolute/path/to/mcp/server.mjs\nStart bridge.mjs with your extension ID, pair it in the extension under Use an external agent (MCP), then reload/reconnect the client and verify /mcp and the skill selector. Invoke $${name} explicitly to verify discovery before relying on automatic matching.\n\nSetup: https://github.com/DimitarPanayotov/show-me-once/blob/main/docs/mcp.md\n`,
+      ),
+    });
+    const url = URL.createObjectURL(
+      new Blob([new Uint8Array(archive)], { type: "application/zip" }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${name}-agent-skill.zip`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (cause) {
+    report(cause);
+  }
+});
+element("mcp-pair").addEventListener("click", () => {
+  void (async () => {
+    const button = element<HTMLButtonElement>("mcp-pair");
+    button.disabled = true;
+    button.dataset.busy = "true";
+    element("mcp-status").textContent = "Connecting the external-agent bridge…";
+    try {
+      await browser.runtime.sendMessage({
+        type: "mcp-pair",
+        token: element<HTMLInputElement>("mcp-code").value.trim(),
+      });
+      element<HTMLInputElement>("mcp-code").value = "";
+      await refreshMcp();
+    } catch (cause) {
+      element("mcp-status").textContent =
+        cause instanceof Error ? cause.message : String(cause);
+      element("mcp-status").dataset.state = "error";
+    } finally {
+      button.disabled = false;
+      button.dataset.busy = "false";
+    }
+  })();
+});
+element("mcp-disconnect").addEventListener("click", () => {
+  void browser.runtime
+    .sendMessage({ type: "mcp-disconnect" })
+    .then(refreshMcp)
+    .catch(report);
+});
 accountForm.addEventListener("submit", (event) => {
   event.preventDefault();
   void (async () => {
@@ -999,6 +1078,8 @@ browser.storage.onChanged.addListener((changes, area) => {
   )
     void render();
   if (area === "session" && changes.runConfirmation) void render();
+  if (area === "session" && changes.mcpConnected)
+    void refreshMcp().catch(report);
 });
 void (async () => {
   const saved = await browser.storage.local.get([
@@ -1017,6 +1098,7 @@ void (async () => {
     : "codex-local";
   renderAgentSettings();
   await render();
+  await refreshMcp();
   try {
     await renderAccount();
   } catch (cause) {

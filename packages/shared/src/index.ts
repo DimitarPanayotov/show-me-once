@@ -31,7 +31,7 @@ export type RunState = {
   mode?: 'automatic' | 'manual'; pauseReason?: 'user' | 'confirmation' | 'blocked'; skillKey?: string;
   confirmationStep?: number; inFlightStep?: number; awaitingNavigation?: boolean; navigationObserved?: boolean; navigationStartedAt?: number;
   remoteRunId?: string; remoteSyncedLogs?: number; syncError?: string; logs: RunLog[];
-  engine?: 'agent' | 'recorded'; provider?: 'openai' | 'anthropic' | 'codex-local'; thinking?: boolean;
+  engine?: 'agent' | 'recorded' | 'external'; provider?: 'openai' | 'anthropic' | 'codex-local'; thinking?: boolean;
 };
 
 export function appendAction(

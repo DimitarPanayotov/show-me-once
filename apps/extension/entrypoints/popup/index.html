@@ -322,6 +322,35 @@
             <div id="run-editor-slot"></div>
           </details>
         </section>
+        <details id="mcp-settings">
+          <summary>Use an external agent (MCP)</summary>
+          <p class="hint">
+            Your coding-agent session chooses actions through MCP. Start the MCP
+            bridge, then pair it here. This is separate from the local Codex
+            decision helper.
+          </p>
+          <p
+            id="mcp-status"
+            class="agent-connection-status"
+            role="status"
+            aria-live="polite"
+          >
+            MCP bridge not connected.
+          </p>
+          <label for="mcp-code">MCP bridge pairing code</label>
+          <input id="mcp-code" type="password" autocomplete="off" />
+          <button id="mcp-pair" type="button" class="button secondary full">
+            Connect MCP bridge
+          </button>
+          <button
+            id="mcp-disconnect"
+            type="button"
+            class="button quiet full"
+            hidden
+          >
+            Disconnect MCP bridge
+          </button>
+        </details>
       </section>
 
       <section
@@ -384,6 +413,8 @@
           <div class="inline-controls">
             <button id="download" type="button" class="button secondary">
               Download SKILL.md</button
+            ><button id="download-mcp" type="button" class="button secondary">
+              Export for coding agent (ZIP)</button
             ><button id="generate" type="button" class="button quiet">
               Rebuild from recording
             </button>

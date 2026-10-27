@@ -1,4 +1,5 @@
 import { browser } from "wxt/browser";
+import { permittedDestination } from "@show-me-once/shared/mcp";
 import {
   sanitizeUrl,
   structuralSelector,
@@ -109,7 +110,30 @@ export default defineContentScript({
       );
     }
 
-    function observeAgent(step: SkillStep): AgentObservation {
+    function scopedTarget(target: HTMLElement, scope?: string[]): boolean {
+      if (!scope) return true;
+      const anchor = target.closest("a[href]");
+      if (
+        anchor instanceof HTMLAnchorElement &&
+        !permittedDestination(anchor.href, scope)
+      )
+        return false;
+      const form = target.closest("form");
+      if (
+        form instanceof HTMLFormElement &&
+        target.matches(
+          'button[type="submit"],button:not([type]),input[type="submit"]',
+        ) &&
+        !permittedDestination(form.action, scope)
+      )
+        return false;
+      return true;
+    }
+
+    function observeAgent(
+      step: SkillStep,
+      navigationScope?: string[],
+    ): AgentObservation {
       const observation: AgentObservation = {
         id: crypto.randomUUID(),
         url: sanitizeUrl(location.href)!,
@@ -134,6 +158,7 @@ export default defineContentScript({
         ),
       ]
         .filter(usable)
+        .filter((target) => scopedTarget(target, navigationScope))
         .filter(
           (target) =>
             !target
@@ -510,8 +535,11 @@ export default defineContentScript({
           return;
         }
         if ((message as { type?: string }).type === "observe-agent-page") {
-          const request = message as { step: SkillStep };
-          sendResponse(observeAgent(request.step));
+          const request = message as {
+            step: SkillStep;
+            navigationScope?: string[];
+          };
+          sendResponse(observeAgent(request.step, request.navigationScope));
           return;
         }
         if ((message as { type?: string }).type === "check-run-page") {
@@ -535,6 +563,7 @@ export default defineContentScript({
             approvalToken?: string;
             executionKey?: string;
             previewOnly?: boolean;
+            navigationScope?: string[];
           };
           const snapshot = agentSnapshot;
           const matched =
@@ -549,6 +578,20 @@ export default defineContentScript({
           ) {
             sendResponse({ status: "blocked" });
             return;
+          }
+          if (!scopedTarget(matched.element, request.navigationScope)) {
+            sendResponse({ status: "blocked" });
+            return;
+          }
+          if (request.step.kind === "key" && request.navigationScope) {
+            const form = matched.element.closest("form");
+            if (
+              form instanceof HTMLFormElement &&
+              !permittedDestination(form.action, request.navigationScope)
+            ) {
+              sendResponse({ status: "blocked" });
+              return;
+            }
           }
           const step = {
             ...request.step,

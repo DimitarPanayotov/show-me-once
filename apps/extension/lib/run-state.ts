@@ -3,6 +3,7 @@ import type { RunLog, RunState, SkillPlan } from "@show-me-once/shared";
 export function canAutoAdvance(run: RunState | null): run is RunState {
   return (
     !!run?.active &&
+    run.engine !== "external" &&
     run.mode === "automatic" &&
     !run.pauseReason &&
     run.inFlightStep === undefined &&

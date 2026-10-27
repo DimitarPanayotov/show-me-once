@@ -2,6 +2,8 @@
 
 Teach a browser task once, save it as a reusable skill, and run it again with new inputs.
 
+**Agent-led MCP preview (0.4.0):** export a skill to Codex's `.agents/skills` folder and let your existing coding-agent session call guarded browser tools through the paired extension. This uses a separate local relay, keeps approval/Pause/Stop in the extension, and does not launch another Codex decision process. [Download the preview](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.4.0-demo) · [Setup, architecture and verification limits](docs/mcp.md). Real browser acceptance of this new path is pending; the extension-led modes remain available.
+
 [Open the app](https://show-me-once-dimitar.vercel.app) · [Extension and local-agent helper](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.3.1-demo)
 
 **Current demo:** AI execution uses a local Codex helper and the user's existing ChatGPT sign-in. Node.js 24 and Codex CLI are required. This adds a helper setup step beyond loading the extension and signing into the library. [Agent setup and architecture](docs/agent.md).

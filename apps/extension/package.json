@@ -1,6 +1,6 @@
 {
   "name": "@show-me-once/extension",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,7 +17,8 @@
     "typecheck": "wxt prepare && tsc --noEmit"
   },
   "dependencies": {
-    "@show-me-once/shared": "workspace:*"
+    "@show-me-once/shared": "workspace:*",
+    "fflate": "0.8.2"
   },
   "devDependencies": {
     "typescript": "5.9.3",

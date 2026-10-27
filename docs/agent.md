@@ -39,7 +39,7 @@ The full SKILL.md and the new task request are passed as context. The executable
 
 Raw page HTML, document text, field values, passwords, tokens, and payment fields are not included in observations. Observations include at most 60 eligible control descriptors and a redacted URL. The task request may contain the user's new non-secret inputs. Requests, model responses, replacement values, and live labels are excluded from persistent application run logs. Codex invocations use ephemeral mode with shell, app, plugin, and subagent tools disabled. The model only proposes an action; browser operations run through the extension's existing guards.
 
-MCP is not required by this first adapter implementation. The shared tool/action contract can later be exposed through MCP for other agent applications. No MCP server is currently shipped.
+MCP is not required by this extension-led adapter implementation. Version 0.4 adds a separate [agent-led MCP path](mcp.md), in which your existing coding-agent session calls browser tools through the extension. That path does not launch this local Codex decision adapter. Its real browser acceptance remains pending under the non-browser testing constraint.
 
 ## Optional hosted providers
 
