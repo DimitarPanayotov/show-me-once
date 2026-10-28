@@ -1,5 +1,13 @@
 # Manual verification
 
+## Skill metadata synchronization — 0.6.2
+
+The Name/Description fields and the SKILL.md YAML header previously persisted independently, so a renamed skill could display one name and export another. Both editors now synchronize these values in either direction using a shared YAML parser. Partial edits remain editable without losing focus. Invalid headers block saving/export; the API also aligns the header to submitted metadata before creating a version. Existing saved versions and workflow bodies are not rewritten.
+
+Opening an editable legacy skill repairs only its local header and marks the draft unsaved; Save changes creates the corrected library version. Read-only shared versions and active runs are not migrated. The built-in example now uses its actual frontmatter metadata.
+
+All 90 automated tests pass, including the supplied name mismatch, forward/reverse edits, continuous focus, incomplete YAML, quotes/multiline descriptions, CRLF/BOM preservation, alias/duplicate-key rejection, and actual create/update API contracts with a fake database. Tests assert that recorded instructions and the executable plan remain unchanged. Workspace type checks and production builds pass. Chrome interaction remains a manual acceptance step under the no-browser-automation constraint. The Vercel production build and migration check passed with no pending migrations; the neutral live address serves the updated app. The rebuilt 18-file reviewer kit passes isolated setup and manifest/popup checks without modifying the user configuration.
+
 ## Moving-menu click regression — 0.6.1
 
 A candidate-recorded GitHub workflow stopped at step 15 of 18 after Recently updated sorting. The supplied SKILL.md contained consecutive clicks on the same menu item with long and shortened ancestor paths: the early pointer event and later click had been assigned different IDs after the menu element moved. The paused run correctly refused to invent a target after the menu closed.

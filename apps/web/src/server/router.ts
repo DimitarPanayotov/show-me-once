@@ -1,5 +1,5 @@
 import { ORPCError, os } from '@orpc/server';
-import { parseSkillPlan } from '@show-me-once/shared';
+import { parseSkillPlan, checkedSkillDocument } from '@show-me-once/shared';
 import { z } from 'zod';
 import { loginAccount, registerAccount, revokeSession } from './auth';
 import { db } from './db';
@@ -18,6 +18,11 @@ function requireUser(user: Identity | null): Identity {
 function checkedPlan(markdown: string) {
   try { return parseSkillPlan(markdown); }
   catch { throw new ORPCError('BAD_REQUEST', { message: 'The SKILL.md executable plan is invalid or unsafe.' }); }
+}
+
+function checkedDocument(input: { title: string; description: string; markdown: string }) {
+  try { return checkedSkillDocument({ ...input, name: input.title }).markdown; }
+  catch (error) { throw new ORPCError('BAD_REQUEST', { message: error instanceof Error ? error.message : 'Check the skill header.' }); }
 }
 
 const credentials = z.object({
@@ -102,15 +107,17 @@ export const router = {
     }),
     create: base.input(skillData).handler(async ({ input, context }) => {
       const user = requireUser(context.user);
-      const plan = checkedPlan(input.markdown);
+      const markdown = checkedDocument(input);
+      const plan = checkedPlan(markdown);
       return db().skill.create({ data: {
         ownerId: user.id, title: input.title, description: input.description,
-        versions: { create: { number: 1, markdown: input.markdown, parameters: plan.parameters } },
+        versions: { create: { number: 1, markdown, parameters: plan.parameters } },
       }, select: { id: true, currentVersion: true } });
     }),
     update: base.input(skillData.extend({ id: z.string().min(1) })).handler(async ({ input, context }) => {
       const user = requireUser(context.user);
-      const plan = checkedPlan(input.markdown);
+      const markdown = checkedDocument(input);
+      const plan = checkedPlan(markdown);
       return db().$transaction(async tx => {
         const updated = await tx.skill.updateMany({
           where: { id: input.id, ownerId: user.id },
@@ -119,7 +126,7 @@ export const router = {
         if (updated.count !== 1) throw new ORPCError('NOT_FOUND', { message: 'Owned skill not found.' });
         const skill = await tx.skill.findUniqueOrThrow({ where: { id: input.id } });
         await tx.skillVersion.create({ data: {
-          skillId: skill.id, number: skill.currentVersion, markdown: input.markdown, parameters: plan.parameters,
+          skillId: skill.id, number: skill.currentVersion, markdown, parameters: plan.parameters,
         } });
         return { id: skill.id, currentVersion: skill.currentVersion };
       });

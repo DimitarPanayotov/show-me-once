@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Download, LogOut, Plus, Save, Share2 } from 'lucide-react';
+import { editSkillDocument, readSkillMetadata, checkedSkillDocument, validateSkillMetadata } from '@show-me-once/shared';
 
 type User = { id: string; email: string; name: string | null };
 type SkillSummary = { id: string; title: string; description: string; ownerId: string; currentVersion: number; updatedAt: string; owner: { email: string; name: string | null } };
@@ -39,6 +40,20 @@ export default function Home() {
   const [description, setDescription] = useState('');
   const [markdown, setMarkdown] = useState('');
   const [shareEmail, setShareEmail] = useState('');
+  let metadataError = '';
+  if (markdown || title || description) {
+    try {
+      const metadata = readSkillMetadata(markdown);
+      validateSkillMetadata(metadata);
+      if ((!selected || selected.ownerId === user?.id) && (metadata.name !== title || metadata.description !== description))
+        throw new Error('Name and description must match the SKILL.md header. Edit either field to sync it.');
+    } catch (error) { metadataError = error instanceof Error ? error.message : 'Check the skill header.'; }
+  }
+
+  function editDocument(field: 'name' | 'description' | 'markdown', value: string) {
+    const next = editSkillDocument({ name: title, description, markdown }, field, value);
+    setTitle(next.name); setDescription(next.description); setMarkdown(next.markdown);
+  }
 
   async function refreshLibrary() {
     const [skillList, runList] = await Promise.all([
@@ -88,7 +103,15 @@ export default function Home() {
     try {
       const detail = await rpc<SkillDetail>('skill/get', { id: skillId });
       setSelected(detail); setTitle(detail.title); setDescription(detail.description);
-      setMarkdown(detail.versions[0]?.markdown ?? '');
+      const original = detail.versions[0]?.markdown ?? '';
+      let document = original;
+      if (detail.ownerId === user?.id) {
+        try {
+          document = checkedSkillDocument({ name: detail.title, description: detail.description, markdown: original }).markdown;
+        } catch { /* Keep incomplete documents editable. */ }
+      }
+      setMarkdown(document);
+      if (document !== original) setNotice('Name and description synchronized. Save a new version to update your library.');
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not open the skill.'); }
     finally { setBusy(false); }
   }
@@ -96,7 +119,8 @@ export default function Home() {
   async function saveSkill(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setSaving(true); setNotice('');
     try {
-      const input = { title, description, markdown };
+      const document = checkedSkillDocument({ name: title, description, markdown });
+      const input = { title: document.name, description: document.description, markdown: document.markdown };
       const result = selected
         ? await rpc<{ id: string }>('skill/update', { id: selected.id, ...input })
         : await rpc<{ id: string }>('skill/create', input);
@@ -125,15 +149,15 @@ export default function Home() {
     if (!file) return;
     void file.text().then(text => {
       setMarkdown(text);
-      const name = /^name:\s*([^\r\n]+)/m.exec(text)?.[1]?.trim();
-      const summary = /^description:\s*(.+)$/m.exec(text)?.[1]?.trim().replace(/^"|"$/g, '');
-      if (name) setTitle(name);
-      if (summary) setDescription(summary);
+      try {
+        const metadata = readSkillMetadata(text);
+        setTitle(metadata.name); setDescription(metadata.description); setNotice('');
+      } catch (error) { setNotice(error instanceof Error ? error.message : 'Check the imported header.'); }
     });
   }
 
   function downloadSkill() {
-    if (!selected) return;
+    if (!selected || metadataError) return;
     const url = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown' }));
     const link = document.createElement('a'); link.href = url; link.download = 'SKILL.md'; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -169,10 +193,10 @@ export default function Home() {
         <div className="mt-8 grid gap-7 lg:grid-cols-[300px_minmax(0,1fr)]">
           <aside className="space-y-6">
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between gap-2"><h2 className="text-xl font-semibold">Skill library</h2><Button size="sm" onClick={newSkill}><Plus />New skill</Button></div>
+              <div className="flex items-center justify-between gap-2"><h2 className="text-xl font-semibold">Skill library</h2><Button size="sm" disabled={busy} onClick={newSkill}><Plus />New skill</Button></div>
               <p className="mt-2 text-sm text-slate-600">Owned and shared skills appear here.</p>
               <div className="mt-4 space-y-2">{skills.length === 0 ? <p className="text-sm text-slate-500">No skills yet. Import a SKILL.md to begin.</p> : skills.map(skill => (
-                <button key={skill.id} onClick={() => void openSkill(skill.id)} className={`w-full rounded-xl border p-3 text-left text-sm transition hover:border-blue-400 ${selected?.id === skill.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200'}`}>
+                <button key={skill.id} disabled={busy} onClick={() => void openSkill(skill.id)} className={`w-full rounded-xl border p-3 text-left text-sm transition hover:border-blue-400 ${selected?.id === skill.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200'}`}>
                   <strong className="block text-slate-900">{skill.title}</strong>
                   <span className="mt-1 block text-slate-500">v{skill.currentVersion} · {skill.ownerId === user.id ? 'Owned by you' : `Shared by ${skill.owner.email}`}</span>
                 </button>
@@ -197,13 +221,14 @@ export default function Home() {
               <p className="mt-2 text-sm text-slate-600">Import the SKILL.md generated by the extension. Saving an edit creates a new version.</p>
               {selected && <p className="mt-3 text-sm text-slate-500">Current version: {selected.currentVersion} · Owner: {selected.owner.email}</p>}
               <form onSubmit={event => void saveSkill(event)} className="mt-6 space-y-4">
-                <label className="block text-sm font-medium">Name<input className={`${fieldClass} mt-1`} required maxLength={80} value={title} disabled={!!selected && selected.ownerId !== user.id} onChange={event => setTitle(event.target.value)} /></label>
-                <label className="block text-sm font-medium">Description<input className={`${fieldClass} mt-1`} required maxLength={300} value={description} disabled={!!selected && selected.ownerId !== user.id} onChange={event => setDescription(event.target.value)} /></label>
-                {(!selected || selected.ownerId === user.id) && <label className="block text-sm font-medium">Import SKILL.md<input className="mt-2 block w-full text-sm" type="file" accept=".md,text/markdown,text/plain" onChange={event => importMarkdown(event.target.files?.[0])} /></label>}
-                <label className="block text-sm font-medium">SKILL.md<textarea className={`${fieldClass} mt-1 min-h-72 font-mono text-xs`} required value={markdown} readOnly={!!selected && selected.ownerId !== user.id} onChange={event => setMarkdown(event.target.value)} /></label>
+                <label className="block text-sm font-medium">Name<input className={`${fieldClass} mt-1`} required maxLength={80} value={title} disabled={busy || (!!selected && selected.ownerId !== user.id)} onChange={event => editDocument('name', event.target.value)} /></label>
+                <label className="block text-sm font-medium">Description<input className={`${fieldClass} mt-1`} required maxLength={300} value={description} disabled={busy || (!!selected && selected.ownerId !== user.id)} onChange={event => editDocument('description', event.target.value)} /></label>
+                {(!selected || selected.ownerId === user.id) && <label className="block text-sm font-medium">Import SKILL.md<input className="mt-2 block w-full text-sm" type="file" disabled={busy} accept=".md,text/markdown,text/plain" onChange={event => importMarkdown(event.target.files?.[0])} /></label>}
+                <label className="block text-sm font-medium">SKILL.md<textarea className={`${fieldClass} mt-1 min-h-72 font-mono text-xs`} required value={markdown} readOnly={busy || (!!selected && selected.ownerId !== user.id)} onChange={event => editDocument('markdown', event.target.value)} /></label>
+                {metadataError && <p className="text-sm text-red-700" role="status">{metadataError}</p>}
                 <div className="flex flex-wrap gap-2">
-                  {(!selected || selected.ownerId === user.id) && <Button type="submit" disabled={busy}><Save />{saving ? 'Saving…' : selected ? 'Save new version' : 'Save skill'}</Button>}
-                  {selected && <Button type="button" variant="outline" onClick={downloadSkill}><Download />Download SKILL.md</Button>}
+                  {(!selected || selected.ownerId === user.id) && <Button type="submit" disabled={busy || !!metadataError}><Save />{saving ? 'Saving…' : selected ? 'Save new version' : 'Save skill'}</Button>}
+                  {selected && <Button type="button" variant="outline" disabled={!!metadataError} onClick={downloadSkill}><Download />Download SKILL.md</Button>}
                 </div>
               </form>
               {selected && <div className="mt-6 border-t border-slate-200 pt-5"><h3 className="font-semibold">Versions</h3><p className="mt-2 text-sm text-slate-600">{selected.versions.map(version => `v${version.number}`).join(' · ')}</p></div>}

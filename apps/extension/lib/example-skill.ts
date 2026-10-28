@@ -1,4 +1,4 @@
-import { createSkillMarkdown, type Recording } from "@show-me-once/shared";
+import { createSkillMarkdown, readSkillMetadata, type Recording } from "@show-me-once/shared";
 import type { CatalogDraft } from "./skill-catalog.ts";
 
 export const EXAMPLE_ID = "example:github-issue-triage";
@@ -124,9 +124,7 @@ markdown = markdown.replace(
 );
 export const exampleDraft: CatalogDraft = {
   sourceRecordingId: EXAMPLE_ID,
-  name: "GitHub issue triage",
-  description:
-    "Filter public issues, sort by recent activity, and open a matching issue.",
+  ...readSkillMetadata(markdown),
   markdown,
   readOnly: true,
   dirty: false,

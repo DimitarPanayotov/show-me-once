@@ -4,11 +4,11 @@ The primary product is [request → Run inside the extension](agent.md). This pa
 
 Your existing agent owns the conversation, model and decisions. MCP supplies guarded browser tools and never starts another Codex/model process. This integration does not drive the main Run button.
 
-## One-time setup (0.6.1)
+## One-time setup (0.6.2)
 
 Load the reviewer's extension folder in Chrome, then open its popup. Connection steps open inline on first use; there is no separate HTML guide. You need Chrome, Node.js 24 and a local coding agent supporting MCP over stdio. Codex is the configured example.
 
-1. Load/reload the kit's **extension** folder in Chrome (source builds: apps/extension/.output/chrome-mv3). Confirm **0.6.1**.
+1. Load/reload the kit's **extension** folder in Chrome (source builds: apps/extension/.output/chrome-mv3). Confirm **0.6.2**.
 2. Open **Skills & activity → External coding agent (optional) → Connect your coding agent**, then **Copy ID**.
 3. Open **connector/Connect with Codex.cmd** on Windows, or run **node setup.mjs** in the connector folder on macOS/Linux. Paste the ID and choose Codex. Setup registers the connection automatically and prints a private pairing code.
 4. Restart/reconnect Codex. Paste the code into the extension and choose **Connect coding agent**.
@@ -20,7 +20,7 @@ For source builds, run node dist/mcp/setup.mjs interactively after pnpm mcp:bund
 
 Codex's /mcp should show seven tools: list_skills, get_skill, start_skill, observe_run, act, get_run_status, stop_run. Configuring a server does not refresh an already-running session. [Official configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
-Existing 0.4.1 users can keep their installed extension folder, reload it to 0.6.1, and restart/reconnect their agent to load the seven tools; pairing is retained.
+Existing 0.4.1 users can keep their installed extension folder, reload it to 0.6.2, and restart/reconnect their agent to load the seven tools; pairing is retained.
 
 Pairing survives browser/agent restarts. The extension retries automatically, or immediately through **Check connection**. **Forget connection** removes pairing. Close the old manual relay once when upgrading from 0.4.0; it must not occupy port 4320.
 

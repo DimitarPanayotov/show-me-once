@@ -2,7 +2,7 @@
 
 Record a browser task once, then type a new request and click Run inside the extension. Its agent executes the skill automatically while you watch, approve protected actions, pause or stop.
 
-[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.6.1](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.6.1-demo) · [Setup and demo](docs/agent.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
+[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.6.2](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.6.2-demo) · [Setup and demo](docs/agent.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
 
 ## Start here
 

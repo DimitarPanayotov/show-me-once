@@ -9,7 +9,7 @@ import {
   EXAMPLE_ID,
   keepLocalDraft,
 } from "../lib/skill-catalog.ts";
-import { parseSkillPlan } from "@show-me-once/shared";
+import { parseSkillPlan, readSkillMetadata } from "@show-me-once/shared";
 
 // Execute the actual popup against an in-memory document. No Chrome or browser-control tool.
 const build = await rolldown({
@@ -61,6 +61,7 @@ async function fixture({
   signedIn = false,
   provider = "openai",
   nativeReady = true,
+  beforeSave = async () => {},
 } = {}) {
   const window = new Window({ url: "https://extension.example/popup.html" });
   window.document.write(html.replace(/<script[\s\S]*?<\/script>/, ""));
@@ -186,8 +187,10 @@ async function fixture({
           delete session.agentApiKey;
           return { ok: true };
         }
-        if (message.type === "library-save")
-          return { id: "saved-skill", currentVersion: 1 };
+        if (message.type === "library-save") {
+          await beforeSave();
+          return { id: "saved-skill", currentVersion: message.remoteSkillId ? (local.skillDraft?.savedVersion ?? 0) + 1 : 1 };
+        }
         if (message.type === "start-run") {
           await storage.local.set({
             runPlan: parseSkillPlan(message.markdown),
@@ -467,6 +470,72 @@ test("a recorded skill is usable without an account and continuous edits keep fo
     await f.close();
   }
 });
+test("saved name mismatch is repaired locally and saving persists a coherent new document", async () => {
+  const original = exampleDraft.markdown;
+  const f = await fixture({ signedIn: true, draft: {
+    ...exampleDraft, sourceRecordingId: 'recorded', name: 'github-issue-triage-test-61',
+    description: 'My customized description.', readOnly: false, remoteSkillId: 'saved-skill', savedVersion: 1,
+  } });
+  try {
+    assert.equal(f.local.skillDraft.dirty, true);
+    assert.equal(f.element('draft-label').textContent, 'Draft');
+    assert.match(f.element('notice').textContent, /Unsaved changes/);
+    const edited = f.element('skill-markdown').value;
+    assert.deepEqual(readSkillMetadata(edited), { name: 'github-issue-triage-test-61', description: 'My customized description.' });
+    assert.deepEqual(parseSkillPlan(edited), parseSkillPlan(original));
+    assert.equal(edited.slice(edited.indexOf('# Instructions')), original.slice(original.indexOf('# Instructions')));
+    f.element('save-library').click();
+    await until(() => f.local.skillDraft.dirty === false);
+    assert.equal(f.local.skillDraft.savedVersion, 2);
+    const save = f.messages.find(m => m.type === 'library-save');
+    assert.equal(readSkillMetadata(save.markdown).name, save.name);
+    assert.equal(readSkillMetadata(save.markdown).description, save.description);
+    assert.equal(f.element('save-library').textContent, '✓ Saved to library');
+  } finally { await f.close(); }
+});
+
+test("a pending save locks editing and task switching until the exact submitted snapshot is saved", async () => {
+  let complete;
+  const pending = new Promise(resolve => { complete = resolve; });
+  const f = await fixture({ signedIn: true, beforeSave: () => pending,
+    draft: { ...exampleDraft, sourceRecordingId: 'recorded', readOnly: false, dirty: true },
+  });
+  try {
+    f.element('save-library').click();
+    await until(() => f.messages.some(m => m.type === 'library-save'));
+    for (const id of ['skill-name', 'skill-description', 'skill-markdown', 'start', 'try-example', 'run-start', 'generate', 'library-load'])
+      assert.equal(f.element(id).disabled, true, id + ' must be locked while saving');
+    complete();
+    await until(() => f.local.skillDraft.dirty === false && !f.element('skill-name').disabled);
+    const submitted = f.messages.find(m => m.type === 'library-save');
+    assert.equal(f.local.skillDraft.markdown, submitted.markdown);
+  } finally { complete(); await f.close(); }
+});
+
+test("editing either metadata surface keeps the popup focused and incomplete YAML remains editable", async () => {
+  const f = await fixture({ draft: { ...exampleDraft, sourceRecordingId: 'recorded', readOnly: false, dirty: true } });
+  try {
+    const input = f.element('skill-name');
+    input.focus(); input.value = 'My renamed task';
+    input.dispatchEvent(new f.window.Event('input', { bubbles: true }));
+    await until(() => readSkillMetadata(f.local.skillDraft.markdown).name === 'My renamed task');
+    assert.equal(f.window.document.activeElement, input);
+    const textarea = f.element('skill-markdown');
+    textarea.focus();
+    textarea.value = textarea.value.replace('name: My renamed task', 'name: direct-edit');
+    textarea.dispatchEvent(new f.window.Event('input', { bubbles: true }));
+    await until(() => f.element('skill-name').value === 'direct-edit');
+    assert.equal(f.window.document.activeElement, textarea);
+    textarea.value = '---\nname: "unfinished';
+    textarea.dispatchEvent(new f.window.Event('input', { bubbles: true }));
+    await until(() => f.element('save-library').disabled);
+    assert.equal(f.element('download').disabled, true);
+    assert.equal(textarea.value, '---\nname: "unfinished');
+    assert.equal(f.window.document.activeElement, textarea);
+    assert.match(f.element('metadata-error').textContent, /header/);
+  } finally { await f.close(); }
+});
+
 test("active agent runs expose action-specific approval and Pause/Resume/Stop without a manual step button", async () => {
   const run = {
     id: "run-one",

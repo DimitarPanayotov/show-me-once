@@ -21,7 +21,7 @@ const bundle = await rolldown({
       },
       load(id) {
         if (id === "\0./db")
-          return 'export function db(){throw new Error("Agent requests must not access the database.")}';
+          return 'export function db(){if(globalThis.__skillMetadataDb)return globalThis.__skillMetadataDb;throw new Error("Agent requests must not access the database.")}';
         if (id === "\0./auth")
           return "export const loginAccount=()=>{},registerAccount=()=>{},revokeSession=()=>{};";
       },

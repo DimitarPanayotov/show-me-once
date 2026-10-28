@@ -1,3 +1,5 @@
+export { readSkillMetadata, writeSkillMetadata, validateSkillMetadata, editSkillDocument, checkedSkillDocument, type SkillMetadata } from './metadata.ts';
+
 export type RecordedAction = {
   id: string;
   at: string;

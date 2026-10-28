@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRouterClient } from "@orpc/server";
-import { createSkillMarkdown } from "@show-me-once/shared";
+import { createSkillMarkdown, parseSkillPlan, readSkillMetadata } from "@show-me-once/shared";
 import { router } from "../src/server/router";
 
 const markdown = createSkillMarkdown(
@@ -43,6 +43,38 @@ const input = {
     ],
   },
 };
+
+test("library create and update align saved metadata without changing the executable workflow", async () => {
+  const captures: { created?: any; updated?: any; version?: any } = {};
+  const transaction = {
+    skill: {
+      updateMany: async (args: any) => { captures.updated = args; return { count: 1 }; },
+      findUniqueOrThrow: async () => ({ id: 'saved-skill', currentVersion: 2 }),
+    },
+    skillVersion: { create: async (args: any) => { captures.version = args.data; } },
+  };
+  const globals = globalThis as typeof globalThis & { __skillMetadataDb?: unknown };
+  globals.__skillMetadataDb = {
+    skill: { create: async (args: any) => { captures.created = args.data; return { id: 'saved-skill', currentVersion: 1 }; } },
+    $transaction: async (fn: (tx: unknown) => unknown) => fn(transaction),
+  };
+  try {
+    const data = { title: 'github-issue-triage-test-61', description: 'My revised description.', markdown };
+    await client(true).skill.create(data);
+    await client(true).skill.update({ ...data, id: 'saved-skill' });
+    for (const saved of [captures.created.versions.create, captures.version]) {
+      assert.deepEqual(readSkillMetadata(saved.markdown), { name: data.title, description: data.description });
+      assert.deepEqual(parseSkillPlan(saved.markdown), parseSkillPlan(markdown));
+      assert.equal(saved.markdown.slice(saved.markdown.indexOf('# Instructions')), markdown.slice(markdown.indexOf('# Instructions')));
+    }
+    assert.equal(captures.version.number, 2);
+    assert.equal(captures.updated.where.id, 'saved-skill');
+    assert.ok(captures.updated.where.ownerId);
+    assert.equal(captures.updated.data.title, data.title);
+    await assert.rejects(client(false).skill.create(data), /Sign in/);
+    await assert.rejects(client(true).skill.create({ ...data, markdown: '---\nname: "unfinished\n' + markdown }), /header/);
+  } finally { delete globals.__skillMetadataDb; }
+});
 const client = (signedIn: boolean) =>
   createRouterClient(router, {
     context: {

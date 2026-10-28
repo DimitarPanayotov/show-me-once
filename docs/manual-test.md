@@ -1,6 +1,6 @@
-# Manual acceptance — 0.6.1
+# Manual acceptance — 0.6.2
 
-1. Reload the existing extension and confirm 0.6.1. External coding agent must remain optional and collapsed. No separate HTML guide.
+1. Reload the existing extension and confirm 0.6.2. External coding agent must remain optional and collapsed. No separate HTML guide.
 2. Under Agent settings either save a personal OpenAI/Anthropic key (session only), or install subscription-helper/Install subscription helper.cmd once for the current extension ID and choose Check subscription. No terminal or external agent chat should remain necessary.
 3. Sign into the library. Choose Try GitHub issue triage. In the extension type: Find open issues in microsoft/vscode about terminal with label bug. Sort by recently updated and open the first matching issue. Click Run.
 4. Check all four fields. Before search, verify an action-specific Submit search preview identifying the Search button and consequence. Approve once. Remaining steps must continue automatically without a chat message or Next button.
@@ -15,3 +15,5 @@
 Record actual URLs, tool results and visible outcomes. Automated tests cover controlled documents and simulated Chrome services; they do not establish live Chrome or model performance. No browser-control tool is used under the current user constraint. The candidate writes their own short report and records the demo video.
 
 Recording regression: select a dropdown item whose menu is moved/closed by the page during the gesture. Its pointerdown and click must produce one recorded action. A second deliberate click and keyboard-only click must still record independently. Existing duplicate steps in saved skills require an explicit edited version; the recorder fix does not silently rewrite stored skills or active runs.
+
+Metadata regression (0.6.2): open an owned saved skill. If its field name differed from SKILL.md, confirm they now match and the badge says Draft. Save changes once, then reopen it and confirm Saved. Rename the skill and change its description; check both header values update immediately. Edit those header values directly and check the fields update without losing focus. Download SKILL.md and compare the values. The instructions/parameters/JSON steps must be unchanged. Repeat rename/save/reopen in the web library. An unfinished YAML edit must stay editable and show a clear error rather than exporting inconsistent metadata.

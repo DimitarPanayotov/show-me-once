@@ -2,6 +2,11 @@ import { browser } from "wxt/browser";
 import {
   createSkillMarkdown,
   parseSkillPlan,
+  readSkillMetadata,
+  writeSkillMetadata,
+  validateSkillMetadata,
+  editSkillDocument,
+  checkedSkillDocument,
   type Recording,
   type RunState,
   type SkillPlan,
@@ -72,7 +77,6 @@ let saving = false;
 let saveAfterSignIn = false;
 let renderRevision = 0;
 let activeRun: RunState | null = null;
-let lastMarkdown = "";
 let approvalToken: string | undefined;
 let approving = false;
 let mcpConnected = false;
@@ -120,6 +124,7 @@ function renderExecution() {
           ? "Sign in to run"
           : "Run";
   button.disabled =
+    saving ||
     runStarting ||
     !!activeRun?.active ||
     !currentDraft ||
@@ -296,14 +301,20 @@ function goRun() {
 }
 
 function showParameters(markdown: string) {
-  if (lastMarkdown === markdown) return;
-  lastMarkdown = markdown;
   try {
+    const metadata = readSkillMetadata(markdown);
+    validateSkillMetadata(metadata);
+    if (!currentDraft?.readOnly && (metadata.name !== currentDraft?.name || metadata.description !== currentDraft?.description))
+      throw new Error('Name and description must match the SKILL.md header. Edit either field to sync it.');
+    element("metadata-error").textContent = "";
     parseSkillPlan(markdown);
     planValid = true;
-  } catch {
+  } catch (cause) {
     planValid = false;
+    element("metadata-error").textContent = cause instanceof Error ? cause.message : 'Check the skill document.';
   }
+  element<HTMLButtonElement>("download").disabled = !planValid;
+  element<HTMLButtonElement>("download-mcp").disabled = !planValid;
 }
 function renderHandoff() {
   const nextKey = currentDraft?.sourceRecordingId ?? "";
@@ -335,7 +346,7 @@ function renderHandoff() {
     runStarting ||
     !planValid;
   element<HTMLButtonElement>("try-example").disabled =
-    runStarting || !!activeRun?.active || !!currentRecording?.active;
+    saving || runStarting || !!activeRun?.active || !!currentRecording?.active;
   element("handoff-help").textContent = mcpConnected
     ? "Open the task's starting page, then paste this request into your coding agent. It can read the skill directly."
     : "Connect your coding agent above first. Your skill stays here.";
@@ -364,15 +375,8 @@ function renderHandoff() {
 }
 
 function showDraft(draft: SkillDraft | null) {
-  if (
-    (draft?.remoteSkillId ?? draft?.sourceRecordingId) !==
-    (currentDraft?.remoteSkillId ?? currentDraft?.sourceRecordingId)
-  ) {
-    lastMarkdown = "";
-  }
   currentDraft = draft;
   if (!draft) {
-    lastMarkdown = "";
     planValid = false;
     return;
   }
@@ -427,7 +431,18 @@ function renderSave() {
           : "Save to library";
   notice.textContent = saved
     ? `Saved to your library · version ${currentDraft!.savedVersion}.`
-    : "";
+    : currentDraft?.remoteSkillId && currentDraft.dirty
+      ? "Unsaved changes. Save changes to update your library."
+      : "";
+  for (const control of [skillName, skillDescription, skillMarkdown])
+    control.disabled = saving || !!activeRun?.active || runStarting || !!currentDraft?.readOnly;
+  if (saving) {
+    start.disabled = true;
+    element<HTMLButtonElement>("run-start").disabled = true;
+    element<HTMLButtonElement>("try-example").disabled = true;
+    libraryLoad.disabled = librarySkills.disabled = true;
+    element<HTMLButtonElement>("generate").disabled = true;
+  }
   element("try-skill").hidden = view === "run";
 }
 
@@ -545,12 +560,12 @@ function renderRun(
   skillName.disabled =
     skillDescription.disabled =
     skillMarkdown.disabled =
-      active || runStarting || !!currentDraft?.readOnly;
+      active || runStarting || saving || !!currentDraft?.readOnly;
   element<HTMLButtonElement>("generate").disabled =
-    active || runStarting || !!currentDraft?.readOnly;
+    active || runStarting || saving || !!currentDraft?.readOnly;
   libraryLoad.disabled =
-    active || runStarting || librarySkills.options.length === 0;
-  librarySkills.disabled = active || librarySkills.options.length === 0;
+    active || runStarting || saving || librarySkills.options.length === 0;
+  librarySkills.disabled = active || saving || librarySkills.options.length === 0;
   if (active && run) {
     const confirmation = run.confirmationStep === run.nextStep;
     const preview =
@@ -681,7 +696,7 @@ async function render() {
     : element("record-start-slot");
   if (start.parentElement !== startSlot) startSlot.append(start);
   start.hidden = recording;
-  start.disabled = !!run?.active || runStarting;
+  start.disabled = !!run?.active || runStarting || saving;
   start.textContent = review ? "Record another task" : "Start recording";
   start.className = `button ${review ? "quiet" : "primary"} full`;
   element("record-active").hidden = !recording;
@@ -749,14 +764,13 @@ async function render() {
       agentError.message ?? "Check the agent connection and retry.";
 }
 
-function persistDraft() {
-  if (!currentDraft || currentDraft.readOnly) return;
+function persistDraft(event: Event) {
+  if (!currentDraft || currentDraft.readOnly || saving) return;
   ++renderRevision;
+  const input = event.currentTarget as HTMLInputElement | HTMLTextAreaElement;
+  const field = input === skillName ? "name" : input === skillDescription ? "description" : "markdown";
   const draft: SkillDraft = {
-    ...currentDraft,
-    name: skillName.value,
-    description: skillDescription.value,
-    markdown: skillMarkdown.value,
+    ...editSkillDocument(currentDraft, field, input.value),
     dirty: true,
   };
   element("save-error").textContent = "";
@@ -802,18 +816,16 @@ async function saveDraft(copyExample = false): Promise<SkillDraft | undefined> {
   element("save-error").textContent = "";
   renderSave();
   try {
+    const snapshot = checkedSkillDocument(currentDraft);
     const saved = (await browser.runtime.sendMessage({
       type: "library-save",
-      name: skillName.value.trim(),
-      description: skillDescription.value.trim(),
-      markdown: skillMarkdown.value,
-      remoteSkillId: currentDraft.remoteSkillId,
+      name: snapshot.name,
+      description: snapshot.description,
+      markdown: snapshot.markdown,
+      remoteSkillId: snapshot.remoteSkillId,
     })) as { id: string; currentVersion: number };
     const draft: SkillDraft = {
-      ...currentDraft,
-      name: skillName.value.trim(),
-      description: skillDescription.value.trim(),
-      markdown: skillMarkdown.value,
+      ...snapshot,
       remoteSkillId: saved.id,
       savedVersion: saved.currentVersion,
       dirty: false,
@@ -836,6 +848,7 @@ async function saveDraft(copyExample = false): Promise<SkillDraft | undefined> {
   } finally {
     saving = false;
     renderSave();
+    await render();
   }
 }
 
@@ -965,7 +978,7 @@ element("download").addEventListener("click", () => {
 element("download-mcp").addEventListener("click", () => {
   try {
     const markdown = withMcpInstructions(skillMarkdown.value);
-    const name = /^name:\s*([a-z0-9-]{1,64})\s*$/m.exec(markdown)?.[1];
+    const name = readSkillMetadata(markdown).name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0,64);
     if (!name)
       throw new Error(
         "The SKILL.md frontmatter needs a lowercase name with hyphens.",
@@ -1089,8 +1102,23 @@ element("account-logout").addEventListener("click", () => {
 element("library-refresh").addEventListener("click", () => {
   void refreshLibrary().catch(report);
 });
+async function repairSavedMetadata() {
+  const stored = await browser.storage.local.get(["skillDraft", "runState"]);
+  const draft = stored.skillDraft as SkillDraft | undefined;
+  if (!draft || draft.readOnly || (stored.runState as RunState | undefined)?.active) return;
+  try {
+    // Existing versions stay immutable. Repair only the editable local copy.
+    readSkillMetadata(draft.markdown);
+    validateSkillMetadata(draft);
+    const markdown = writeSkillMetadata(draft.markdown, draft);
+    if (markdown !== draft.markdown)
+      await browser.storage.local.set({ skillDraft: { ...draft, markdown, dirty: true } });
+  } catch { /* Incomplete documents stay editable. */ }
+}
+
 async function openSkill(skillId: string) {
   await browser.runtime.sendMessage({ type: "mcp-open-skill", skillId });
+  await repairSavedMetadata();
   goRun();
   await render();
   await refreshLibrary();
@@ -1237,6 +1265,7 @@ void (async () => {
       skillId: EXAMPLE_ID,
     });
   view = saved.popupView === "record" ? "record" : "run";
+  await repairSavedMetadata();
   await render();
   await refreshMcp();
   await refreshAgentSettings();
