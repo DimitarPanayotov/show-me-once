@@ -1,5 +1,13 @@
 # Manual verification
 
+## MCP start diagnostics — extension 0.7.1
+
+The transport previously replaced every thrown start error with a generic rejection, hiding whether another task was active, an edited cloud draft needed saving, the starting page was wrong or Chrome denied page access. Known application errors now produce fixed, actionable messages in both MCP results and the extension. Unexpected exception text remains private. A persisted run whose start response fails returns its ID as an unknown outcome rather than encouraging a duplicate start.
+
+The actual-worker test starts the built-in GitHub skill while signed out, on Advanced Search, with no backend/model request. Additional worker tests reproduce start-page and unsaved-cloud-draft blockers and assert that no new run ID is invented and edits remain intact. Error redaction and separate connection/run-error popup behavior are covered. Imported MCP drafts now retain their frontmatter name/description consistently.
+
+All 101 automated tests, workspace type checks and the extension/reviewer build pass. The MCP package remains 0.7.0; no server registration or web deployment is needed for this extension-only correction. The reported live failure needs a retry with the new diagnostic message to establish its exact cause.
+
 ## Local MCP connection — 0.7.0
 
 The optional MCP setup now provides an agent picker: Codex/Claude Code receive a one-time registration command, Cursor/VS Code receive install links, and other clients receive configuration. Commands launch a self-contained versioned download through npx, eliminating dependency on an extracted folder path. Node.js 24 remains required. The primary in-extension request/Run settings are independent.

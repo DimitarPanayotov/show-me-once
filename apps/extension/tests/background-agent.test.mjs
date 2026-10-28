@@ -75,13 +75,30 @@ async function until(check) {
   assert.fail("Worker did not reach the expected state.");
 }
 
-async function fixture({ holdModel = false, provider = "openai" } = {}) {
-  const local = { agentConfig: { provider, model: "test-model" } },
+async function fixture({ holdModel = false, provider = "openai", signedIn = true, mcp = false, initialTabUrl = 'https://example.com', draft, failMcpSession = false } = {}) {
+  const mcpBridgeId = randomUUID(), mcpConnectionId = randomUUID(), mcpControllerId = randomUUID();
+  const mcpReplies = new Map();
+  let mcpSocket;
+  class Socket {
+    static OPEN = 1;
+    readyState = 0;
+    constructor() { mcpSocket = this; queueMicrotask(() => { this.readyState = 1; this.onopen?.(); }); }
+    send(text) {
+      const value = JSON.parse(text);
+      if (value.type === 'hello') queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ type: 'connected', bridgeId: mcpBridgeId, connectionId: mcpConnectionId }) }));
+      else if (value.type === 'result') { mcpReplies.get(value.id)?.(value.result); mcpReplies.delete(value.id); }
+    }
+    close() { this.readyState = 3; this.onclose?.(); }
+  }
+  const local = { agentConfig: { provider, model: "test-model" },
+      ...(draft ? { skillDraft: structuredClone(draft) } : {}),
+      ...(mcp ? { mcpPair: { token: 'test-only-mcp-credential-that-is-long-enough', bridgeId: mcpBridgeId, instanceId: randomUUID() } } : {}),
+    },
     session = {
-      account: {
+      ...(signedIn ? { account: {
         token: "test-session",
         user: { id: "owner", email: "owner@example.test" },
-      },
+      } } : {}),
       ...(provider === "openai"
         ? { agentApiKey: { provider: "openai", key } }
         : {}),
@@ -95,7 +112,10 @@ async function fixture({ holdModel = false, provider = "openai" } = {}) {
               (Array.isArray(keys) ? keys : [keys]).map((k) => [k, store[k]]),
             ),
       ),
-    set: async (values) => Object.assign(store, structuredClone(values)),
+    set: async (values) => {
+      if (failMcpSession && store === session && values.externalSession) throw new Error('Private storage failure password=not-for-the-agent');
+      return Object.assign(store, structuredClone(values));
+    },
     remove: async (keys) => {
       for (const k of Array.isArray(keys) ? keys : [keys]) delete store[k];
     },
@@ -107,7 +127,7 @@ async function fixture({ holdModel = false, provider = "openai" } = {}) {
     decisions = [];
   let handler,
     tabUpdated,
-    tabUrl = "https://example.com",
+    tabUrl = initialTabUrl,
     value = "",
     selection,
     modelStarted = false;
@@ -260,6 +280,7 @@ async function fixture({ holdModel = false, provider = "openai" } = {}) {
     },
   };
   const fetcher = async (url, options) => {
+    if (url === 'http://127.0.0.1:4320/pair') return Response.json({ bridgeId: mcpBridgeId });
     const path = new URL(url).pathname.replace("/api/rpc/", "");
     const input = JSON.parse(options.body).json;
     const envelope = (json) => Response.json({ json });
@@ -321,6 +342,7 @@ async function fixture({ holdModel = false, provider = "openai" } = {}) {
     AbortController,
     AbortSignal,
     console,
+    WebSocket: Socket,
     setTimeout: schedule,
     clearTimeout: (timer) => {
       clearTimeout(timer);
@@ -343,6 +365,14 @@ async function fixture({ holdModel = false, provider = "openai" } = {}) {
     dispatches,
     decisions,
     post,
+    async callMcp(command) {
+      await post({ type: 'mcp-connect' });
+      const id = randomUUID();
+      return new Promise(resolve => {
+        mcpReplies.set(id, resolve);
+        mcpSocket.onmessage({ data: JSON.stringify({ type: 'command', id, controllerId: mcpControllerId, bridgeId: mcpBridgeId, connectionId: mcpConnectionId, command }) });
+      });
+    },
     value: () => value,
     modelStarted: () => modelStarted,
     resumeModel: () => {
@@ -356,10 +386,56 @@ async function fixture({ holdModel = false, provider = "openai" } = {}) {
       handler(m, { id: browser.runtime.id, tab: { id: 1 }, url: tabUrl }),
     close: async () => {
       await post({ type: "stop-run" });
+      await post({ type: 'mcp-disconnect' });
       for (const timer of timers) clearTimeout(timer);
     },
   };
 }
+
+test('signed-out MCP can start the built-in GitHub task on its starting page without model or backend access', async () => {
+  const f = await fixture({ signedIn: false, mcp: true, initialTabUrl: 'https://github.com/search/advanced' });
+  try {
+    const skill = await f.callMcp({ kind: 'get_skill', skillId: 'example:github-issue-triage' });
+    const result = await f.callMcp({ kind: 'start', markdown: skill.skill.markdown, parameters: { repository: 'microsoft/vscode', topic: 'terminal', state: 'open', label: 'bug' } });
+    assert.equal(result.status, 'ready'); assert.ok(result.runId);
+    assert.equal(f.local.runState.engine, 'external'); assert.equal(f.session.account, undefined);
+    assert.deepEqual(f.decisions, []); assert.deepEqual(f.history, []);
+    assert.equal(f.session.mcpLastError, undefined);
+    const repeated = await f.callMcp({ kind: 'start', markdown: skill.skill.markdown, parameters: { repository: 'microsoft/vscode', topic: 'terminal', state: 'open', label: 'bug' } });
+    assert.equal(repeated.errorCode, 'ACTIVE_TASK'); assert.equal(repeated.status, 'blocked');
+  } finally { await f.close(); }
+});
+
+test('a session-write failure after persisting a run reports its real ID as uncertain without exposing exception text', async () => {
+  const f = await fixture({ signedIn: false, mcp: true, initialTabUrl: 'https://github.com/search/advanced', failMcpSession: true });
+  try {
+    const skill = await f.callMcp({ kind: 'get_skill', skillId: 'example:github-issue-triage' });
+    const result = await f.callMcp({ kind: 'start', markdown: skill.skill.markdown, parameters: { repository: 'microsoft/vscode', topic: 'terminal', state: 'open', label: 'bug' } });
+    assert.equal(result.status, 'unknown_outcome'); assert.equal(result.errorCode, 'START_OUTCOME_UNKNOWN');
+    assert.equal(result.runId, f.local.runState.id);
+    assert.doesNotMatch(JSON.stringify(result), /not-for-the-agent|password=/);
+    assert.deepEqual(f.dispatches, []);
+  } finally { await f.close(); }
+});
+
+test('actual worker reports start-page and unsaved-cloud-draft blockers to MCP and the popup without inventing a run', async () => {
+  for (const unsaved of [false, true]) {
+    const f = await fixture({ signedIn: false, mcp: true,
+      initialTabUrl: unsaved ? 'https://github.com/search/advanced' : 'https://example.com',
+      ...(unsaved ? { draft: { sourceRecordingId: 'cloud', remoteSkillId: 'cloud', dirty: true, name: 'my-skill', description: 'My edits', markdown } } : {}),
+    });
+    try {
+      const skill = await f.callMcp({ kind: 'get_skill', skillId: 'example:github-issue-triage' });
+      const result = await f.callMcp({ kind: 'start', markdown: skill.skill.markdown, parameters: { repository: 'microsoft/vscode', topic: 'terminal', state: 'open', label: 'bug' } });
+      assert.equal(result.status, 'blocked');
+      assert.equal(result.errorCode, unsaved ? 'UNSAVED_LIBRARY_DRAFT' : 'START_PAGE_REQUIRED');
+      assert.equal(result.runId, undefined); assert.equal(f.local.runState, undefined);
+      assert.equal(f.session.mcpLastError.message, result.message);
+      assert.equal((await f.post({ type: 'mcp-status' })).runError, result.message);
+      if (unsaved) assert.equal(f.local.skillDraft.markdown, markdown);
+    } finally { await f.close(); }
+  }
+});
 
 for (const provider of ["openai", "codex-local"])
   test(`actual worker automatically runs two ${provider} requests, waits for approval and syncs parameter-free backend steps`, async () => {

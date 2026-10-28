@@ -1,12 +1,12 @@
 import {
   parseSkillPlan,
+  readSkillMetadata,
   type RunState,
   type SkillPlan,
   type SkillStep,
 } from "@show-me-once/shared";
 import {
   checkedDecision,
-  safeAgentLabel,
   type AgentObservation,
 } from "@show-me-once/shared/agent";
 import {
@@ -58,13 +58,14 @@ export function externalDraft(
     throw new Error(
       "Save your current draft before starting a different external skill.",
     );
+  let metadata;
+  try { metadata = readSkillMetadata(markdown); }
+  catch { throw new Error('The skill header is invalid. Read the original skill again.'); }
   return {
     draft: {
       sourceRecordingId: `mcp:${runId}`,
-      name: safeAgentLabel(
-        /^name:\s*([^\r\n]+)/m.exec(markdown)?.[1] ?? "External agent skill",
-      ),
-      description: "Controlled by your connected coding-agent session.",
+      name: metadata.name,
+      description: metadata.description,
       markdown,
       dirty: true,
     },

@@ -503,9 +503,10 @@ async function renderAccount() {
 async function refreshMcp() {
   const status = (await browser.runtime.sendMessage({
     type: "mcp-status",
-  })) as { paired: boolean; connected: boolean; enabled?: boolean; pending?: { id: string; code: string }; error?: string };
+  })) as { paired: boolean; connected: boolean; enabled?: boolean; pending?: { id: string; code: string }; error?: string; runError?: string };
   mcpConnected = status.connected;
   mcpPendingId = status.pending?.id;
+  element('mcp-run-error').textContent = status.runError ?? '';
   const feedback = element("mcp-status");
   feedback.dataset.state = status.connected
     ? "connected"
@@ -1271,7 +1272,7 @@ browser.storage.onChanged.addListener((changes, area) => {
   )
     void render();
   if (area === "session" && changes.runConfirmation) void render();
-  if (area === "session" && (changes.mcpConnected || changes.mcpConnectionChanged))
+  if (area === "session" && (changes.mcpConnected || changes.mcpConnectionChanged || changes.mcpLastError))
     void refreshMcp().catch(report);
 });
 void (async () => {

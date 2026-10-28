@@ -11,6 +11,7 @@ import {
 } from "@show-me-once/shared";
 import { requestApi } from "../lib/api";
 import { ExternalBridgeClient } from "../lib/external-bridge";
+import { externalCommandFailure } from '../lib/external-errors';
 import {
   SkillCatalog,
   keepLocalDraft,
@@ -601,7 +602,8 @@ export default defineBackground(() => {
         throw new Error(
           "Open the skill starting page in the active Chrome tab.",
         );
-      await ensureRecorder(tab.id);
+      try { await ensureRecorder(tab.id); }
+      catch { throw new Error('Could not connect to this page. Check its extension access.'); }
       const id = crypto.randomUUID();
       const storedDrafts = await browser.storage.local.get([
         "skillDraft",
@@ -744,6 +746,7 @@ export default defineBackground(() => {
   mcp = new ExternalBridgeClient(
     (identity, command) => {
       const kind = (command as { kind?: string }).kind;
+      let runBeforeStart: string | undefined;
       if (kind === "start") pendingExternalStarts.add(identity.controllerId);
       if (
         kind === "stop" &&
@@ -778,7 +781,9 @@ export default defineBackground(() => {
             status: "paused",
             message: "Resume in the extension before issuing new actions.",
           };
+        if (kind === 'start') runBeforeStart = (await readRun())?.id;
         const result = await external.handle(identity, command);
+        await browser.storage.session.remove('mcpLastError');
         if (
           interruptedControllers.has(identity.controllerId) &&
           kind === "start"
@@ -786,6 +791,13 @@ export default defineBackground(() => {
           pauseExternal(identity.controllerId);
           return { ...result, status: "paused" };
         }
+        return result;
+      }).catch(async cause => {
+        let result = externalCommandFailure(cause, kind ?? 'unknown');
+        const current = kind === 'start' ? await readRun().catch(() => null) : null;
+        if (current?.active && current.id !== runBeforeStart && current.engine === 'external' && externalOwner?.controllerId === identity.controllerId && externalOwner.runId === current.id)
+          result = { status: 'unknown_outcome', runId: current.id, errorCode: 'START_OUTCOME_UNKNOWN', message: 'A run was created but Start did not finish. Inspect its activity in Show Me Once before continuing; do not start a duplicate run.' };
+        await browser.storage.session.set({ mcpLastError: { operation: kind, errorCode: result.errorCode, message: result.message } }).catch(() => {});
         return result;
       }).finally(() => {
         if (kind === "start") {

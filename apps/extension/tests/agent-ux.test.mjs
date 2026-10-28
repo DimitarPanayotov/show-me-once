@@ -373,6 +373,19 @@ test('MCP picker provides agent-specific setup and a code approval without expos
   } finally { await f.close(); }
 });
 
+test('MCP run rejection is visible separately from its successful connection and clears after success', async () => {
+  const mcpState = { paired: true, connected: true, runError: 'Run not started: Stop the current recording or run in Show Me Once.' };
+  const f = await fixture({ mcpState });
+  try {
+    assert.match(f.element('mcp-status').textContent, /Connected/);
+    assert.equal(f.element('mcp-run-error').textContent, mcpState.runError);
+    delete mcpState.runError;
+    await f.storage.session.set({ mcpLastError: undefined });
+    await until(() => f.element('mcp-run-error').textContent === '');
+    assert.match(f.element('mcp-status').textContent, /Connected/);
+  } finally { await f.close(); }
+});
+
 test("Run saves the skill and starts an automatic extension agent without a connected external chat", async () => {
   const f = await fixture({
     draft: exampleDraft,

@@ -50,12 +50,14 @@ export class ExternalBridgeClient {
     return this.identity;
   }
   async status() {
+    const lastError = (await this.browser.storage.session.get('mcpLastError')).mcpLastError as { message?: string } | undefined;
     return {
       paired: !!(await this.readPair()),
       connected: !!this.identity,
       ...((await this.browser.storage.local.get('mcpEnabled')).mcpEnabled ? { enabled: true } : {}),
       ...(this.pending && this.pending.expiresAt > Date.now() ? { pending: { id: this.pending.id, code: this.pending.code, expiresAt: this.pending.expiresAt } } : {}),
       ...(this.connectionError ? { error: this.connectionError } : {}),
+      ...(lastError?.message ? { runError: lastError.message } : {}),
     };
   }
   private async readPair(): Promise<Pair | undefined> {
@@ -138,6 +140,7 @@ export class ExternalBridgeClient {
       });
     }
     await this.browser.storage.local.remove('mcpEnabled');
+    await this.browser.storage.session.remove('mcpLastError');
     this.pending = undefined;
     this.connectionError = undefined;
     await this.browser.storage.local.remove("mcpPair");
