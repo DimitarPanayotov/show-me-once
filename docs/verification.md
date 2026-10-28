@@ -1,5 +1,15 @@
 # Manual verification
 
+## Moving-menu click regression — 0.6.1
+
+A candidate-recorded GitHub workflow stopped at step 15 of 18 after Recently updated sorting. The supplied SKILL.md contained consecutive clicks on the same menu item with long and shortened ancestor paths: the early pointer event and later click had been assigned different IDs after the menu element moved. The paused run correctly refused to invent a target after the menu closed.
+
+The recorder now keeps the interactive DOM element privately alongside the early gesture ID and reuses the original selector/ID if the same element moves before click. No DOM reference, label or field value is serialized. Intentional later clicks and click-only fallback events remain separate. A controlled-document regression failed against 0.6.0 and passes with the fix, including the worker's actual appendAction deduplication.
+
+All 82 automated tests, workspace type checks and the production extension/reviewer-kit build pass. The regression test verifies one stored action per gesture, preservation of a second intentional click, and click-only fallback without capturing labels or URL queries. Live acceptance of the corrected saved skill awaits the candidate's retry.
+
+A corrected copy of the supplied skill removes only original step 15, keeps all four parameters and every other action, and renumbers the plan/prose to 17 steps. Saved skills and active runs are not silently migrated. Apply the corrected text as a new skill version and start a new run; a new recording is unnecessary. The subscription helper and backend API are unchanged and need no reinstall/deployment for this fix.
+
 ## Extension-owned Run — 0.6.0
 
 The main popup now accepts an editable task request and starts the extension-owned automatic agent loop. External coding-agent integration is optional and collapsed. Agent settings support session-only personal OpenAI/Anthropic keys or a one-time Chrome native-messaging helper using a Codex subscription. New/edited owned skills are saved before Run and per-step backend history is tied to the saved version.

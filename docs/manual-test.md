@@ -1,6 +1,6 @@
-# Manual acceptance — 0.6.0
+# Manual acceptance — 0.6.1
 
-1. Reload the existing extension and confirm 0.6.0. External coding agent must remain optional and collapsed. No separate HTML guide.
+1. Reload the existing extension and confirm 0.6.1. External coding agent must remain optional and collapsed. No separate HTML guide.
 2. Under Agent settings either save a personal OpenAI/Anthropic key (session only), or install subscription-helper/Install subscription helper.cmd once for the current extension ID and choose Check subscription. No terminal or external agent chat should remain necessary.
 3. Sign into the library. Choose Try GitHub issue triage. In the extension type: Find open issues in microsoft/vscode about terminal with label bug. Sort by recently updated and open the first matching issue. Click Run.
 4. Check all four fields. Before search, verify an action-specific Submit search preview identifying the Search button and consequence. Approve once. Remaining steps must continue automatically without a chat message or Next button.
@@ -13,3 +13,5 @@
 11. Optional: expand External coding agent, reconnect the existing MCP integration and confirm its discovery/approval/Stop path still works. Main Run must work with that integration disconnected.
 
 Record actual URLs, tool results and visible outcomes. Automated tests cover controlled documents and simulated Chrome services; they do not establish live Chrome or model performance. No browser-control tool is used under the current user constraint. The candidate writes their own short report and records the demo video.
+
+Recording regression: select a dropdown item whose menu is moved/closed by the page during the gesture. Its pointerdown and click must produce one recorded action. A second deliberate click and keyboard-only click must still record independently. Existing duplicate steps in saved skills require an explicit edited version; the recorder fix does not silently rewrite stored skills or active runs.

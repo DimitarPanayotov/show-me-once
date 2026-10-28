@@ -69,7 +69,12 @@ export default defineContentScript({
   main(ctx) {
     let active = false;
     let lastLocation = location.href;
-    let lastPointer: { selector: string; id: string; at: number } | null = null;
+    let lastPointer: {
+      target: Element;
+      selector: string;
+      id: string;
+      at: number;
+    } | null = null;
     let inputSessions = new WeakMap<Element, { id: string; sent: boolean }>();
     let stateRevision = 0;
     let pendingApproval: {
@@ -705,13 +710,13 @@ export default defineContentScript({
         .catch(() => undefined);
     }
 
-    function clickSelector(target: EventTarget | null): string | null {
+    function clickTarget(target: EventTarget | null): Element | null {
       if (!(target instanceof Element)) return null;
       const interactive = target.closest(
         'a,button,input,select,textarea,[role="button"],[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"],[role="link"]',
       );
       if (!interactive || isSensitive(interactive)) return null;
-      return structuralSelector(interactive);
+      return interactive;
     }
 
     function recordInput(
@@ -782,10 +787,11 @@ export default defineContentScript({
       "pointerdown",
       (event) => {
         if (!(event instanceof PointerEvent) || event.button !== 0) return;
-        const selector = clickSelector(event.target);
-        if (!selector) return;
+        const target = clickTarget(event.target);
+        if (!target) return;
+        const selector = structuralSelector(target);
         const id = crypto.randomUUID();
-        lastPointer = { selector, id, at: Date.now() };
+        lastPointer = { target, selector, id, at: Date.now() };
         send({ kind: "click", selector }, id);
       },
       true,
@@ -795,15 +801,26 @@ export default defineContentScript({
       document,
       "click",
       (event) => {
-        const selector = clickSelector(event.target);
-        if (!selector) return;
-        const id =
-          lastPointer?.selector === selector &&
-          Date.now() - lastPointer.at < 1500
-            ? lastPointer.id
-            : crypto.randomUUID();
+        const pointer = lastPointer;
         lastPointer = null;
-        send({ kind: "click", selector }, id);
+        const target = clickTarget(event.target);
+        if (!target) return;
+        const selector = structuralSelector(target);
+        const elapsed = pointer ? Date.now() - pointer.at : Infinity;
+        // React portals can move the same menu element between pointerdown and click.
+        // Keep its original gesture identity and selector; never serialize the DOM reference.
+        const sameGesture =
+          pointer &&
+          elapsed >= 0 &&
+          elapsed < 1500 &&
+          (pointer.target === target || pointer.selector === selector);
+        send(
+          {
+            kind: "click",
+            selector: sameGesture ? pointer.selector : selector,
+          },
+          sameGesture ? pointer.id : crypto.randomUUID(),
+        );
       },
       true,
     );

@@ -6,7 +6,12 @@ import { Window } from "happy-dom";
 import { exampleDraft, EXAMPLE_START_URL } from "../lib/skill-catalog.ts";
 import { ExternalRunController } from "../lib/external-run.ts";
 import { applyStepOutcome } from "../lib/run-state.ts";
-import { parseSkillPlan, sanitizeUrl } from "@show-me-once/shared";
+import {
+  appendAction,
+  sanitizedAction,
+  parseSkillPlan,
+  sanitizeUrl,
+} from "@show-me-once/shared";
 
 // Real content/execution code against controlled documents, without Chrome or a model.
 const bundle = await rolldown({
@@ -159,6 +164,109 @@ test("the recorder captures accessible menu-item clicks without capturing their 
     assert.equal("label" in captured[0], false);
     // Content reports the URL to the trusted worker; the worker's existing sanitizer drops query values.
     assert.equal(sanitizeUrl(captured[0].url), "https://github.com/…");
+  } finally {
+    await window.happyDOM.abort();
+  }
+});
+
+test("one menu gesture remains one recorded click when GitHub reparents the menu before click", async () => {
+  const window = new Window({
+    url: "https://github.com/search?q=not-recorded",
+  });
+  const reports = [];
+  window.document.write(
+    '<main><div><div><ul><li role="menuitemradio"><span>Recently updated</span></li></ul></div></div></main>',
+  );
+  window.__smoBrowser = {
+    storage: { onChanged: { addListener() {} } },
+    runtime: {
+      onMessage: { addListener() {} },
+      sendMessage: async (message) => {
+        if (message.type === "record-action") reports.push(message);
+        return { active: true };
+      },
+    },
+  };
+  window.defineContentScript = (config) => {
+    config.main({
+      isValid: true,
+      setTimeout: (...args) => window.setTimeout(...args),
+      setInterval: () => 0,
+      addEventListener: (target, ...args) => target.addEventListener(...args),
+    });
+    return config;
+  };
+  try {
+    window.eval(code);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const target = window.document.querySelector("li span");
+    const menu = window.document.querySelector("ul");
+    target.addEventListener("pointerdown", () =>
+      window.document.body.append(menu),
+    );
+    target.dispatchEvent(
+      new window.PointerEvent("pointerdown", { bubbles: true, button: 0 }),
+    );
+    target.dispatchEvent(
+      new window.MouseEvent("click", { bubbles: true, button: 0, detail: 1 }),
+    );
+    assert.equal(
+      reports.length,
+      2,
+      "Both early and fallback reports are still sent.",
+    );
+    assert.equal(
+      reports[0].eventId,
+      reports[1].eventId,
+      "One physical gesture must have one event identity despite DOM movement.",
+    );
+    assert.equal(
+      reports[0].action.selector,
+      reports[1].action.selector,
+      "Keep the selector captured before the site moved its menu.",
+    );
+    target.dispatchEvent(
+      new window.PointerEvent("pointerdown", { bubbles: true, button: 0 }),
+    );
+    target.dispatchEvent(
+      new window.MouseEvent("click", { bubbles: true, button: 0, detail: 1 }),
+    );
+    assert.equal(reports[2].eventId, reports[3].eventId);
+    assert.notEqual(
+      reports[0].eventId,
+      reports[2].eventId,
+      "A second deliberate click must not be lost.",
+    );
+    target.click();
+    assert.notEqual(
+      reports[3].eventId,
+      reports[4].eventId,
+      "A click without pointerdown still records independently.",
+    );
+    assert.equal(
+      JSON.stringify(reports.map((r) => r.action)).includes("Recently updated"),
+      false,
+    );
+    assert.equal(
+      reports.some((r) => "target" in r.action),
+      false,
+    );
+    let recording = {
+      id: "gesture-test",
+      active: false,
+      tabId: 1,
+      startedAt: "2026-10-28T00:00:00Z",
+      actions: [],
+    };
+    for (const report of reports)
+      recording = appendAction(
+        recording,
+        sanitizedAction(report.action),
+        report.eventId,
+        "2026-10-28T00:00:00Z",
+      );
+    assert.equal(recording.actions.length, 3);
+    assert.equal(JSON.stringify(recording).includes("not-recorded"), false);
   } finally {
     await window.happyDOM.abort();
   }
