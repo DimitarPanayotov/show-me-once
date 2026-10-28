@@ -182,3 +182,62 @@ test("a vanished MCP process loses its controller lease and notifies the extensi
     await bridge.close();
   }
 });
+
+test('paired tool calls wake Chrome once, await reconnection and dispatch; heartbeats and connected calls never wake it', async () => {
+  let launched = 0;
+  const browser: { socket?: WebSocket } = {};
+  const bridge = createBridge(origin, { port: 0, browserWaitMs: 500, launchBrowser: async () => {
+    launched++;
+    setTimeout(async () => {
+      const socket = await extension(f);
+      browser.socket = socket;
+      socket.on('message', raw => {
+        const message = JSON.parse(raw.toString());
+        if (message.type === 'command') socket.send(JSON.stringify({ type: 'result', id: message.id, result: { status: 'ready' } }));
+      });
+    }, 20);
+  } });
+  const port = await bridge.listen(), f = { bridge, port, url: `http://127.0.0.1:${port}` };
+  const headers = { Authorization: `Bearer ${bridge.agentToken}`, 'X-SMO-Controller': randomUUID() };
+  try {
+    await fetch(`${f.url}/heartbeat`, { method: 'POST', headers }); assert.equal(launched, 0);
+    const call = () => fetch(`${f.url}/command`, { method: 'POST', headers, body: JSON.stringify({ kind: 'list_skills' }) }).then(r => r.json());
+    const results = await Promise.all([call(), call()]);
+    assert.ok(results.every(r => r.status === 'ready')); assert.equal(launched, 1);
+    assert.equal((await call()).status, 'ready'); assert.equal(launched, 1);
+  } finally { browser.socket?.close(); await bridge.close(); }
+});
+
+test('a cancelled wake request never dispatches a delayed browser command', async () => {
+  let launched!: () => void, release!: () => void, socket: WebSocket | undefined, dispatched = 0;
+  const waking = new Promise<void>(resolve => { launched = resolve; });
+  const launch = new Promise<void>(resolve => { release = resolve; });
+  const bridge = createBridge(origin, { port: 0, browserWaitMs: 500, launchBrowser: async () => { launched(); await launch; } });
+  const port = await bridge.listen(), f = { bridge, port, url: `http://127.0.0.1:${port}` };
+  const abort = new AbortController();
+  try {
+    const pending = fetch(`${f.url}/command`, { method: 'POST', signal: abort.signal,
+      headers: { Authorization: `Bearer ${bridge.agentToken}`, 'X-SMO-Controller': randomUUID() },
+      body: JSON.stringify({ kind: 'start', skillId: 'example:github-issue-triage', parameters: {} }) }).catch(() => undefined);
+    await waking; abort.abort(); await pending;
+    await new Promise(resolve => setTimeout(resolve, 30));
+    socket = await extension(f);
+    socket.on('message', raw => { if (JSON.parse(raw.toString()).type === 'command') dispatched++; });
+    await once(socket, 'message'); release();
+    await new Promise(resolve => setTimeout(resolve, 80));
+    assert.equal(dispatched, 0);
+  } finally { release(); socket?.close(); await bridge.close(); }
+});
+
+test('an unpaired connector never launches Chrome on behalf of a tool call', async () => {
+  const { connectorIdentity } = await import('./pairing.ts');
+  let launched = 0;
+  const token = 'isolated-test-agent-credential-long-enough';
+  const bridge = createBridge(undefined, { port: 0, identity: connectorIdentity(token), agentToken: token, launchBrowser: async () => { launched++; } });
+  const port = await bridge.listen();
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/command`, { method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'X-SMO-Controller': randomUUID() }, body: JSON.stringify({ kind: 'status', runId: 'not-started' }) });
+    assert.equal((await response.json()).status, 'disconnected'); assert.equal(launched, 0);
+  } finally { await bridge.close(); }
+});

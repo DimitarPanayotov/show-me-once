@@ -1,5 +1,15 @@
 # Manual verification
 
+## Automatic MCP startup — 0.8.0
+
+Normal MCP use now starts from an agent request: the connector can wake installed Chrome after a prior pairing, and Start opens a new dedicated task tab without any manual page opening or tab selection. The builtin routes to GitHub Advanced Search; origin-only recordings resolve directly. Legacy redacted routes require a public starting address in chat, or an explicitly saved start_url header. Raw recorded paths remain uncaptured. Start reauthorizes catalog access and validates parameters before opening a tab; arbitrary undiscovered Markdown cannot navigate the browser.
+
+All 112 automated tests pass (24 shared, 10 model/helper, 57 extension, 18 MCP, 3 web). Actual-worker mocks cover unrelated focused tabs, creating a window when none exists, waiting for initial load even when its event races, legacy route input, unsaved-draft/undiscovered-plan guards and real run IDs after partial storage failure. Real HTTP/WebSocket tests cover wake coalescing, no wake before pairing or on heartbeat, reconnection and cancelled requests without delayed dispatch. Fixed process-launch arguments are tested by injection; no real browser is launched.
+
+Workspace type checks, production extension/reviewer packaging, isolated packaged setup and real SDK/npx transport checks pass. Live Chrome startup/profile selection and the end-to-end Codex/Claude browser task still require manual acceptance. The noisy Chrome attachment supplied in this session contains the generated worker source rather than an exception message; it does not establish the cause of a runtime exception.
+
+The connector package is now 0.8.0, so older agent registrations need the updated install link/command once and an agent restart. Existing trust files remain compatible; an old live relay is not silently reused. Previous verification entries below describe their respective versions, including the replaced manual tab-selection approach.
+
 ## MCP target-tab selection — extension 0.7.2
 
 A live retry reported START_PAGE_REQUIRED while the candidate had GitHub Advanced Search open. MCP start previously depended on the service worker's currentWindow lookup. It now uses lastFocusedWindow, the Chrome-documented service-worker pattern, and can find one exact public starting page for the built-in GitHub plan across normal Chrome windows. It does not infer a page from a matching origin/path depth or choose among duplicate starting pages.

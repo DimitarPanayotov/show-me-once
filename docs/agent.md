@@ -1,4 +1,4 @@
-# Run a skill inside the extension — 0.7.2
+# Run a skill inside the extension — 0.8.0
 
 Record once, review the generated skill, save it to the library, then select it, type a new request and click **Run**. The extension owns the automatic observe → model decision → guarded action → checkpoint loop. Approvals, Pause, Resume and Stop stay in the popup. No coding-agent chat is required.
 
@@ -60,3 +60,5 @@ A worker interruption with an uncertain browser outcome pauses execution rather 
 Automated tests cover the actual popup and background worker, provider/API contracts, native-host processes and framing, two replacement inputs, automatic progression after approval, Pause/Resume, cancellation during a model request, secret rejection and parameter-free history. Controlled documents exercise the twelve-step example. These checks do not replace real Chrome acceptance; see [verification](verification.md).
 
 Sources: [Chrome native messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging), [Codex CLI](https://learn.chatgpt.com/docs/cli/reference), [OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling), [Claude model lifecycle](https://platform.claude.com/docs/en/about-claude/model-deprecations).
+
+Optional coding-agent MCP now opens its own task page automatically. After one-time registration/pairing, ask the agent to run a discovered skill. You do not need to open/select the starting tab. See [MCP instructions](mcp.md), including the one-time 0.8 connector upgrade.

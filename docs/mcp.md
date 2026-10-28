@@ -1,4 +1,4 @@
-# Optional local coding-agent connection — 0.7.0
+# Optional local coding-agent connection — 0.8.0
 
 The main product remains request → Run inside the extension. External coding agents are optional and use the same guarded browser actions, approvals and Stop controls. Your existing agent supplies its own model and account; MCP does not launch a second model.
 
@@ -14,7 +14,7 @@ You need Chrome, Node.js 24 (including npx), and an MCP-capable agent. Open **Sk
 
 The agent starts the connector automatically and it exits after the last client leaves. No extension ID, pairing-secret copying, separate bridge command, or permanently open terminal is needed for this path. The extension remembers trust and reconnects automatically when the agent returns. Node.js remains a prerequisite for these command-based integrations.
 
-The install links and commands use a self-contained versioned package at the app's `/downloads/show-me-once-mcp-0.7.0.tgz`. It is launched through npx, so it does not depend on an extracted ZIP remaining at the same local path. This download contains connector code only, with no account credentials. The adjacent `.sha256` records the packaged checksum.
+The install links and commands use a self-contained versioned package at the app's `/downloads/show-me-once-mcp-0.8.0.tgz`. It is launched through npx, so it does not depend on an extracted ZIP remaining at the same local path. This download contains connector code only, with no account credentials. The adjacent `.sha256` records the packaged checksum.
 
 ## What the statuses mean
 
@@ -26,17 +26,23 @@ The install links and commands use a self-contained versioned package at the app
 
 **Not now** rejects the pending connection. **Forget connection** clears local trust and, when connected, revokes the remembered browser credential on the connector. Neither option changes the extension's primary Run settings. Connection approval expires after two minutes. It can only be granted in an extension page, not through an agent tool or website.
 
-## Choosing the task tab (extension 0.7.2)
+## Automatic browser startup
 
-The extension uses the last-focused Chrome tab rather than the background worker's current-window context. For the built-in GitHub example, if that tab is different, it can locate a single exact GitHub Advanced Search page in another normal Chrome window. It does not substitute a repository page with the same URL depth or guess among multiple matching pages.
+After the first connection approval, ask your agent to run a skill. You do not need to open Chrome, find a starting page or select a tab. If the browser is disconnected, an authenticated tool call starts installed Chrome and waits briefly for the remembered extension connection. Initialization and heartbeats do not launch Chrome. The extension must remain installed and enabled in the Chrome profile that opens. A different profile or disabled extension needs a one-time correction; the connector does not inspect or switch private profiles.
 
-You can explicitly bind a tab: select the task page, open the extension there, expand External coding agent and click **Use this tab for the agent**. The extension confirms its host. This binding is session-only and is revalidated for the skill's starting checkpoint before each new run. A closed tab or a tab on another page requires a new selection. Changing tabs during an active run/recording is rejected. Existing runs remain bound to their original tab.
+`start_skill` takes a discovered `skillId`, all required non-secret `parameters`, and optionally `startUrl`. It opens a new dedicated task tab (or a normal window when none exists), binds the run to that tab, and returns a run ID with `waiting` while the page loads. Poll `get_run_status`, then observe and act. Never repeat Start while waiting or after an uncertain response. Existing unrelated tabs are left alone. The built-in GitHub example automatically opens GitHub Advanced Search.
 
-Recorded skills retain origin/path depth for privacy, so they do not automatically select another tab from that URL shape. Use the explicit button when window focus is ambiguous. Diagnostics expose only the expected checkpoint and, when on the same origin, the sanitized observed checkpoint; unrelated tab origins and raw URLs remain private.
+Older recordings intentionally hide raw URL paths. For a deeper route whose address is unavailable, the agent asks for the public starting address **in chat**, then supplies `startUrl` and opens it itself. To retain a public fixed route in the skill, add `start_url: https://example.org/search/advanced` to its YAML header and save. Origin-only starting checkpoints need no extra address. Starting addresses must match the first checkpoint's origin/path depth and cannot contain credentials, query values, fragments, obvious secrets or action endpoints. The connector never invents a route from the redacted ellipses. Agent-supplied addresses are not added to run logs.
+
+An agent cannot use arbitrary Markdown to open unrelated pages: Start resolves an available catalog identity, rechecks access and validates the actual plan and parameters. Legacy Markdown calls require the builtin document or an unchanged skill previously read by that controller. Changes require a fresh read. No unrestricted navigation tool is exposed.
+
+## Updating from 0.7
+
+Reload extension 0.8.0. Copy its updated registration command/install link once and reconnect/restart your coding agent so it uses connector 0.8.0. Existing pairing credentials are retained. If an older connector is still running, close other coding-agent sessions and reopen after it exits. Do not start a bridge manually. Daily use then requires only a request in your agent, plus any protected-action approvals.
 
 ## Everyday use
 
-Open a recorded/saved skill and copy its agent request, or ask the agent to discover a skill. It calls list_skills/get_skill, reads the instructions and starts a run with new non-secret parameters. The extension shows actions and meaningful protected-action approvals. Pause, Resume and Stop remain in the extension. Approval and reconnection never automatically repeat an uncertain action.
+Open a recorded/saved skill and copy its agent request, or ask the agent to discover a skill. It calls list_skills/get_skill, reads the instructions and starts a run with new non-secret parameters. Chrome and the task page open automatically. The extension shows actions and meaningful protected-action approvals. Pause, Resume and Stop remain in the extension. Approval and reconnection never automatically repeat an uncertain action.
 
 The GitHub issue-triage example has twelve steps: fill repository/topic/state/label, submit with approval, sort results by Recently updated and open an issue. Run it twice with different repositories/topics and inspect the visible results. Then test Stop before approving another search.
 
@@ -60,6 +66,6 @@ Each action binds controller, connector, browser connection, run, selected tab, 
 
 ## Verification
 
-Automated checks cover real stdio clients, fresh setup without an ID/settings file, first-discovery timing, matching-code approval, blocked access before approval, retained trust across idle restart, changed-identity rejection, browser-Origin rejection and revocation. Popup tests cover all client setup formats and the approval UI while preserving the primary in-extension Run path. Browser automation is not used. Installation through real Cursor/VS Code links and a live Codex/Claude Code browser task still require manual acceptance; protocol tests do not establish those client UI results.
+Automated checks cover real stdio clients, fresh setup without an ID/settings file, first-discovery timing, matching-code approval, blocked access before approval, retained trust across idle restart, changed-identity rejection, browser-Origin rejection and revocation. Popup tests cover all client setup formats and the approval UI while preserving the primary in-extension Run path. Browser automation is not used. Automatic task-tab creation and initial loading are checked against the actual worker with mocked Chrome APIs. Browser wake uses injected process-launch tests; cancellation is checked over real HTTP/WebSocket transport. These do not prove live Chrome startup on every OS/profile. Installation through real Cursor/VS Code links and a live Codex/Claude Code browser task still require manual acceptance; protocol tests do not establish those client UI results.
 
 Official configuration references: [Codex](https://learn.chatgpt.com/docs/extend/mcp?surface=cli), [Claude Code](https://code.claude.com/docs/en/mcp), [Cursor](https://cursor.com/docs/mcp/install-links), [VS Code](https://code.visualstudio.com/api/extension-guides/ai/mcp). The connection UX follows the [Browser MCP](https://browsermcp.io/docs/) pattern.

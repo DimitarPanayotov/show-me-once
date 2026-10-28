@@ -12,13 +12,13 @@ import {
 import { requestApi } from "../lib/api";
 import { ExternalBridgeClient } from "../lib/external-bridge";
 import { externalCommandFailure } from '../lib/external-errors';
-import { chooseMcpStartTab } from '../lib/mcp-target';
+import { resolveStartPage, skillBody } from '../lib/mcp-start';
+import { checkedExternalCommand } from '@show-me-once/shared/mcp';
 import {
   SkillCatalog,
   keepLocalDraft,
   type CatalogDraft,
   exampleDraft,
-  EXAMPLE_START_URL,
 } from "../lib/skill-catalog";
 import type { ExternalResult } from "@show-me-once/shared/mcp";
 import {
@@ -575,6 +575,7 @@ export default defineBackground(() => {
     getLibrary: async (id) => api("skill/get", { id }, await requiredAccount()),
     userId: async () => (await readAccount())?.user.id,
   });
+  const issuedSkills = new Map<string, { id: string; markdown: string }[]>();
   const external = new ExternalRunController({
     readRun,
     readSession: async () =>
@@ -589,23 +590,10 @@ export default defineBackground(() => {
       };
       await browser.storage.session.set({ externalSession: session });
     },
-    async start(markdown, parameters) {
+    async start(markdown, parameters, startUrl) {
       if ((await read())?.active || (await readRun())?.active)
         throw new Error("Stop the current recording or run first.");
       const plan = parseSkillPlan(markdown);
-      const [focused] = await browser.tabs.query({
-        active: true,
-        lastFocusedWindow: true,
-      });
-      const targetId = (await browser.storage.session.get('mcpTargetTab')).mcpTargetTab as number | undefined;
-      const exactStart = JSON.stringify(plan) === JSON.stringify(parseSkillPlan(exampleDraft.markdown)) ? EXAMPLE_START_URL : undefined;
-      const tab = chooseMcpStartTab({ expected: plan.steps[0]!.url, exactStart, focused,
-        pinnedRequested: typeof targetId === 'number',
-        pinned: typeof targetId === 'number' ? await browser.tabs.get(targetId).catch(() => undefined) : undefined,
-        candidates: exactStart && targetId === undefined ? await browser.tabs.query({ windowType: 'normal', url: `${exactStart}*` }) : [],
-      });
-      try { await ensureRecorder(tab.id); }
-      catch { throw new Error('Could not connect to this page. Check its extension access.'); }
       const id = crypto.randomUUID();
       const storedDrafts = await browser.storage.local.get([
         "skillDraft",
@@ -617,10 +605,21 @@ export default defineBackground(() => {
         markdown,
         id,
       );
+      const url = resolveStartPage(markdown, startUrl);
+      const windows = await browser.windows.getAll({ windowTypes: ['normal'] });
+      const window = windows.find(w => w.focused) ?? windows[0];
+      const tab = window?.id !== undefined
+        ? await browser.tabs.create({ windowId: window.id, url, active: true })
+        : (await browser.windows.create({ url, focused: true }))?.tabs?.[0];
+      if (tab?.id === undefined) throw new Error('Could not open the starting page automatically.');
       const run: RunState = {
         id,
         tabId: tab.id,
         active: true,
+        preparingStart: true,
+        awaitingNavigation: true,
+        navigationObserved: false,
+        navigationStartedAt: Date.now(),
         engine: "external",
         mode: "automatic",
         skillKey: selection.skillKey,
@@ -642,6 +641,11 @@ export default defineBackground(() => {
       ]);
       interruption = undefined;
       return saveRun(run);
+    },
+    async refreshStart(run) {
+      const tab = await browser.tabs.get(run.tabId);
+      if (tab.status !== 'complete' || !tab.url || !sanitizeUrl(tab.url)) return run;
+      return saveRun({ ...run, preparingStart: false, awaitingNavigation: false, navigationObserved: true });
     },
     async observe(run, step) {
       const tab = await browser.tabs.get(run.tabId);
@@ -772,8 +776,15 @@ export default defineBackground(() => {
               "Connection changed. Inspect the extension before continuing.",
           };
         if (kind === "list_skills") return catalog.list();
-        if (kind === "get_skill")
-          return catalog.get((command as { skillId: string }).skillId);
+        if (kind === "get_skill") {
+          const result = await catalog.get((command as { skillId: string }).skillId);
+          if (result.skill) {
+            const issued = issuedSkills.get(identity.controllerId) ?? [];
+            issuedSkills.set(identity.controllerId, [...issued.filter(s => s.id !== result.skill!.id), { id: result.skill.id, markdown: skillBody(result.skill.markdown) }].slice(-100));
+            if (issuedSkills.size > 32) issuedSkills.delete(issuedSkills.keys().next().value!);
+          }
+          return result;
+        }
         if (
           interruptedControllers.has(identity.controllerId) &&
           kind !== "status" &&
@@ -783,8 +794,21 @@ export default defineBackground(() => {
             status: "paused",
             message: "Resume in the extension before issuing new actions.",
           };
-        if (kind === 'start') runBeforeStart = (await readRun())?.id;
-        const result = await external.handle(identity, command);
+        let resolved = command;
+        if (kind === 'start') {
+          runBeforeStart = (await readRun())?.id;
+          const request = checkedExternalCommand(command);
+          if (request.kind !== 'start') throw new Error('Invalid skill content.');
+          const id = request.skillId ?? (request.markdown && skillBody(request.markdown) === skillBody(exampleDraft.markdown)
+            ? exampleDraft.sourceRecordingId
+            : issuedSkills.get(identity.controllerId)?.find(s => request.markdown && s.markdown === skillBody(request.markdown))?.id);
+          if (!id) throw new Error('Read the original skill again before starting.');
+          const skill = await catalog.load(id); // Re-check access and edits at Start, not just discovery.
+          if (request.markdown && skillBody(request.markdown) !== skillBody(skill.markdown)) throw new Error('Read the original skill again before starting.');
+          resolved = checkedExternalCommand({ kind: 'start', markdown: skill.markdown, parameters: request.parameters,
+            startUrl: resolveStartPage(skill.markdown, request.startUrl) });
+        }
+        const result = await external.handle(identity, resolved);
         await browser.storage.session.remove('mcpLastError');
         if (
           interruptedControllers.has(identity.controllerId) &&
@@ -839,21 +863,8 @@ export default defineBackground(() => {
         throw new Error("Only extension pages may pair an MCP bridge.");
       if (request.type === "mcp-status") {
         void mcp.connect().catch(() => {});
-        return (async () => {
-          const targetId = (await browser.storage.session.get('mcpTargetTab')).mcpTargetTab;
-          const target = typeof targetId === 'number' ? await browser.tabs.get(targetId).catch(() => undefined) : undefined;
-          return { ...await mcp.status(), ...(target?.url && sanitizeUrl(target.url) ? { targetHost: new URL(target.url).hostname } : {}) };
-        })();
+        return mcp.status();
       }
-      if (request.type === 'mcp-select-tab') return serial(async () => {
-        if ((await readRun())?.active || (await read())?.active) throw new Error('Stop the current run or recording before changing its tab.');
-        if (typeof request.tabId !== 'number' || !Number.isInteger(request.tabId)) throw new Error('Open this popup on the task website.');
-        const target = await browser.tabs.get(request.tabId);
-        if (!target.url || target.incognito || !sanitizeUrl(target.url)) throw new Error('Choose a normal website tab.');
-        await browser.storage.session.set({ mcpTargetTab: target.id });
-        await browser.storage.session.remove('mcpLastError');
-        return { targetHost: new URL(target.url).hostname };
-      });
       if (request.type === "mcp-skills") return catalog.list();
       if (request.type === "mcp-open-skill")
         return serial(async () => {
@@ -1490,6 +1501,9 @@ export default defineBackground(() => {
   browser.runtime.onStartup.addListener(() => {
     void serial(recoverRun);
   });
+  // Opening Chrome can create a window in an already-running browser process.
+  // Wake the saved connection immediately rather than waiting for its alarm.
+  browser.windows.onCreated.addListener(() => { void mcp.connect().catch(() => {}); });
   void serial(recoverRun);
   void mcp.connect().catch(() => {});
 });

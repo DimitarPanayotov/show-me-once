@@ -27,6 +27,20 @@ export function readSkillMetadata(markdown: string): SkillMetadata {
   return { name, description };
 }
 
+export function readSkillStartUrl(markdown: string): string | undefined {
+  const { doc } = frontmatter(markdown);
+  const value = doc.get('start_url');
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') throw new Error('The start_url header must be a public starting address.');
+  return value;
+}
+
+export function writeSkillStartUrl(markdown: string, startUrl: string): string {
+  const { doc, body, eol, bom } = frontmatter(markdown);
+  doc.set('start_url', startUrl);
+  return `${bom}---${eol}${doc.toString({ lineWidth: 0 }).replace(/\r?\n/g, eol)}---${eol}${body}`;
+}
+
 /** Update only the header. Recorded instructions and the executable plan stay byte-for-byte intact. */
 export function writeSkillMetadata(markdown: string, metadata: SkillMetadata): string {
   const { doc, body, eol, bom } = frontmatter(markdown, true);

@@ -43,10 +43,10 @@ async function command(value: unknown, signal?: AbortSignal) {
 const id = z.string().regex(/^[a-zA-Z0-9-]{1,80}$/);
 serveStdio(() => {
   const server = new McpServer(
-    { name: "show-me-once", version: "0.7.0" },
+    { name: "show-me-once", version: "0.8.0" },
     {
       instructions:
-        "Show Me Once runs demonstrated browser skills through the paired Chrome extension. If a tool reports connection approval, show the user its six-digit code and ask them to compare and approve in the extension. Never approve yourself or retry in a tight loop. Begin with list_skills, then get_skill and read its full Markdown. No filesystem skill installation is required. Supply that Markdown and the user's replacement parameters to start_skill. Have the user open the starting page. Observe and act only on the current step; approval and Resume happen only in the extension. Never replay uncertain actions. The example:github-issue-triage skill is available without an account.",
+        "Show Me Once runs demonstrated browser skills through the paired Chrome extension. If a tool reports connection approval, show the user its six-digit code and ask them to compare and approve in the extension. Never approve yourself or retry in a tight loop. Begin with list_skills, then get_skill and read its full Markdown. No filesystem skill installation is required. Supply the discovered skillId and the user's replacement parameters to start_skill. Chrome and the task page open automatically after pairing. If a legacy skill has no fixed start address, ask for that public address in chat and pass startUrl. Never ask the user to open or select a task tab. On waiting, poll get_run_status; do not start a duplicate run. Observe and act only on the current step; approval and Resume happen only in the extension. Never replay uncertain actions. The example:github-issue-triage skill is available without an account.",
     },
   );
   const register = (
@@ -120,10 +120,12 @@ serveStdio(() => {
   );
   register(
     "start_skill",
-    "Start a skill-bound run in the active Chrome tab. Supply all non-secret parameters. One controller owns the run.",
+    "Open the skill’s starting page in a new dedicated Chrome tab and start a run. Prefer skillId from list_skills/get_skill. Supply all non-secret parameters; startUrl is only needed for legacy redacted routes. Poll status while waiting. One controller owns the run.",
     z
       .object({
-        markdown: z.string().max(100000),
+        skillId: z.string().regex(/^[a-zA-Z0-9:_-]{1,160}$/).optional(),
+        markdown: z.string().max(100000).optional(),
+        startUrl: z.string().max(2048).optional(),
         parameters: z.record(
           z.string(),
           z.union([z.string().max(2000), z.boolean()]),

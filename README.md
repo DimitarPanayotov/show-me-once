@@ -2,7 +2,7 @@
 
 Record a browser task once, then type a new request and click Run inside the extension. Its agent executes the skill automatically while you watch, approve protected actions, pause or stop.
 
-[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.7.2](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.7.2-demo) · [Setup and demo](docs/agent.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
+[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.8.0](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.8.0-demo) · [Setup and demo](docs/agent.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
 
 ## Start here
 
@@ -41,3 +41,5 @@ Use Node.js 24 and pnpm 10. For local web development, copy apps/web/.env.exampl
 Run pnpm test and pnpm typecheck. Set WXT_API_BASE_URL=https://show-me-once-dimitar.vercel.app, then run pnpm reviewer:package to build the deploy-targeted extension, bundled connector and reviewer kit. The packaging script refuses a kit pointed at localhost. No credentials are packaged.
 
 Configure the Vercel project with root apps/web, workspace sources enabled, Node.js 24, and DATABASE_URL. The web build applies Prisma migrations before Next.js. Browser tests for older execution modes are historical fixtures; current popup tests run in an in-memory document without controlling Chrome.
+
+For optional local MCP use, connect once, then ask the agent to run a discovered skill. It opens Chrome and a dedicated task tab automatically; no manual tab selection or helper terminal. See [MCP setup and upgrades](docs/mcp.md).

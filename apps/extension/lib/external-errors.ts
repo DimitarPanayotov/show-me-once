@@ -1,12 +1,16 @@
 import type { ExternalResult } from '@show-me-once/shared/mcp';
-import { McpTargetError } from './mcp-target.ts';
 
 // Only known application messages may cross the MCP boundary. Browser/library
 // exceptions can contain URLs, page text or input values and stay private.
 const reasons = new Map<string, [string, string]>([
   ['Stop the current recording or run first.', ['ACTIVE_TASK', 'Stop the current recording or run in Show Me Once, then ask your agent to start again.']],
   ['Stop the current run first.', ['ACTIVE_TASK', 'Stop the current run in Show Me Once before starting another.']],
-  ['Open the skill starting page in the active Chrome tab.', ['START_PAGE_REQUIRED', 'Select the skill’s starting page in Chrome, then ask your agent to start again. For the built-in GitHub example, use https://github.com/search/advanced.']],
+  ['Supply the public starting address in chat. The recording hides URL paths.', ['START_ADDRESS_REQUIRED', 'Ask the user for the public starting address in chat, then supply startUrl to start_skill. The agent will open it automatically; no tab selection is needed.']],
+  ['Read the original skill again before starting.', ['SKILL_REFRESH_REQUIRED', 'List skills and read the original skill again, then start by skillId. The saved version may have changed.']],
+  ['Could not open the starting page automatically.', ['BROWSER_OPEN_FAILED', 'Chrome could not open the task page. Check that the extension can create normal tabs, then retry.']],
+  ['The starting address must match the skill’s first origin and path depth.', ['START_ADDRESS_MISMATCH', 'Supply the public starting address that matches the skill’s first checkpoint.']],
+  ['Use a public starting address without credentials, query values or action endpoints.', ['UNSAFE_START_ADDRESS', 'Use a public starting address without credentials, query values or action endpoints.']],
+  ['Invalid starting address.', ['INVALID_START_ADDRESS', 'Supply a valid public starting address in chat.']],
   ['Could not connect to this page. Check its extension access.', ['PAGE_ACCESS_REQUIRED', 'Show Me Once could not connect to the selected page. Check its site access in Chrome, reload that page and try again.']],
   ['Save your current draft before starting a different external skill.', ['UNSAVED_LIBRARY_DRAFT', 'Save the current edited library skill before switching to a different skill. Sign in to the library to save those edits.']],
   ['Sign in to the library first.', ['LIBRARY_SIGN_IN_REQUIRED', 'Sign in to Show Me Once to access library skills. The built-in example and locally recorded skills work without sign-in.']],
@@ -20,8 +24,6 @@ const reasons = new Map<string, [string, string]>([
 ]);
 
 export function externalCommandFailure(cause: unknown, operation: string): ExternalResult & { errorCode: string; expectedCheckpoint?: string; actualCheckpoint?: string | null } {
-  if (cause instanceof McpTargetError)
-    return { status: 'blocked', errorCode: cause.errorCode, message: `Run not started: ${cause.message}`, expectedCheckpoint: cause.expected, actualCheckpoint: cause.actual ?? null };
   const message = cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string' ? cause.message : '';
   const known = reasons.get(message);
   const [errorCode, explanation] = known ?? ['COMMAND_FAILED', operation === 'start'

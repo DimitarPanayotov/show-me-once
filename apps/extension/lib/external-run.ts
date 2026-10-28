@@ -91,7 +91,9 @@ export interface ExternalRunPorts {
   start(
     markdown: string,
     parameters: Record<string, string | boolean>,
+    startUrl?: string,
   ): Promise<RunState>;
+  refreshStart?(run: RunState): Promise<RunState>;
   observe(run: RunState, step: SkillStep): Promise<AgentObservation>;
   perform(): Promise<RunState>;
   stop(): Promise<RunState>;
@@ -120,6 +122,7 @@ export function externalStatus(
                 ? "waiting"
                 : "ready",
     ...(plan?.steps[run.nextStep] ? { step: plan.steps[run.nextStep] } : {}),
+    ...(run.active && run.preparingStart ? { message: 'Opening the starting page automatically. Poll get_run_status; do not start another run.' } : {}),
   };
 }
 /** Serialized by the background worker. The transport supplies identity, never tool arguments. */
@@ -140,7 +143,8 @@ export class ExternalRunController {
     if (command.kind === "start") {
       if ((await this.ports.readRun())?.active)
         throw new Error("Stop the current run first.");
-      const run = await this.ports.start(command.markdown, command.parameters);
+      if (!command.markdown) throw new Error('Read the original skill again before starting.');
+      const run = await this.ports.start(command.markdown, command.parameters, command.startUrl);
       await this.ports.saveSession({
         ...identity,
         runId: run.id,
@@ -148,7 +152,8 @@ export class ExternalRunController {
       });
       return externalStatus(run, parseSkillPlan(command.markdown));
     }
-    const run = await this.ports.readRun(),
+    let run = await this.ports.readRun();
+    const
       session = await this.ports.readSession();
     if (
       !run ||
@@ -161,9 +166,10 @@ export class ExternalRunController {
     )
       throw new Error("This controller does not own that run.");
     const plan = parseSkillPlan(session.markdown);
-    if (command.kind === "status") return externalStatus(run, plan);
     if (command.kind === "stop")
       return externalStatus(await this.ports.stop(), plan);
+    if (run.active && run.preparingStart && this.ports.refreshStart) run = await this.ports.refreshStart(run);
+    if (command.kind === "status") return externalStatus(run, plan);
     if (
       !run.active ||
       run.pauseReason ||

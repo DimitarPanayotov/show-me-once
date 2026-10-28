@@ -40,7 +40,7 @@ Alternatively, a one-time installer copies the bundled subscription helper into 
 
 Web auth uses HttpOnly session cookies; extension requests omit cookies and use their own bearer session. Skills are visible only to owners and explicit recipients. Only owners edit or share. Runs and ordered logs belong to the person executing and reference a saved skill version. Logs contain step number, kind, status and timestamp, without new inputs, request text or live page labels.
 
-The optional external MCP path reauthorizes cloud discovery for the current account, pins controllers/runs/tabs, uses single-use observations and keeps extension-only approval/Pause/Stop. Its activity remains local; the primary extension-owned Run path synchronizes backend history. Details: [MCP setup](mcp.md).
+The optional external MCP path reauthorizes cloud discovery for the current account, pins controllers/runs/tabs, uses single-use observations and keeps extension-only approval/Pause/Stop. After pairing, authenticated tools can wake installed Chrome; Start resolves a catalog skill and opens a dedicated task tab, returning waiting while it loads. Public fixed start_url metadata or an explicit startUrl input supplies routes hidden by recording sanitization. Arbitrary task code/URLs are not exposed as tools. Its activity remains local; the primary extension-owned Run path synchronizes backend history. Details: [MCP setup](mcp.md).
 
 ## Deployment and limits
 

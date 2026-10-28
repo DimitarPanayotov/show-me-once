@@ -1,6 +1,7 @@
 import { createBridge } from "./bridge.ts";
 import { readSettings, managedHome } from "./managed.ts";
 import { browserBindings, connectorIdentity } from './pairing.ts';
+import { launchChrome } from './browser-launch.ts';
 
 const settings = await readSettings();
 const browsers = await browserBindings(managedHome());
@@ -12,6 +13,7 @@ const bridge = createBridge(settings.extensionId ? `chrome-extension://${setting
   identity: connectorIdentity(settings.agentToken),
   bindings: browsers.bindings,
   saveBindings: browsers.save,
+  launchBrowser: () => launchChrome(),
   leaseMs: Number(process.env.SMO_MCP_LEASE_MS ?? 30000),
   idleMs: Number(process.env.SMO_MCP_IDLE_MS ?? 30000),
   onIdle: () => void close(),

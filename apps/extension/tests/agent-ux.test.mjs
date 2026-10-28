@@ -154,10 +154,7 @@ async function fixture({
         if (message.type === "mcp-status")
           return structuredClone(mcpState);
         if (message.type === 'mcp-begin') return structuredClone(mcpState);
-        if (message.type === 'mcp-select-tab') {
-          assert.equal(message.tabId, 17); mcpState.targetHost = 'github.com';
-          return { targetHost: 'github.com' };
-        }
+
         if (message.type === 'mcp-approve') {
           assert.equal(message.pairingId, mcpState.pending.id);
           mcpState.connected = true; mcpState.paired = true; delete mcpState.pending;
@@ -378,14 +375,17 @@ test('MCP picker provides agent-specific setup and a code approval without expos
   } finally { await f.close(); }
 });
 
-test('MCP can explicitly bind the tab hosting the popup and shows its host without copying a URL', async () => {
-  const f = await fixture();
+test('MCP connection explains automatic page opening without a tab-selection control', async () => {
+  const f = await fixture({ draft: exampleDraft });
   try {
-    assert.equal(f.element('mcp-target-controls').hidden, false);
-    f.element('mcp-use-tab').click();
-    await until(() => f.element('mcp-target-status').textContent.includes('github.com'));
-    const request = f.messages.find(m => m.type === 'mcp-select-tab');
-    assert.deepEqual(structuredClone(request), { type: 'mcp-select-tab', tabId: 17 });
+    assert.match(f.element('mcp-connected-help').textContent, /opens the task page automatically/);
+    assert.equal(f.window.document.getElementById('mcp-use-tab'), null);
+    assert.equal(f.messages.some(m => m.type === 'mcp-select-tab'), false);
+    assert.equal(f.element('open-start-page'), null);
+    f.element('copy-request').click();
+    await until(() => f.clipboard().includes('Show Me Once'));
+    assert.equal(f.tabs.length, 0);
+    assert.match(f.element('handoff-help').textContent, /opens the task page automatically/);
   } finally { await f.close(); }
 });
 
@@ -502,7 +502,7 @@ test("a clean cached Wikipedia starter upgrades to issue triage without archivin
     assert.equal(f.local.skillDraft.sourceRecordingId, EXAMPLE_ID);
     assert.deepEqual(f.local.localSkills, []);
     assert.match(f.element("agent-request").value, /microsoft\/vscode/);
-    assert.equal(f.element("open-start-page").hidden, true);
+    assert.equal(f.element("open-start-page"), null);
   } finally {
     await f.close();
   }

@@ -75,7 +75,7 @@ async function until(check) {
   assert.fail("Worker did not reach the expected state.");
 }
 
-async function fixture({ holdModel = false, provider = "openai", signedIn = true, mcp = false, initialTabUrl = 'https://example.com', draft, failMcpSession = false, focusedUrl } = {}) {
+async function fixture({ holdModel = false, provider = "openai", signedIn = true, mcp = false, initialTabUrl = 'https://example.com', draft, failMcpSession = false, focusedUrl, noWindow = false, holdStart = false } = {}) {
   const mcpBridgeId = randomUUID(), mcpConnectionId = randomUUID(), mcpControllerId = randomUUID();
   const mcpReplies = new Map();
   let mcpSocket;
@@ -153,6 +153,8 @@ async function fixture({ holdModel = false, provider = "openai", signedIn = true
         }
       : { action: "click", targetId: "c2", parameter: null, value: null };
   }
+  const createdTabs = [];
+  let startComplete = !holdStart;
   const browser = {
     storage: { local: area(local), session: area(session) },
     action: {
@@ -212,11 +214,19 @@ async function fixture({ holdModel = false, provider = "openai", signedIn = true
         };
       },
     },
+    windows: {
+      onCreated: { addListener() {} },
+      getAll: async () => noWindow ? [] : [{ id: 3, focused: true }],
+      create: async (options) => { createdTabs.push({ ...options, id: 19 }); return { tabs: [{ id: 19 }] }; },
+    },
     tabs: {
+      create: async (options) => { createdTabs.push({ ...options, id: 19 }); return { id: 19 }; },
       query: async (query) => query.windowType === 'normal'
         ? [{ id: 1, url: tabUrl }, ...(focusedUrl ? [{ id: 2, url: focusedUrl }] : [])]
         : [{ id: focusedUrl ? 2 : 1, url: focusedUrl ?? tabUrl }],
-      get: async () => ({ id: 1, url: tabUrl, status: "complete" }),
+      get: async id => id === 19
+        ? { id, url: startComplete ? createdTabs.at(-1).url : 'about:blank', status: startComplete ? 'complete' : 'loading' }
+        : ({ id: 1, url: tabUrl, status: "complete" }),
       onUpdated: {
         addListener: (fn) => {
           tabUpdated = fn;
@@ -366,6 +376,8 @@ async function fixture({ holdModel = false, provider = "openai", signedIn = true
     history,
     dispatches,
     decisions,
+    createdTabs,
+    finishStart: () => { startComplete = true; },
     post,
     async callMcp(command) {
       await post({ type: 'mcp-connect' });
@@ -394,34 +406,40 @@ async function fixture({ holdModel = false, provider = "openai", signedIn = true
   };
 }
 
-test('signed-out MCP can start the built-in GitHub task on its starting page without model or backend access', async () => {
+test('signed-out MCP opens the built-in task automatically without model or backend access', async () => {
   const f = await fixture({ signedIn: false, mcp: true, initialTabUrl: 'https://github.com/search/advanced' });
   try {
     const skill = await f.callMcp({ kind: 'get_skill', skillId: 'example:github-issue-triage' });
     const result = await f.callMcp({ kind: 'start', markdown: skill.skill.markdown, parameters: { repository: 'microsoft/vscode', topic: 'terminal', state: 'open', label: 'bug' } });
-    assert.equal(result.status, 'ready'); assert.ok(result.runId);
+    assert.equal(result.status, 'waiting'); assert.ok(result.runId);
     assert.equal(f.local.runState.engine, 'external'); assert.equal(f.session.account, undefined);
     assert.deepEqual(f.decisions, []); assert.deepEqual(f.history, []);
     assert.equal(f.session.mcpLastError, undefined);
+    assert.equal(f.createdTabs.length, 1);
+    assert.equal(f.createdTabs[0].url, 'https://github.com/search/advanced');
     const repeated = await f.callMcp({ kind: 'start', markdown: skill.skill.markdown, parameters: { repository: 'microsoft/vscode', topic: 'terminal', state: 'open', label: 'bug' } });
     assert.equal(repeated.errorCode, 'ACTIVE_TASK'); assert.equal(repeated.status, 'blocked');
+    assert.equal(f.createdTabs.length, 1);
   } finally { await f.close(); }
 });
 
-test('MCP starts the exact GitHub example in another Chrome window and binds the chosen tab for the run', async () => {
-  for (const explicit of [false, true]) {
-  const f = await fixture({ signedIn: false, mcp: true, initialTabUrl: 'https://github.com/search/advanced', focusedUrl: 'https://github.com/owner/repo' });
-  try {
-    if (explicit) {
-      await f.post({ type: 'mcp-select-tab', tabId: 1 });
-      assert.equal(f.session.mcpTargetTab, 1);
-    }
-    const skill = await f.callMcp({ kind: 'get_skill', skillId: 'example:github-issue-triage' });
-    const result = await f.callMcp({ kind: 'start', markdown: skill.skill.markdown, parameters: { repository: 'microsoft/vscode', topic: 'terminal', state: 'open', label: 'bug' } });
-    assert.equal(result.status, 'ready'); assert.equal(f.local.runState.tabId, 1);
-    if (explicit) assert.equal((await f.post({ type: 'mcp-status' })).targetHost, 'github.com');
-    await assert.rejects(f.post({ type: 'mcp-select-tab', tabId: 2 }), /Stop the current/);
-  } finally { await f.close(); }
+test('MCP opens a dedicated tab or normal window, waits for initial loading, and never uses the unrelated focused tab', async () => {
+  for (const noWindow of [false, true]) {
+    const f = await fixture({ signedIn: false, mcp: true, initialTabUrl: 'https://example.com/private', focusedUrl: 'https://other.example', noWindow, holdStart: true });
+    try {
+      const result = await f.callMcp({ kind: 'start', skillId: 'example:github-issue-triage', parameters: { repository: 'microsoft/vscode', topic: 'terminal', state: 'open', label: 'bug' } });
+      assert.equal(result.status, 'waiting'); assert.equal(f.local.runState.tabId, 19);
+      assert.equal(f.createdTabs.length, 1);
+      assert.equal(f.createdTabs[0].url, 'https://github.com/search/advanced');
+      assert.equal(f.createdTabs[0].windowId, noWindow ? undefined : 3);
+      assert.equal((await f.callMcp({ kind: 'observe', runId: result.runId })).status, 'waiting');
+      f.finishStart(); // No onUpdated event: polling must recover a raced event.
+      assert.equal((await f.callMcp({ kind: 'status', runId: result.runId })).status, 'ready');
+      const observed = await f.callMcp({ kind: 'observe', runId: result.runId });
+      assert.equal(observed.observation.url, 'https://github.com/…/…');
+      assert.doesNotMatch(JSON.stringify(f.local.runState), /private|other.example|search\/advanced/);
+      assert.deepEqual(f.decisions, []); assert.deepEqual(f.history, []);
+    } finally { await f.close(); }
   }
 });
 
@@ -437,18 +455,19 @@ test('a session-write failure after persisting a run reports its real ID as unce
   } finally { await f.close(); }
 });
 
-test('actual worker reports start-page and unsaved-cloud-draft blockers to MCP and the popup without inventing a run', async () => {
+test('actual worker blocks unsaved cloud edits and arbitrary undiscovered Markdown before opening any tab', async () => {
   for (const unsaved of [false, true]) {
     const f = await fixture({ signedIn: false, mcp: true,
-      initialTabUrl: unsaved ? 'https://github.com/search/advanced' : 'https://example.com',
       ...(unsaved ? { draft: { sourceRecordingId: 'cloud', remoteSkillId: 'cloud', dirty: true, name: 'my-skill', description: 'My edits', markdown } } : {}),
     });
     try {
       const skill = await f.callMcp({ kind: 'get_skill', skillId: 'example:github-issue-triage' });
-      const result = await f.callMcp({ kind: 'start', markdown: skill.skill.markdown, parameters: { repository: 'microsoft/vscode', topic: 'terminal', state: 'open', label: 'bug' } });
+      const result = await f.callMcp({ kind: 'start', markdown: unsaved ? skill.skill.markdown : markdown,
+        parameters: unsaved ? { repository: 'microsoft/vscode', topic: 'terminal', state: 'open', label: 'bug' } : { search_1: 'Alpha' } });
       assert.equal(result.status, 'blocked');
-      assert.equal(result.errorCode, unsaved ? 'UNSAVED_LIBRARY_DRAFT' : 'START_PAGE_REQUIRED');
+      assert.equal(result.errorCode, unsaved ? 'UNSAVED_LIBRARY_DRAFT' : 'SKILL_REFRESH_REQUIRED');
       assert.equal(result.runId, undefined); assert.equal(f.local.runState, undefined);
+      assert.equal(f.createdTabs.length, 0);
       assert.equal(f.session.mcpLastError.message, result.message);
       assert.equal((await f.post({ type: 'mcp-status' })).runError, result.message);
       if (unsaved) assert.equal(f.local.skillDraft.markdown, markdown);
@@ -562,7 +581,7 @@ test("Stop cancels a pending model decision and prevents browser dispatch", asyn
 test("web pages cannot change execution credentials, and keys survive only the trusted session", async () => {
   const f = await fixture();
   try {
-    for (const type of ['mcp-begin', 'mcp-approve', 'mcp-disconnect', 'mcp-select-tab'])
+    for (const type of ['mcp-begin', 'mcp-approve', 'mcp-disconnect'])
       assert.throws(() => f.untrusted({ type, pairingId: 'fake' }), /Only extension pages/);
     assert.throws(
       () =>
@@ -590,4 +609,21 @@ test("web pages cannot change execution credentials, and keys survive only the t
   } finally {
     await f.close();
   }
+});
+
+test('a legacy skill asks for its redacted starting route in chat and opens a supplied public route without logging it', async () => {
+  const legacy = createSkillMarkdown({ id: 'legacy', tabId: 1, active: false, startedAt: '', actions: [{ id: '1', at: '', kind: 'navigation', url: 'https://example.org/…/…' }] }, 'legacy-task', 'Public task.');
+  const f = await fixture({ signedIn: false, mcp: true, draft: { sourceRecordingId: 'legacy', name: 'legacy-task', description: 'Public task.', markdown: legacy } });
+  try {
+    const skill = await f.callMcp({ kind: 'get_skill', skillId: 'local:legacy' });
+    assert.equal(skill.skill.startUrl, '');
+    const missing = await f.callMcp({ kind: 'start', skillId: 'local:legacy', parameters: {} });
+    assert.equal(missing.errorCode, 'START_ADDRESS_REQUIRED'); assert.match(missing.message, /in chat/);
+    assert.equal(f.createdTabs.length, 0);
+    const started = await f.callMcp({ kind: 'start', skillId: 'local:legacy', parameters: {}, startUrl: 'https://example.org/search/advanced' });
+    assert.equal(started.status, 'waiting'); assert.equal(f.createdTabs.length, 1);
+    assert.equal(f.createdTabs[0].url, 'https://example.org/search/advanced');
+    assert.doesNotMatch(JSON.stringify(f.local.runState), /search\/advanced/);
+    assert.doesNotMatch(f.session.externalSession.markdown, /search\/advanced/);
+  } finally { await f.close(); }
 });

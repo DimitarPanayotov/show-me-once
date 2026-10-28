@@ -371,13 +371,9 @@
               Checking connection…
             </p>
             <p id="mcp-connected-help" class="hint" hidden>
-              Ask your agent to use a skill. Actions and approvals appear here.
+              Ask your agent to use a skill. It opens the task page automatically. Actions and approvals appear here.
             </p>
             <p id="mcp-run-error" class="save-feedback error" role="alert"></p>
-            <div id="mcp-target-controls" hidden>
-              <p id="mcp-target-status" class="hint">The agent uses the task tab in Chrome.</p>
-              <button id="mcp-use-tab" type="button" class="button secondary full">Use this tab for the agent</button>
-            </div>
             <div id="mcp-approval" class="confirmation-preview" hidden>
               <h3>Allow this local agent connection?</h3>
               <p>Check that your agent shows the same code:</p>
@@ -444,14 +440,6 @@
             <textarea id="agent-request" rows="3" readonly></textarea>
             <button id="copy-request" type="button" class="button primary full">
               Copy agent request
-            </button>
-            <button
-              id="open-start-page"
-              type="button"
-              class="button secondary full"
-              hidden
-            >
-              Open starting page ↗
             </button>
             <p
               id="handoff-notice"

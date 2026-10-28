@@ -68,6 +68,9 @@ test("agent export preserves the executable plan and adds discoverable MCP instr
   ])
     assert.ok(exported.includes(tool));
   assert.equal(withMcpInstructions(exported), exported);
+  const legacy = markdown + "\n<!-- show-me-once-mcp -->\nHave the user open the starting page.";
+  assert.doesNotMatch(withMcpInstructions(legacy), /Have the user open/);
+  assert.match(withMcpInstructions(legacy), /opens the starting page automatically/);
   assert.throws(() =>
     withMcpInstructions(`${markdown}\npassword=do-not-export`),
   );

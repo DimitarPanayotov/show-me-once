@@ -338,9 +338,7 @@ function renderHandoff() {
         "). Ask me for the new inputs you need."
     : "";
   setValue(element<HTMLTextAreaElement>("agent-request"), request);
-  element("copy-request").textContent = builtin(currentDraft)
-    ? "Open GitHub & copy triage request"
-    : "Copy agent request";
+  element("copy-request").textContent = "Copy agent request";
   element<HTMLButtonElement>("copy-request").disabled =
     !currentDraft ||
     !mcpConnected ||
@@ -350,7 +348,7 @@ function renderHandoff() {
   element<HTMLButtonElement>("try-example").disabled =
     saving || runStarting || !!activeRun?.active || !!currentRecording?.active;
   element("handoff-help").textContent = mcpConnected
-    ? "Open the task's starting page, then paste this request into your coding agent. It can read the skill directly."
+    ? "Paste this request into your coding agent. It reads the skill and opens the task page automatically."
     : "Connect your coding agent above first. Your skill stays here.";
   let url: string | undefined;
   try {
@@ -365,10 +363,6 @@ function renderHandoff() {
   } catch {
     /* Invalid Markdown stays editable. */
   }
-  const open = element<HTMLButtonElement>("open-start-page");
-  open.hidden = !url || currentDraft?.sourceRecordingId === EXAMPLE_ID;
-  open.disabled = !!activeRun?.active || !!currentRecording?.active;
-  open.dataset.url = url;
   element("run-starting-page").textContent =
     element("starting-page").textContent;
   element<HTMLButtonElement>("open-task-page").hidden = !url;
@@ -503,13 +497,10 @@ async function renderAccount() {
 async function refreshMcp() {
   const status = (await browser.runtime.sendMessage({
     type: "mcp-status",
-  })) as { paired: boolean; connected: boolean; enabled?: boolean; pending?: { id: string; code: string }; error?: string; runError?: string; targetHost?: string };
+  })) as { paired: boolean; connected: boolean; enabled?: boolean; pending?: { id: string; code: string }; error?: string; runError?: string };
   mcpConnected = status.connected;
   mcpPendingId = status.pending?.id;
   element('mcp-run-error').textContent = status.runError ?? '';
-  element('mcp-target-controls').hidden = !status.connected;
-  element('mcp-target-status').textContent = status.targetHost ? `Agent tab selected: ${status.targetHost}` : 'Open this popup on the task page to choose its tab explicitly.';
-  element<HTMLButtonElement>('mcp-use-tab').disabled = !!activeRun?.active || !!currentRecording?.active;
   const feedback = element("mcp-status");
   feedback.dataset.state = status.connected
     ? "connected"
@@ -1079,13 +1070,6 @@ element("mcp-disconnect").addEventListener("click", () => {
 element('mcp-reject').addEventListener('click', () => {
   void browser.runtime.sendMessage({ type: 'mcp-disconnect' }).then(refreshMcp).catch(report);
 });
-element('mcp-use-tab').addEventListener('click', () => {
-  void (async () => {
-    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-    await browser.runtime.sendMessage({ type: 'mcp-select-tab', tabId: tab?.id });
-    await refreshMcp();
-  })().catch(cause => { element('mcp-run-error').textContent = cause instanceof Error ? cause.message : 'Could not select this tab.'; });
-});
 element('mcp-agent').addEventListener('change', () => {
   renderMcpInstallation();
   element('mcp-install-notice').textContent = '';
@@ -1184,8 +1168,6 @@ element("copy-request").addEventListener("click", () => {
     .then(() => {
       element("handoff-notice").textContent =
         "✓ Request copied. Paste it into your coding agent.";
-      if (currentDraft?.sourceRecordingId === EXAMPLE_ID)
-        return browser.tabs.create({ url: EXAMPLE_START_URL });
     })
     .catch(report);
 });
@@ -1270,10 +1252,6 @@ element("subscription-copy-id").addEventListener("click", () => {
         "✓ Extension ID copied. Paste it into the subscription setup.";
     })
     .catch(report);
-});
-element("open-start-page").addEventListener("click", () => {
-  const url = element("open-start-page").dataset.url;
-  if (url) void browser.tabs.create({ url }).catch(report);
 });
 browser.storage.onChanged.addListener((changes, area) => {
   if (

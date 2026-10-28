@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./agent": "./src/agent.ts",
     "./mcp": "./src/mcp.ts",
-    "./pairing": "./src/pairing.ts"
+    "./pairing": "./src/pairing.ts",
+    "./start-page": "./src/start-page.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",

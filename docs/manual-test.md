@@ -1,6 +1,6 @@
-# Manual acceptance — 0.7.2
+# Manual acceptance — 0.8.0
 
-1. Reload the existing extension and confirm 0.7.2. External coding agent must remain optional and collapsed. No separate HTML guide.
+1. Reload the existing extension and confirm 0.8.0. External coding agent must remain optional and collapsed. No separate HTML guide.
 2. Under Agent settings either save a personal OpenAI/Anthropic key (session only), or install subscription-helper/Install subscription helper.cmd once for the current extension ID and choose Check subscription. No terminal or external agent chat should remain necessary.
 3. Sign into the library. Choose Try GitHub issue triage. In the extension type: Find open issues in microsoft/vscode about terminal with label bug. Sort by recently updated and open the first matching issue. Click Run.
 4. Check all four fields. Before search, verify an action-specific Submit search preview identifying the Search button and consequence. Approve once. Remaining steps must continue automatically without a chat message or Next button.
@@ -22,4 +22,13 @@ Local MCP acceptance (0.7.0): choose the agent under External coding agent. Chec
 
 MCP start diagnostics (0.7.1): signed out, select GitHub Advanced Search and ask the agent to run the built-in example. It must return a run ID without library sign-in. With an active recording, or unsaved edits to a different library skill, Start must explain that specific blocker in both MCP output and the extension. Keep those edits intact. Unexpected failures must not echo page text, URLs with private values, credentials or parameter values. If a run was persisted before a failure, report its ID as an unknown outcome and inspect it before retrying.
 
-MCP tab targeting (0.7.2): keep GitHub Advanced Search open in one Chrome window and another page focused in a second. The exact built-in example may use the single Advanced Search tab. With multiple Advanced Search tabs and no matching focused tab, require explicit selection. Open the extension on the intended task tab and choose Use this tab for the agent. Confirm its host, start via MCP and verify actions stay in that tab. Closing or navigating the chosen tab must block a new start. A recorded URL shape alone must not select another tab automatically. No sign-in is required for the built-in example.
+MCP automatic startup (0.8.0):
+
+1. Reload the extension and register the updated connector once as described in docs/mcp.md. Restart the agent. Keep existing pairing; do not copy an ID or secret.
+2. With an unrelated Chrome page focused, ask the agent to use the GitHub issue-triage example with repository microsoft/vscode, topic terminal, state open and label bug. Do not open Advanced Search yourself.
+3. Verify that Start opens a new task tab on GitHub Advanced Search, reports one run ID and waits for loading. The agent should continue through fresh observations, with action-specific search approval in the extension. Check sorting and the opened issue. Unrelated tabs must remain unchanged.
+4. Repeat for repository microsoft/TypeScript and topic inference. Stop another run before approving its search; verify no search is dispatched after Stop.
+5. Close Chrome, leave the paired agent open, and ask it to list skills/run the example. Chrome should open and reconnect without a helper terminal, then open the task page. If it opens a different profile, enable/connect the extension there once; report the actual outcome. Do not claim this check passed from mocked tests.
+6. Cancel a Start while Chrome reconnects. A cancelled request must not later create a task tab. Do not retry an uncertain action automatically.
+7. For a legacy recorded skill with a deeper redacted first path, check the agent asks for its public starting address in chat. Supply the address; it must open it automatically. A wrong-origin address, query values or action endpoint must be rejected before opening a tab. Optionally save a public start_url header and repeat without supplying the address.
+8. Check first-time pairing and protected-action approvals remain required, while normal starts need no Use this tab button. The in-extension request/Run path must still work independently.

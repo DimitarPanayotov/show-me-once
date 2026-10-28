@@ -26,6 +26,8 @@ export function createBridge(
     identity?: ConnectorIdentity;
     bindings?: BrowserBinding[];
     saveBindings?: (bindings: BrowserBinding[]) => Promise<void>;
+    launchBrowser?: () => Promise<void>;
+    browserWaitMs?: number;
   } = {},
 ) {
   if ((extensionOrigin && !/^chrome-extension:\/\/[a-p]{32}$/.test(extensionOrigin)) || (!extensionOrigin && !options.identity))
@@ -51,6 +53,8 @@ export function createBridge(
   const clients = new Map<string, number>();
   let bindings = options.bindings ?? [];
   let savingBinding: Promise<unknown> = Promise.resolve();
+  let browserLaunch: Promise<void> | undefined;
+  let lastBrowserLaunch = 0;
   const pairingRequests = new Map<string, { code?: string; expiresAt: number }>();
   let idleSince = Date.now();
   const touch = (controllerId: string) => {
@@ -161,7 +165,7 @@ export function createBridge(
     }
     if (req.method === "POST" && req.url === "/heartbeat") {
       touch(controllerId);
-      reply(200, { ok: true, bridgeId, connected: !!peer, protocolVersion: 2 });
+      reply(200, { ok: true, bridgeId, connected: !!peer, protocolVersion: 3 });
       return;
     }
     if (req.method !== "POST" || req.url !== "/command") {
@@ -176,6 +180,23 @@ export function createBridge(
           throw new Error("Request too large.");
       }
       const command = checkedExternalCommand(JSON.parse(body));
+      touch(controllerId);
+      // Only an authenticated tool call with an existing browser pairing may wake Chrome.
+      // Initialization and heartbeats never launch applications.
+      if (!peer && (bindings.length || extensionOrigin) && options.launchBrowser) {
+        if (!browserLaunch && Date.now() - lastBrowserLaunch > 15000) {
+          lastBrowserLaunch = Date.now();
+          browserLaunch = options.launchBrowser().finally(() => { browserLaunch = undefined; });
+        }
+        try { await browserLaunch; }
+        catch {
+          reply(200, { status: 'disconnected', message: 'Could not start Google Chrome. Check that Chrome is installed and the extension is enabled in its default profile. No helper terminal is needed.' });
+          return;
+        }
+        const until = Date.now() + (options.browserWaitMs ?? 12000);
+        while (!peer && Date.now() < until && !res.destroyed)
+          await new Promise(resolve => setTimeout(resolve, 50));
+      }
       // First discovery can arrive just before the open popup's automatic retry.
       // Give that handshake a short window; no browser command is dispatched.
       if (options.identity && (command.kind === 'list_skills' || command.kind === 'get_skill')) {
@@ -190,10 +211,13 @@ export function createBridge(
           ...(requests.length ? { pairingCodes: requests.map(p => p.code) } : {}),
           message: requests.length
             ? `Connection approval needed. Ask the user to open Show Me Once, compare its six-digit code with ${requests.map(p => p.code).join(' or ')}, then click Allow connection. Do not approve for them. After approval, retry this discovery call.`
-            : "Open Show Me Once → External coding agent → Connect, then approve the connection there. The connector is already running; no helper terminal is needed.",
+            : bindings.length || extensionOrigin
+              ? 'Chrome has not reconnected. Check once that Show Me Once is enabled and connected in the Chrome profile you use. The agent opens task pages automatically after reconnection; no helper terminal is needed.'
+              : "First connection only: open Show Me Once → External coding agent → Connect, then approve the connection there. The connector is already running; no helper terminal is needed.",
         });
         return;
       }
+      if (res.destroyed) return; // A cancelled start must never create a task tab later.
       if (pending.size >= 16) {
         reply(409, { error: "Bridge busy." });
         return;

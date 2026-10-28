@@ -1,7 +1,5 @@
-import { parseSkillPlan } from "@show-me-once/shared";
 import {
   EXAMPLE_ID,
-  EXAMPLE_START_URL,
   exampleDraft,
 } from "./example-skill.ts";
 export {
@@ -13,6 +11,7 @@ export {
   exampleDraft,
 } from "./example-skill.ts";
 import { safeAgentLabel } from "@show-me-once/shared/agent";
+import { resolveStartPage } from './mcp-start.ts';
 import {
   withMcpInstructions,
   type ExternalResult,
@@ -137,10 +136,7 @@ export class SkillCatalog {
         name: safeAgentLabel(draft.name),
         description: safeAgentLabel(draft.description),
         markdown,
-        startUrl:
-          skillId === EXAMPLE_ID
-            ? EXAMPLE_START_URL
-            : parseSkillPlan(markdown).steps[0]!.url,
+        startUrl: (() => { try { return resolveStartPage(markdown); } catch { return ''; } })(),
       },
     };
   }

@@ -1,4 +1,4 @@
-export { readSkillMetadata, writeSkillMetadata, validateSkillMetadata, editSkillDocument, checkedSkillDocument, type SkillMetadata } from './metadata.ts';
+export { readSkillMetadata, writeSkillMetadata, validateSkillMetadata, editSkillDocument, checkedSkillDocument, readSkillStartUrl, writeSkillStartUrl, type SkillMetadata } from './metadata.ts';
 
 export type RecordedAction = {
   id: string;
@@ -34,6 +34,7 @@ export type RunState = {
   confirmationStep?: number; inFlightStep?: number; awaitingNavigation?: boolean; navigationObserved?: boolean; navigationStartedAt?: number;
   remoteRunId?: string; remoteSyncedLogs?: number; syncError?: string; logs: RunLog[];
   engine?: 'agent' | 'recorded' | 'external'; provider?: 'openai' | 'anthropic' | 'codex-local'; thinking?: boolean;
+  preparingStart?: boolean;
 };
 
 export function appendAction(
