@@ -98,6 +98,63 @@
       </section>
 
       <section id="view-run" role="tabpanel" aria-labelledby="tab-run">
+        <section class="card" id="coding-agent-connection">
+          <div class="section-heading"><h2>Your coding agent</h2></div>
+          <p
+            id="mcp-status"
+            class="agent-connection-status"
+            role="status"
+            aria-live="polite"
+          >
+            Checking connection…
+          </p>
+          <p id="mcp-connected-help" class="hint" hidden>
+            Ask your agent to use a skill. Actions and approvals appear here.
+          </p>
+          <details id="mcp-settings">
+            <summary id="mcp-settings-summary">
+              Connect your coding agent
+            </summary>
+            <p class="hint">
+              Connect once. Your agent starts the connection automatically; no
+              helper window is needed.
+            </p>
+            <div id="mcp-pair-form">
+              <p class="hint">
+                For the one-time setup, use this extension ID:
+                <code id="mcp-extension-id"></code>
+              </p>
+              <label for="mcp-code">One-time pairing code</label>
+              <input id="mcp-code" type="password" autocomplete="off" />
+              <button id="mcp-pair" type="button" class="button secondary full">
+                Connect coding agent
+              </button>
+              <a
+                class="text-link"
+                href="https://github.com/DimitarPanayotov/show-me-once/blob/main/docs/mcp.md"
+                target="_blank"
+                rel="noopener"
+                >One-time setup guide ↗</a
+              >
+            </div>
+            <button
+              id="mcp-check"
+              type="button"
+              class="button secondary full"
+              hidden
+            >
+              Check connection
+            </button>
+            <button
+              id="mcp-disconnect"
+              type="button"
+              class="button quiet full"
+              hidden
+            >
+              Forget connection
+            </button>
+          </details>
+        </section>
         <div id="library-controls" class="library-picker" hidden>
           <div class="section-heading">
             <label for="library-skills">Your skills</label
@@ -322,35 +379,6 @@
             <div id="run-editor-slot"></div>
           </details>
         </section>
-        <details id="mcp-settings">
-          <summary>Use an external agent (MCP)</summary>
-          <p class="hint">
-            Your coding-agent session chooses actions through MCP. Start the MCP
-            bridge, then pair it here. This is separate from the local Codex
-            decision helper.
-          </p>
-          <p
-            id="mcp-status"
-            class="agent-connection-status"
-            role="status"
-            aria-live="polite"
-          >
-            MCP bridge not connected.
-          </p>
-          <label for="mcp-code">MCP bridge pairing code</label>
-          <input id="mcp-code" type="password" autocomplete="off" />
-          <button id="mcp-pair" type="button" class="button secondary full">
-            Connect MCP bridge
-          </button>
-          <button
-            id="mcp-disconnect"
-            type="button"
-            class="button quiet full"
-            hidden
-          >
-            Disconnect MCP bridge
-          </button>
-        </details>
       </section>
 
       <section

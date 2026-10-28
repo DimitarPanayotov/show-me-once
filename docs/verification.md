@@ -1,10 +1,10 @@
 # Manual verification
 
-## Agent-led MCP preview — 0.4.0
+## Agent-led MCP preview — 0.4.1
 
-This is a separate path from all earlier browser evidence. Non-browser automated tests exercise the official MCP SDK over stdio, authenticated HTTP/WebSocket relay, strict tool contracts, controller/run/tab/step binding, stale and single-use observations, extension-only approval, two replacement inputs, Stop, disconnect/timeout recovery, and controller lease expiry. Browser/content execution is simulated in the vertical test. No new Codex decision process or browser automation is used.
+This is a separate path from all earlier browser evidence. Non-browser automated tests exercise the official MCP SDK over stdio, authenticated HTTP/WebSocket relay, strict tool contracts, controller/run/tab/step binding, stale and single-use observations, extension-only approval, two replacement inputs, Stop, disconnect/timeout recovery, and controller lease expiry. Browser/content execution is simulated in the vertical test. Additional real-process tests cover automatic connector startup, concurrent clients, idle shutdown, forced-crash recovery and restart with stable pairing; the extension connection test simulates Chrome storage and sockets to verify remembered pairing and identity refresh. No new Codex decision process or browser automation is used.
 
-All 44 automated tests and the workspace TypeScript checks pass. The extension ZIP and standalone MCP relay/server bundles build successfully. Matching edited drafts are preserved; a different external skill cannot silently replace unrelated unsaved work. These checks establish the tested protocol and simulated execution behavior, not real Chrome acceptance.
+All 48 automated tests and the workspace TypeScript checks pass. The extension ZIP and standalone MCP relay/server bundles build successfully. Matching edited drafts are preserved; a different external skill cannot silently replace unrelated unsaved work. These checks establish the tested protocol and simulated execution behavior, not real Chrome acceptance.
 
 **Real agent/browser acceptance is pending.** This conversation is not connected to the newly configured MCP server, and the user explicitly prohibited browser automation for this change. The manual Codex/Chrome procedure and exact blocker are in [MCP setup](mcp.md). Earlier real-site runs below must not be presented as verification of the MCP path. The ignored system guide was updated in place and remains excluded from Git.
 

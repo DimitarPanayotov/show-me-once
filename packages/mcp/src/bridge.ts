@@ -19,6 +19,8 @@ export function createBridge(
     agentToken?: string;
     timeoutMs?: number;
     leaseMs?: number;
+    idleMs?: number;
+    onIdle?: () => void;
   } = {},
 ) {
   if (!/^chrome-extension:\/\/[a-p]{32}$/.test(extensionOrigin))
@@ -42,6 +44,11 @@ export function createBridge(
     }
   >();
   const clients = new Map<string, number>();
+  let idleSince = Date.now();
+  const touch = (controllerId: string) => {
+    clients.set(controllerId, Date.now());
+    idleSince = Date.now();
+  };
   const send = (value: object) => {
     if (peer?.readyState === WebSocket.OPEN) peer.send(JSON.stringify(value));
   };
@@ -140,12 +147,13 @@ export function createBridge(
         });
       for (const [id, p] of pending)
         if (p.controllerId === controllerId) cancel(id);
+      if (!clients.size) idleSince = Date.now();
       reply(200, { ok: true });
       return;
     }
     if (req.method === "POST" && req.url === "/heartbeat") {
-      clients.set(controllerId, Date.now());
-      reply(200, { ok: true });
+      touch(controllerId);
+      reply(200, { ok: true, bridgeId, connected: !!peer });
       return;
     }
     if (req.method !== "POST" || req.url !== "/command") {
@@ -171,7 +179,7 @@ export function createBridge(
         reply(409, { error: "Bridge busy." });
         return;
       }
-      clients.set(controllerId, Date.now());
+      touch(controllerId);
       const id = randomUUID();
       res.on("close", () => {
         if (!res.writableEnded) cancel(id);
@@ -205,6 +213,7 @@ export function createBridge(
       for (const [controllerId, at] of clients) {
         if (Date.now() - at > leaseMs) {
           clients.delete(controllerId);
+          if (!clients.size) idleSince = Date.now();
           send({
             type: "controller_disconnected",
             controllerId,
@@ -215,8 +224,18 @@ export function createBridge(
             if (p.controllerId === controllerId) cancel(id);
         }
       }
+      if (
+        !clients.size &&
+        options.onIdle &&
+        Date.now() - idleSince >= (options.idleMs ?? 30000)
+      )
+        options.onIdle();
     },
-    Math.min(5000, Math.max(10, leaseMs / 2)),
+    Math.min(
+      5000,
+      Math.max(10, leaseMs / 2),
+      Math.max(10, (options.idleMs ?? 30000) / 2),
+    ),
   );
   leases.unref();
   server.on("upgrade", (req, socket, head) => {

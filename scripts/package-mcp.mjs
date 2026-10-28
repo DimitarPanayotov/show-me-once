@@ -20,5 +20,5 @@ await writeFile(
 await copyFile("docs/mcp.md", "dist/mcp/SETUP.md");
 await writeFile(
   "dist/mcp/codex-config.example.toml",
-  `# Merge into the trusted workspace's .codex/config.toml or your user config.\n# Replace this absolute path with the extracted MCP bundle path.\n[mcp_servers.show_me_once]\ncommand = "node"\nargs = ["C:/absolute/path/to/mcp/server.mjs"]\nstartup_timeout_sec = 10\ntool_timeout_sec = 30\n`,
+  `# Run setup.mjs with your extension ID once, then pair in the extension.\n# The agent starts/manages the connector automatically. No bridge terminal.\n# Merge into the trusted workspace's .codex/config.toml or your user config.\n# Replace this absolute path with the extracted MCP bundle path.\n[mcp_servers.show_me_once]\ncommand = "node"\nargs = ["C:/absolute/path/to/mcp/server.mjs"]\nstartup_timeout_sec = 10\ntool_timeout_sec = 30\n`,
 );

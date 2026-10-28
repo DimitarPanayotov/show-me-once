@@ -530,6 +530,8 @@ async function recoverRun(): Promise<void> {
 }
 
 export default defineBackground(() => {
+  // Remembered connector credentials belong to trusted extension pages/worker.
+  void browser.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
   const external = new ExternalRunController({
     readRun,
     readSession: async () =>
@@ -691,56 +693,60 @@ export default defineBackground(() => {
       } else if (run?.engine !== "external") interruption = undefined;
     });
   };
-  mcp = new ExternalBridgeClient((identity, command) => {
-    const kind = (command as { kind?: string }).kind;
-    if (kind === "start") pendingExternalStarts.add(identity.controllerId);
-    if (
-      kind === "stop" &&
-      externalOwner?.controllerId === identity.controllerId &&
-      externalOwner.bridgeId === identity.bridgeId &&
-      (command as { runId?: string }).runId === externalOwner.runId
-    ) {
-      controlRevision++;
-      interruption = "stop";
-    }
-    return serial<ExternalResult>(async () => {
-      const connection = mcp.current();
+  mcp = new ExternalBridgeClient(
+    (identity, command) => {
+      const kind = (command as { kind?: string }).kind;
+      if (kind === "start") pendingExternalStarts.add(identity.controllerId);
       if (
-        !connection ||
-        connection.bridgeId !== identity.bridgeId ||
-        connection.connectionId !== identity.connectionId
-      )
-        return {
-          status: "disconnected",
-          message:
-            "Connection changed. Inspect the extension before continuing.",
-        };
-      if (
-        interruptedControllers.has(identity.controllerId) &&
-        kind !== "status" &&
-        kind !== "stop"
-      )
-        return {
-          status: "paused",
-          message: "Resume in the extension before issuing new actions.",
-        };
-      const result = await external.handle(identity, command);
-      if (
-        interruptedControllers.has(identity.controllerId) &&
-        kind === "start"
+        kind === "stop" &&
+        externalOwner?.controllerId === identity.controllerId &&
+        externalOwner.bridgeId === identity.bridgeId &&
+        (command as { runId?: string }).runId === externalOwner.runId
       ) {
-        pauseExternal(identity.controllerId);
-        return { ...result, status: "paused" };
+        controlRevision++;
+        interruption = "stop";
       }
-      return result;
-    }).finally(() => {
-      if (kind === "start") {
-        pendingExternalStarts.delete(identity.controllerId);
-        if (externalOwner?.controllerId !== identity.controllerId)
-          interruptedControllers.delete(identity.controllerId);
-      }
-    });
-  }, pauseExternal);
+      return serial<ExternalResult>(async () => {
+        const connection = mcp.current();
+        if (
+          !connection ||
+          connection.bridgeId !== identity.bridgeId ||
+          connection.connectionId !== identity.connectionId
+        )
+          return {
+            status: "disconnected",
+            message:
+              "Connection changed. Inspect the extension before continuing.",
+          };
+        if (
+          interruptedControllers.has(identity.controllerId) &&
+          kind !== "status" &&
+          kind !== "stop"
+        )
+          return {
+            status: "paused",
+            message: "Resume in the extension before issuing new actions.",
+          };
+        const result = await external.handle(identity, command);
+        if (
+          interruptedControllers.has(identity.controllerId) &&
+          kind === "start"
+        ) {
+          pauseExternal(identity.controllerId);
+          return { ...result, status: "paused" };
+        }
+        return result;
+      }).finally(() => {
+        if (kind === "start") {
+          pendingExternalStarts.delete(identity.controllerId);
+          if (externalOwner?.controllerId !== identity.controllerId)
+            interruptedControllers.delete(identity.controllerId);
+        }
+      });
+    },
+    pauseExternal,
+    browser,
+  );
   const controls = new Set([
     "start-recording",
     "stop-recording",
@@ -766,7 +772,12 @@ export default defineBackground(() => {
     if (typeof request.type === "string" && request.type.startsWith("mcp-")) {
       if (!fromOwnPage)
         throw new Error("Only extension pages may pair an MCP bridge.");
-      if (request.type === "mcp-status") return mcp.status();
+      if (request.type === "mcp-status") {
+        void mcp.connect().catch(() => {});
+        return mcp.status();
+      }
+      if (request.type === "mcp-connect")
+        return mcp.connect().then(() => mcp.status());
       if (request.type === "mcp-pair")
         return serial(async () => {
           if ((await readRun())?.active)

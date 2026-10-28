@@ -2,7 +2,7 @@
 
 Teach a browser task once, save it as a reusable skill, and run it again with new inputs.
 
-**Agent-led MCP preview (0.4.0):** export a skill to Codex's `.agents/skills` folder and let your existing coding-agent session call guarded browser tools through the paired extension. This uses a separate local relay, keeps approval/Pause/Stop in the extension, and does not launch another Codex decision process. [Download the preview](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.4.0-demo) · [Setup, architecture and verification limits](docs/mcp.md). Real browser acceptance of this new path is pending; the extension-led modes remain available.
+**Agent-led MCP preview (0.4.1):** export a skill to Codex's `.agents/skills` folder and let your existing coding-agent session call guarded browser tools through the paired extension. After one-time registration and pairing, the agent starts and manages the connector automatically; no helper terminal is needed. Approval/Pause/Stop stay in the extension, and no second Codex decision process is launched. [Download the preview](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.4.1-demo) · [Setup, architecture and verification limits](docs/mcp.md). Real browser acceptance of this new path is pending; the extension-led modes remain available.
 
 [Open the app](https://show-me-once-dimitar.vercel.app) · [Extension and local-agent helper](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.3.1-demo)
 

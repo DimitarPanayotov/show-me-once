@@ -2,26 +2,21 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import * as z from "zod/v4";
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { checkedExternalCommand } from "@show-me-once/shared/mcp";
+import { ensureManagedBridge, type BridgeConnection } from "./managed.ts";
 
-const file =
-  process.env.SMO_MCP_CONNECTION_FILE ??
-  join(homedir(), ".show-me-once", "mcp-connection.json");
-const config = JSON.parse(await readFile(file, "utf8")) as {
-  url: string;
-  token: string;
-  bridgeId: string;
-};
+const controllerId = randomUUID();
+const file = process.env.SMO_MCP_CONNECTION_FILE;
+const config: BridgeConnection = file
+  ? JSON.parse(await readFile(file, "utf8"))
+  : await ensureManagedBridge(controllerId);
 if (
   !/^http:\/\/127\.0\.0\.1:\d+$/.test(config.url) ||
   typeof config.token !== "string" ||
   config.token.length < 32
 )
   throw new Error("Invalid local bridge connection file.");
-const controllerId = randomUUID();
 const headers = {
   Authorization: `Bearer ${config.token}`,
   "Content-Type": "application/json",
@@ -47,7 +42,7 @@ async function command(value: unknown, signal?: AbortSignal) {
 }
 const id = z.string().regex(/^[a-zA-Z0-9-]{1,80}$/);
 serveStdio(() => {
-  const server = new McpServer({ name: "show-me-once", version: "0.4.0" });
+  const server = new McpServer({ name: "show-me-once", version: "0.4.1" });
   const register = (
     name: string,
     description: string,
@@ -146,12 +141,23 @@ serveStdio(() => {
   );
   return server;
 });
+let renewing = false;
 const lease = setInterval(() => {
-  void fetch(`${config.url}/heartbeat`, {
-    method: "POST",
-    headers,
-    signal: AbortSignal.timeout(2000),
-  }).catch(() => {});
+  if (renewing) return;
+  renewing = true;
+  void (
+    file
+      ? fetch(`${config.url}/heartbeat`, {
+          method: "POST",
+          headers,
+          signal: AbortSignal.timeout(2000),
+        })
+      : ensureManagedBridge(controllerId)
+  )
+    .catch(() => {})
+    .finally(() => {
+      renewing = false;
+    });
 }, 10000);
 lease.unref();
 process.stdin.on("end", () => {

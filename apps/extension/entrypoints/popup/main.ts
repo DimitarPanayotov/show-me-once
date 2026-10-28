@@ -368,11 +368,18 @@ async function refreshMcp() {
       ? "unavailable"
       : "disconnected";
   feedback.textContent = status.connected
-    ? "✓ External agent bridge connected. Your agent can start a skill."
+    ? "✓ Connected to your coding agent"
     : status.paired
-      ? "MCP bridge unavailable. Start the original bridge or pair its new code."
-      : "MCP bridge not connected.";
+      ? "Waiting for your coding agent. Open it to reconnect automatically."
+      : "Connect once to run skills from your coding agent.";
   element("mcp-disconnect").hidden = !status.paired;
+  element("mcp-check").hidden = !status.paired;
+  element("mcp-pair-form").hidden = status.paired;
+  element("mcp-connected-help").hidden = !status.connected;
+  element("mcp-settings-summary").textContent = status.paired
+    ? "Connection settings"
+    : "Connect your coding agent";
+  element("mcp-extension-id").textContent = browser.runtime.id;
 }
 
 function renderRun(
@@ -946,7 +953,7 @@ element("download-mcp").addEventListener("click", () => {
     const archive = zipSync({
       [`.agents/skills/${name}/SKILL.md`]: strToU8(markdown),
       "INSTALL.md": strToU8(
-        `Extract this ZIP in the workspace where you use Codex. The folder must be .agents/skills/${name}/SKILL.md. Configure the show_me_once MCP server using the separate MCP integration bundle; this ZIP contains instructions, not browser capabilities.\n\nCodex MCP command: codex mcp add show_me_once -- node C:/absolute/path/to/mcp/server.mjs\nStart bridge.mjs with your extension ID, pair it in the extension under Use an external agent (MCP), then reload/reconnect the client and verify /mcp and the skill selector. Invoke $${name} explicitly to verify discovery before relying on automatic matching.\n\nSetup: https://github.com/DimitarPanayotov/show-me-once/blob/main/docs/mcp.md\n`,
+        `Extract this ZIP in the workspace where you use Codex. The folder must be .agents/skills/${name}/SKILL.md. Configure the show_me_once MCP server using the separate MCP integration bundle; this ZIP contains instructions, not browser capabilities.\n\nCodex MCP command: codex mcp add show_me_once -- node C:/absolute/path/to/mcp/server.mjs\nRun setup.mjs with your extension ID once, register the MCP server and pair under Connect your coding agent. The coding agent starts the connector automatically; no helper terminal is needed. Reload/reconnect the client and verify /mcp and the skill selector. Invoke $${name} explicitly to verify discovery before relying on automatic matching.\n\nSetup: https://github.com/DimitarPanayotov/show-me-once/blob/main/docs/mcp.md\n`,
       ),
     });
     const url = URL.createObjectURL(
@@ -966,7 +973,7 @@ element("mcp-pair").addEventListener("click", () => {
     const button = element<HTMLButtonElement>("mcp-pair");
     button.disabled = true;
     button.dataset.busy = "true";
-    element("mcp-status").textContent = "Connecting the external-agent bridge…";
+    element("mcp-status").textContent = "Connecting to your coding agent…";
     try {
       await browser.runtime.sendMessage({
         type: "mcp-pair",
@@ -974,6 +981,7 @@ element("mcp-pair").addEventListener("click", () => {
       });
       element<HTMLInputElement>("mcp-code").value = "";
       await refreshMcp();
+      element<HTMLDetailsElement>("mcp-settings").open = false;
     } catch (cause) {
       element("mcp-status").textContent =
         cause instanceof Error ? cause.message : String(cause);
@@ -984,6 +992,27 @@ element("mcp-pair").addEventListener("click", () => {
     }
   })();
 });
+element("mcp-check").addEventListener("click", () => {
+  void (async () => {
+    const button = element<HTMLButtonElement>("mcp-check");
+    button.disabled = true;
+    element("mcp-status").textContent =
+      "Checking your coding-agent connection…";
+    try {
+      await browser.runtime.sendMessage({ type: "mcp-connect" });
+      await refreshMcp();
+    } catch (cause) {
+      element("mcp-status").textContent =
+        cause instanceof Error
+          ? cause.message
+          : "Waiting for your coding agent. Open it, then check again.";
+      element("mcp-status").dataset.state = "unavailable";
+    } finally {
+      button.disabled = false;
+    }
+  })();
+});
+
 element("mcp-disconnect").addEventListener("click", () => {
   void browser.runtime
     .sendMessage({ type: "mcp-disconnect" })

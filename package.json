@@ -7,7 +7,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm --filter @show-me-once/shared test && pnpm --filter @show-me-once/agent test && pnpm --filter @show-me-once/extension test && pnpm --filter @show-me-once/mcp test",
     "mcp:bridge": "pnpm --filter @show-me-once/mcp bridge",
-    "mcp:bundle": "rolldown packages/mcp/src/bridge-cli.ts --platform node --format esm --file dist/mcp/bridge.mjs && rolldown packages/mcp/src/server.ts --platform node --format esm --file dist/mcp/server.mjs && node --experimental-strip-types scripts/package-mcp.mjs",
+    "mcp:bundle": "rolldown packages/mcp/src/bridge-cli.ts --platform node --format esm --file dist/mcp/bridge.mjs && rolldown packages/mcp/src/server.ts --platform node --format esm --file dist/mcp/server.mjs && rolldown packages/mcp/src/managed-relay.ts --platform node --format esm --file dist/mcp/relay.mjs && rolldown packages/mcp/src/setup.ts --platform node --format esm --file dist/mcp/setup.mjs && node --experimental-strip-types scripts/package-mcp.mjs",
     "agent:local": "pnpm --filter @show-me-once/agent bridge",
     "agent:bundle": "rolldown packages/agent/src/bridge.ts --platform node --format esm --file dist/local-agent/bridge.mjs && node scripts/package-agent.mjs",
     "dev:extension": "pnpm --filter @show-me-once/extension dev",
