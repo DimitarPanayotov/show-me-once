@@ -796,7 +796,7 @@ export default defineBackground(() => {
       });
     },
     pauseExternal,
-    browser,
+    { storage: browser.storage, alarms: browser.alarms, origin: `chrome-extension://${browser.runtime.id}` },
   );
   const controls = new Set([
     "start-recording",
@@ -851,6 +851,13 @@ export default defineBackground(() => {
         });
       if (request.type === "mcp-connect")
         return mcp.connect().then(() => mcp.status());
+      if (request.type === 'mcp-begin') return mcp.begin();
+      if (request.type === 'mcp-approve') return serial(async () => {
+        if ((await readRun())?.active || (await read())?.active)
+          throw new Error('Stop the current run or recording before approving a connection.');
+        if (typeof request.pairingId !== 'string') throw new Error('Check the connection again.');
+        await mcp.approve(request.pairingId); return mcp.status();
+      });
       if (request.type === "mcp-pair")
         return serial(async () => {
           if ((await readRun())?.active)

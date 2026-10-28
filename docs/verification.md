@@ -1,5 +1,13 @@
 # Manual verification
 
+## Local MCP connection — 0.7.0
+
+The optional MCP setup now provides an agent picker: Codex/Claude Code receive a one-time registration command, Cursor/VS Code receive install links, and other clients receive configuration. Commands launch a self-contained versioned download through npx, eliminating dependency on an extracted folder path. Node.js 24 remains required. The primary in-extension request/Run settings are independent.
+
+First use automatically creates private connector settings and starts the shared relay. The extension and authenticated agent show the same six-digit code from a signed, nonce-bound transcript. Only an extension-page approval grants browser access; no extension ID or long-lived secret is copied. Trust persists across automatic idle shutdown/restart. Reconnect verifies the pinned public key before disclosing its credential. Forget while connected persists revocation. Pending-pairing heartbeat traffic keeps the MV3 worker alive while the user compares codes, within the two-minute approval limit.
+
+The automated suite has 96 tests: client-specific install/config formats, actual popup approval/status behavior, real stdio first-use without settings or ID, discovery-before-browser timing, approval gating, retained trust after restart, changed-identity rejection without token disclosure, website-Origin rejection, revocation, and existing guarded run/Stop behavior. A fresh-cache npx check downloads and launches the actual tarball, discovers all seven tools and initializes settings without an extension ID. No existing agent configuration is changed. Workspace type checks, the extension/reviewer build and Next.js production compile pass. Vercel deployment and its migration check passed with no pending migrations. The live connector download returns 200 and matches the packaged SHA-256; the 18-file reviewer kit passes its isolated offline-setup and popup checks. Protocol fixtures use controlled documents, not browser automation; real client install-button behavior and live Chrome acceptance remain manual.
+
 ## Skill metadata synchronization — 0.6.2
 
 The Name/Description fields and the SKILL.md YAML header previously persisted independently, so a renamed skill could display one name and export another. Both editors now synchronize these values in either direction using a shared YAML parser. Partial edits remain editable without losing focus. Invalid headers block saving/export; the API also aligns the header to submitted metadata before creating a version. Existing saved versions and workflow bodies are not rewritten.

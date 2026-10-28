@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 
 export type ManagedSettings = {
-  extensionId: string;
+  extensionId?: string;
   extensionToken: string;
   agentToken: string;
 };
@@ -22,11 +22,11 @@ export async function readSettings(
     value = JSON.parse(await readFile(settingsFile(home), "utf8"));
   } catch {
     throw new Error(
-      "Connect Show Me Once once using setup.mjs and your extension ID. No bridge terminal is needed.",
+      "Show Me Once connection settings are unavailable. Reconnect your agent.",
     );
   }
   if (
-    !/^[a-p]{32}$/.test(value.extensionId) ||
+    (value.extensionId !== undefined && !/^[a-p]{32}$/.test(value.extensionId)) ||
     !/^[A-Za-z0-9_-]{32,128}$/.test(value.extensionToken) ||
     !/^[A-Za-z0-9_-]{32,128}$/.test(value.agentToken)
   )
@@ -34,6 +34,24 @@ export async function readSettings(
       "Invalid Show Me Once connection settings. Run setup.mjs again.",
     );
   return value;
+}
+
+export async function initializeConnection(home = managedHome()): Promise<ManagedSettings> {
+  await mkdir(home, { recursive: true, mode: 0o700 });
+  try {
+    await writeFile(settingsFile(home), JSON.stringify({
+      extensionToken: randomBytes(32).toString('base64url'),
+      agentToken: randomBytes(32).toString('base64url'),
+    }), { flag: 'wx', mode: 0o600 });
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+  // Another MCP process may have just created the file but not finished its write.
+  for (let attempt = 0; ; attempt++) {
+    try { return await readSettings(home); }
+    catch (error) {
+      if (attempt >= 9) throw error;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+  }
 }
 
 // Idempotent setup: restarting an agent must not rotate the browser credential.
@@ -79,11 +97,12 @@ export async function ensureManagedBridge(
   } = {},
 ): Promise<BridgeConnection> {
   const home = options.home ?? managedHome();
-  const settings = await readSettings(home);
+  const settings = await initializeConnection(home);
   const port = options.port ?? Number(process.env.SMO_MCP_PORT ?? 4320);
   if (!Number.isInteger(port) || port < 1 || port > 65535)
     throw new Error("Invalid connector port.");
   const url = `http://127.0.0.1:${port}`;
+  let previousConnector = false;
   const probe = async () => {
     try {
       const response = await fetch(`${url}/heartbeat`, {
@@ -95,7 +114,8 @@ export async function ensureManagedBridge(
         signal: AbortSignal.timeout(400),
       });
       if (!response.ok) return undefined;
-      const value = (await response.json()) as { bridgeId?: string };
+      const value = (await response.json()) as { bridgeId?: string; protocolVersion?: number };
+      if (value.protocolVersion !== 2) { previousConnector = true; return undefined; }
       return typeof value.bridgeId === "string" &&
         /^[a-f0-9-]{36}$/.test(value.bridgeId)
         ? { url, token: settings.agentToken, bridgeId: value.bridgeId }
@@ -106,6 +126,7 @@ export async function ensureManagedBridge(
   };
   const existing = await probe();
   if (existing) return existing;
+  if (previousConnector) throw new Error('The previous connector is still running. Close and reopen your coding agents to finish the update.');
   const entry = fileURLToPath(import.meta.url);
   const relayPath =
     options.relayPath ??
@@ -141,6 +162,7 @@ export async function ensureManagedBridge(
     await new Promise((resolve) => setTimeout(resolve, 100));
     const ready = await probe();
     if (ready) return ready;
+    if (previousConnector) throw new Error('Close and reopen your coding agents to finish the connector update.');
   }
   throw new Error(
     "Could not start the Show Me Once connector. Close an old manually started MCP bridge, then reconnect the agent. Do not start another helper terminal.",

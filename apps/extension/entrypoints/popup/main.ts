@@ -24,6 +24,7 @@ import {
   type AgentProviderId,
 } from "@show-me-once/shared/agent";
 import { zipSync, strToU8 } from "fflate";
+import { mcpInstallation, type McpAgent } from '../../lib/mcp-install';
 import {
   keepLocalDraft,
   localSkillId,
@@ -80,6 +81,7 @@ let activeRun: RunState | null = null;
 let approvalToken: string | undefined;
 let approving = false;
 let mcpConnected = false;
+let mcpPendingId: string | undefined;
 let catalogSize = 0;
 let runStarting = false;
 let runAfterSignIn = false;
@@ -501,31 +503,50 @@ async function renderAccount() {
 async function refreshMcp() {
   const status = (await browser.runtime.sendMessage({
     type: "mcp-status",
-  })) as { paired: boolean; connected: boolean };
+  })) as { paired: boolean; connected: boolean; enabled?: boolean; pending?: { id: string; code: string }; error?: string };
   mcpConnected = status.connected;
+  mcpPendingId = status.pending?.id;
   const feedback = element("mcp-status");
   feedback.dataset.state = status.connected
     ? "connected"
+    : status.pending ? "approval"
     : status.paired
       ? "unavailable"
       : "disconnected";
   feedback.textContent = status.connected
     ? "✓ Connected to your coding agent"
+    : status.pending ? "Connection approval needed — compare the code below."
+    : status.error ? status.error
     : status.paired
       ? "Waiting for your coding agent. Open it to reconnect automatically."
-      : "Connect once to run skills from your coding agent.";
-  element("mcp-disconnect").hidden = !status.paired;
-  element("mcp-check").hidden = !status.paired;
-  element("mcp-pair-form").hidden = status.paired;
+      : "Waiting for your agent. Add Show Me Once below, then ask it to list your skills.";
+  element("mcp-disconnect").hidden = !status.paired && !status.pending && !status.enabled;
+  element('mcp-disconnect').textContent = status.paired ? 'Forget connection' : 'Cancel connection';
+  element("mcp-check").hidden = status.connected || !!status.pending;
+  element("mcp-pair-form").hidden = status.paired || !!status.pending;
+  element("mcp-approval").hidden = !status.pending;
+  element("mcp-pairing-code").textContent = status.pending?.code ?? '';
+  element<HTMLButtonElement>('mcp-approve').disabled = !!activeRun?.active || !!currentRecording?.active || element('mcp-approve').dataset.busy === 'true';
   element("mcp-connected-help").hidden = !status.connected;
   element("mcp-settings-summary").textContent = status.paired
     ? "Connection settings"
     : "Connect your coding agent";
-  element("mcp-extension-id").textContent = browser.runtime.id;
   element("connection-heading").textContent = status.paired
     ? "Your coding agent"
     : "Connect your coding agent";
   renderHandoff();
+}
+
+function renderMcpInstallation() {
+  const installation = mcpInstallation(element<HTMLSelectElement>('mcp-agent').value as McpAgent, webApp.href);
+  const link = element<HTMLAnchorElement>('mcp-install-link');
+  link.hidden = !installation.link;
+  if (installation.link) link.href = installation.link;
+  link.textContent = installation.label;
+  const command = element<HTMLTextAreaElement>('mcp-install-command');
+  command.hidden = !installation.command; command.value = installation.command ?? '';
+  element('mcp-copy-command').hidden = !installation.command;
+  element('mcp-copy-command').textContent = installation.label;
 }
 
 function renderRun(
@@ -986,7 +1007,7 @@ element("download-mcp").addEventListener("click", () => {
     const archive = zipSync({
       [`.agents/skills/${name}/SKILL.md`]: strToU8(markdown),
       "INSTALL.md": strToU8(
-        `Extract this ZIP in the workspace where you use Codex. The folder must be .agents/skills/${name}/SKILL.md. This export is optional: a connected Show Me Once agent can discover and read your skills directly with list_skills and get_skill.\n\nCodex MCP command: codex mcp add show_me_once -- node C:/absolute/path/to/mcp/server.mjs\nRun setup.mjs with your extension ID once, register the MCP server and pair under Connect your coding agent. The coding agent starts the connector automatically; no helper terminal is needed. Reload/reconnect the client and verify /mcp and the skill selector. Invoke $${name} explicitly to verify discovery before relying on automatic matching.\n\nSetup: https://github.com/DimitarPanayotov/show-me-once/blob/main/docs/mcp.md\n`,
+        `Extract this ZIP in the workspace where you use Codex. The folder must be .agents/skills/${name}/SKILL.md. This export is optional: a connected Show Me Once agent can discover and read your skills directly with list_skills and get_skill.\n\nConnect under External coding agent in the extension. Choose your agent, add its MCP connection, compare the six-digit code and Allow once. The coding agent starts the connector automatically; no ID, pairing secret or helper terminal is needed. Reload/reconnect the client and verify /mcp and the skill selector. Invoke $${name} explicitly to verify discovery before relying on automatic matching.\n\nSetup: https://github.com/DimitarPanayotov/show-me-once/blob/main/docs/mcp.md\n`,
       ),
     });
     const url = URL.createObjectURL(
@@ -1001,18 +1022,17 @@ element("download-mcp").addEventListener("click", () => {
     report(cause);
   }
 });
-element("mcp-pair").addEventListener("click", () => {
+element("mcp-approve").addEventListener("click", () => {
   void (async () => {
-    const button = element<HTMLButtonElement>("mcp-pair");
+    const button = element<HTMLButtonElement>("mcp-approve");
     button.disabled = true;
     button.dataset.busy = "true";
     element("mcp-status").textContent = "Connecting to your coding agent…";
     try {
       await browser.runtime.sendMessage({
-        type: "mcp-pair",
-        token: element<HTMLInputElement>("mcp-code").value.trim(),
+        type: "mcp-approve",
+        pairingId: mcpPendingId,
       });
-      element<HTMLInputElement>("mcp-code").value = "";
       await refreshMcp();
       element<HTMLDetailsElement>("mcp-settings").open = false;
     } catch (cause) {
@@ -1032,7 +1052,7 @@ element("mcp-check").addEventListener("click", () => {
     element("mcp-status").textContent =
       "Checking your coding-agent connection…";
     try {
-      await browser.runtime.sendMessage({ type: "mcp-connect" });
+      await browser.runtime.sendMessage({ type: "mcp-begin" });
       await refreshMcp();
     } catch (cause) {
       element("mcp-status").textContent =
@@ -1051,6 +1071,27 @@ element("mcp-disconnect").addEventListener("click", () => {
     .sendMessage({ type: "mcp-disconnect" })
     .then(refreshMcp)
     .catch(report);
+});
+element('mcp-reject').addEventListener('click', () => {
+  void browser.runtime.sendMessage({ type: 'mcp-disconnect' }).then(refreshMcp).catch(report);
+});
+element('mcp-agent').addEventListener('change', () => {
+  renderMcpInstallation();
+  element('mcp-install-notice').textContent = '';
+  void browser.storage.local.set({ mcpAgent: element<HTMLSelectElement>('mcp-agent').value });
+});
+element('mcp-copy-command').addEventListener('click', () => {
+  void (async () => {
+    await navigator.clipboard.writeText(element<HTMLTextAreaElement>('mcp-install-command').value);
+    element('mcp-install-notice').textContent = element<HTMLSelectElement>('mcp-agent').value === 'other'
+      ? 'Configuration copied. Add it in your MCP client, then ask it to use Show Me Once.'
+      : 'Command copied. Run it once in a terminal, then ask your agent to use Show Me Once.';
+    await browser.runtime.sendMessage({ type: 'mcp-begin' }); await refreshMcp();
+  })().catch(report);
+});
+element('mcp-install-link').addEventListener('click', () => {
+  element('mcp-install-notice').textContent = 'Approve installation in your editor, then ask its agent to use Show Me Once.';
+  void browser.runtime.sendMessage({ type: 'mcp-begin' }).then(refreshMcp).catch(report);
 });
 accountForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -1223,14 +1264,6 @@ element("open-start-page").addEventListener("click", () => {
   const url = element("open-start-page").dataset.url;
   if (url) void browser.tabs.create({ url }).catch(report);
 });
-element("mcp-copy-id").addEventListener("click", () => {
-  void navigator.clipboard
-    .writeText(browser.runtime.id)
-    .then(() => {
-      element("mcp-copy-id").textContent = "Copied";
-    })
-    .catch(report);
-});
 browser.storage.onChanged.addListener((changes, area) => {
   if (
     area === "local" &&
@@ -1238,7 +1271,7 @@ browser.storage.onChanged.addListener((changes, area) => {
   )
     void render();
   if (area === "session" && changes.runConfirmation) void render();
-  if (area === "session" && changes.mcpConnected)
+  if (area === "session" && (changes.mcpConnected || changes.mcpConnectionChanged))
     void refreshMcp().catch(report);
 });
 void (async () => {
@@ -1251,7 +1284,11 @@ void (async () => {
     "skillDraft",
     "runState",
     "recording",
+    "mcpAgent",
   ]);
+  if (['codex', 'claude-code', 'cursor', 'vscode', 'other'].includes(saved.mcpAgent as string))
+    element<HTMLSelectElement>('mcp-agent').value = saved.mcpAgent as string;
+  renderMcpInstallation();
   const previous = saved.skillDraft as SkillDraft | undefined;
   if (
     previous?.sourceRecordingId === "example:wikipedia-search" &&
@@ -1278,3 +1315,7 @@ void (async () => {
   if (agentSettings.provider === "codex-local") void checkSubscription();
   void browser.runtime.sendMessage({ type: "get-run" }).catch(() => undefined);
 })().catch(report);
+setInterval(() => {
+  if (element<HTMLDetailsElement>('external-agent-details').open)
+    void refreshMcp().catch(() => {});
+}, 2000);

@@ -62,6 +62,7 @@ async function fixture({
   provider = "openai",
   nativeReady = true,
   beforeSave = async () => {},
+  mcpState = { paired: connected, connected },
 } = {}) {
   const window = new Window({ url: "https://extension.example/popup.html" });
   window.document.write(html.replace(/<script[\s\S]*?<\/script>/, ""));
@@ -150,7 +151,17 @@ async function fixture({
       sendMessage: async (message) => {
         messages.push(message);
         if (message.type === "mcp-status")
-          return { paired: connected, connected };
+          return structuredClone(mcpState);
+        if (message.type === 'mcp-begin') return structuredClone(mcpState);
+        if (message.type === 'mcp-approve') {
+          assert.equal(message.pairingId, mcpState.pending.id);
+          mcpState.connected = true; mcpState.paired = true; delete mcpState.pending;
+          return structuredClone(mcpState);
+        }
+        if (message.type === 'mcp-disconnect') {
+          mcpState.connected = false; mcpState.paired = false; delete mcpState.pending;
+          return structuredClone(mcpState);
+        }
         if (message.type === "mcp-skills") return catalog.list();
         if (message.type === "account-status") return user;
         if (message.type === "account-login") {
@@ -331,6 +342,35 @@ test("first launch works without external pairing and keeps its integration coll
   } finally {
     await f.close();
   }
+});
+
+test('MCP picker provides agent-specific setup and a code approval without exposing ID or secret inputs', async () => {
+  const mcpState = { paired: false, connected: false };
+  const f = await fixture({ connected: false, mcpState });
+  try {
+    assert.equal(f.window.document.getElementById('mcp-extension-id'), null);
+    assert.equal(f.window.document.getElementById('mcp-code'), null);
+    assert.match(f.element('mcp-install-command').value, /^codex mcp add/);
+    const select = f.element('mcp-agent');
+    select.value = 'claude-code'; select.dispatchEvent(new f.window.Event('change'));
+    assert.match(f.element('mcp-install-command').value, /^claude mcp add/);
+    f.element('mcp-copy-command').click();
+    await until(() => f.clipboard().startsWith('claude mcp add') && f.element('mcp-install-notice').textContent.includes('Run it once'));
+    assert.match(f.element('mcp-install-notice').textContent, /Run it once/);
+    select.value = 'cursor'; select.dispatchEvent(new f.window.Event('change'));
+    assert.equal(f.element('mcp-install-command').hidden, true);
+    assert.match(f.element('mcp-install-link').href, /^cursor:/);
+    mcpState.pending = { id: 'pending-connection', code: '123456', expiresAt: Date.now() + 120000 };
+    await f.storage.session.set({ mcpConnectionChanged: 'pending' });
+    await until(() => !f.element('mcp-approval').hidden);
+    assert.equal(f.element('mcp-pairing-code').textContent, '123456');
+    assert.match(f.element('mcp-status').textContent, /approval needed/);
+    f.element('mcp-approve').click();
+    await until(() => f.element('mcp-status').textContent.includes('✓ Connected'));
+    assert.equal(f.element('mcp-approval').hidden, true);
+    assert.equal(f.element('mcp-disconnect').hidden, false);
+    assert.equal(f.messages.some(m => m.type === 'start-run' || m.type === 'agent-configure'), false);
+  } finally { await f.close(); }
 });
 
 test("Run saves the skill and starts an automatic extension agent without a connected external chat", async () => {

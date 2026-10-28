@@ -467,6 +467,8 @@ test("Stop cancels a pending model decision and prevents browser dispatch", asyn
 test("web pages cannot change execution credentials, and keys survive only the trusted session", async () => {
   const f = await fixture();
   try {
+    for (const type of ['mcp-begin', 'mcp-approve', 'mcp-disconnect'])
+      assert.throws(() => f.untrusted({ type, pairingId: 'fake' }), /Only extension pages/);
     assert.throws(
       () =>
         f.untrusted({

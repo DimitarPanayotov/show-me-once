@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, rmdir } from "node:fs/promises";
+import { mkdtemp, readFile, rm, rmdir, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createServer } from "node:net";
@@ -15,6 +15,7 @@ import {
   readSettings,
   ensureManagedBridge,
 } from "./managed.ts";
+import { ExternalBridgeClient } from '../../../apps/extension/lib/external-bridge.ts';
 
 const extensionId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 async function freePort() {
@@ -185,6 +186,55 @@ test("MCP clients automatically start, share, stop and restart the connector wit
     for (const socket of sockets) socket.terminate();
     await waitUntil(offline);
     await rm(join(home, "mcp-settings.json"));
+    await rmdir(home);
+  }
+});
+
+test('a fresh real MCP client needs no setup file or extension ID; browser approval survives automatic idle shutdown and restart', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'smo-first-use-'));
+  const port = await freePort();
+  const originalSocket = globalThis.WebSocket;
+  const origin = `chrome-extension://${extensionId}`;
+  class Socket extends WebSocket { constructor(_url: string | URL) { super(`ws://127.0.0.1:${port}/extension`, { origin }); } }
+  globalThis.WebSocket = Socket as unknown as typeof globalThis.WebSocket;
+  const local: Record<string, unknown> = {}, session: Record<string, unknown> = {};
+  const area = (store: Record<string, unknown>) => ({ get: async (key: string) => ({ [key]: store[key] }), set: async (value: object) => { Object.assign(store, value); }, remove: async (key: string) => { delete store[key]; } });
+  const browser = new ExternalBridgeClient(async () => ({ status: 'ready', skills: [] }), () => {}, {
+    origin, storage: { local: area(local), session: area(session) }, alarms: { create: async () => {}, clear: async () => true },
+  });
+  const clients: Client[] = [];
+  const connect = async () => {
+    const client = new Client({ name: 'first-use-test', version: '1' }); clients.push(client);
+    const env = { ...process.env, SMO_MCP_HOME: home, SMO_MCP_PORT: String(port), SMO_MCP_IDLE_MS: '200', SMO_MCP_LEASE_MS: '3000' } as Record<string,string>;
+    delete env.SMO_MCP_CONNECTION_FILE;
+    const transport = new StdioClientTransport({ command: process.execPath, args: ['--experimental-strip-types', resolve(process.env.SMO_MCP_SERVER_PATH ?? 'src/server.ts')], env, stderr: 'pipe' });
+    await client.connect(transport);
+    return client;
+  };
+  const offline = async () => { try { await fetch(`http://127.0.0.1:${port}/heartbeat`, { method: 'POST', signal: AbortSignal.timeout(200) }); return false; } catch { return true; } };
+  try {
+    const first = await connect();
+    assert.equal((await first.listTools()).tools.length, 7);
+    assert.equal((await readSettings(home)).extensionId, undefined);
+    const discovery = first.callTool({ name: 'list_skills', arguments: {} });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const pending = await browser.begin();
+    const result = (await discovery).structuredContent as any;
+    assert.equal(result.status, 'needs_approval'); assert.equal(result.pairingCodes[0], pending.pending!.code);
+    await browser.approve(pending.pending!.id);
+    assert.equal(((await first.callTool({ name: 'list_skills', arguments: {} })).structuredContent as any).status, 'ready');
+    const trust = local.mcpPair;
+    await first.close(); await waitUntil(offline);
+    const second = await connect();
+    await browser.connect();
+    assert.equal((await browser.status()).pending, undefined);
+    assert.equal((local.mcpPair as any).publicKey, (trust as any).publicKey);
+    assert.equal(((await second.callTool({ name: 'list_skills', arguments: {} })).structuredContent as any).status, 'ready');
+    await browser.disconnect(); await second.close(); await waitUntil(offline);
+  } finally {
+    await browser.disconnect(); await Promise.allSettled(clients.map(c => c.close()));
+    await waitUntil(offline); globalThis.WebSocket = originalSocket;
+    for (const file of await readdir(home)) await rm(join(home, file));
     await rmdir(home);
   }
 });

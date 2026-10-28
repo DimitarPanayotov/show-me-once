@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "lib": ["ES2022", "DOM"]
   },
-  "include": ["src/index.ts", "src/agent.ts", "src/mcp.ts"]
+  "include": ["src/index.ts", "src/agent.ts", "src/mcp.ts", "src/pairing.ts"]
 }

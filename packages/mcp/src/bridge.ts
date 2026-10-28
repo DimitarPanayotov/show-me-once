@@ -5,6 +5,8 @@ import {
   checkedExternalCommand,
   type ExternalResult,
 } from "@show-me-once/shared/mcp";
+import { nonceCommitment, pairingCode, type PairingProof } from '@show-me-once/shared/pairing';
+import type { BrowserBinding, ConnectorIdentity } from './pairing.ts';
 
 const equal = (a: string, b: string) => {
   const left = Buffer.from(a),
@@ -12,7 +14,7 @@ const equal = (a: string, b: string) => {
   return left.length === right.length && timingSafeEqual(left, right);
 };
 export function createBridge(
-  extensionOrigin: string,
+  extensionOrigin: string | undefined,
   options: {
     port?: number;
     extensionToken?: string;
@@ -21,9 +23,12 @@ export function createBridge(
     leaseMs?: number;
     idleMs?: number;
     onIdle?: () => void;
+    identity?: ConnectorIdentity;
+    bindings?: BrowserBinding[];
+    saveBindings?: (bindings: BrowserBinding[]) => Promise<void>;
   } = {},
 ) {
-  if (!/^chrome-extension:\/\/[a-p]{32}$/.test(extensionOrigin))
+  if ((extensionOrigin && !/^chrome-extension:\/\/[a-p]{32}$/.test(extensionOrigin)) || (!extensionOrigin && !options.identity))
     throw new Error("Invalid extension origin.");
   const extensionToken =
     options.extensionToken ?? randomBytes(24).toString("base64url");
@@ -44,6 +49,9 @@ export function createBridge(
     }
   >();
   const clients = new Map<string, number>();
+  let bindings = options.bindings ?? [];
+  let savingBinding: Promise<unknown> = Promise.resolve();
+  const pairingRequests = new Map<string, { code?: string; expiresAt: number }>();
   let idleSince = Date.now();
   const touch = (controllerId: string) => {
     clients.set(controllerId, Date.now());
@@ -91,11 +99,11 @@ export function createBridge(
       return;
     }
     const origin = req.headers.origin;
-    if (origin && origin !== extensionOrigin) {
+    if (origin && (!extensionOrigin || origin !== extensionOrigin)) {
       reply(403, { error: "Origin rejected." });
       return;
     }
-    if (origin === extensionOrigin) {
+    if (origin && origin === extensionOrigin) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Vary", "Origin");
       res.setHeader(
@@ -105,7 +113,7 @@ export function createBridge(
       res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
     }
     if (req.method === "OPTIONS") {
-      res.writeHead(origin === extensionOrigin ? 204 : 403);
+      res.writeHead(origin && origin === extensionOrigin ? 204 : 403);
       res.end();
       return;
     }
@@ -153,7 +161,7 @@ export function createBridge(
     }
     if (req.method === "POST" && req.url === "/heartbeat") {
       touch(controllerId);
-      reply(200, { ok: true, bridgeId, connected: !!peer });
+      reply(200, { ok: true, bridgeId, connected: !!peer, protocolVersion: 2 });
       return;
     }
     if (req.method !== "POST" || req.url !== "/command") {
@@ -168,10 +176,21 @@ export function createBridge(
           throw new Error("Request too large.");
       }
       const command = checkedExternalCommand(JSON.parse(body));
+      // First discovery can arrive just before the open popup's automatic retry.
+      // Give that handshake a short window; no browser command is dispatched.
+      if (options.identity && (command.kind === 'list_skills' || command.kind === 'get_skill')) {
+        const until = Date.now() + 2500;
+        while (!peer && ![...pairingRequests.values()].some(p => p.code && p.expiresAt > Date.now()) && Date.now() < until && !res.destroyed)
+          await new Promise(resolve => setTimeout(resolve, 50));
+      }
       if (!peer || peer.readyState !== WebSocket.OPEN) {
+        const requests = [...pairingRequests.values()].filter(p => p.code && p.expiresAt > Date.now());
         reply(200, {
-          status: "disconnected",
-          message: "Pair the extension and keep Chrome running.",
+          status: requests.length ? "needs_approval" : "disconnected",
+          ...(requests.length ? { pairingCodes: requests.map(p => p.code) } : {}),
+          message: requests.length
+            ? `Connection approval needed. Ask the user to open Show Me Once, compare its six-digit code with ${requests.map(p => p.code).join(' or ')}, then click Allow connection. Do not approve for them. After approval, retry this discovery call.`
+            : "Open Show Me Once → External coding agent → Connect, then approve the connection there. The connector is already running; no helper terminal is needed.",
         });
         return;
       }
@@ -239,9 +258,11 @@ export function createBridge(
   );
   leases.unref();
   server.on("upgrade", (req, socket, head) => {
+    const origin = req.headers.origin;
     if (
       !validHost(req) ||
-      req.headers.origin !== extensionOrigin ||
+      !(origin && (origin === extensionOrigin || (options.identity && /^chrome-extension:\/\/[a-p]{32}$/.test(origin)))) ||
+      sockets.clients.size >= 8 ||
       req.url !== "/extension"
     ) {
       socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
@@ -249,19 +270,78 @@ export function createBridge(
     }
     sockets.handleUpgrade(req, socket, head, (ws) => {
       let authenticated = false;
-      const deadline = setTimeout(
+      let deadline = setTimeout(
         () => ws.close(1008, "Authenticate first"),
         3000,
       );
       let lastHeartbeat = Date.now();
+      let proof: PairingProof | undefined;
+      let serverNonce: string | undefined;
+      let expiry = 0;
+      let challengeComplete = false;
+      const connected = () => {
+        if ((peer && peer.readyState === WebSocket.OPEN) || (instanceId && instanceId !== proof!.instanceId)) throw new Error();
+        authenticated = true; clearTimeout(deadline);
+        pairingRequests.delete(proof!.pairingId);
+        instanceId = proof!.instanceId; connectionId = randomUUID(); peer = ws;
+        ws.send(JSON.stringify({ type: 'connected', bridgeId, connectionId }));
+      };
       const watchdog = setInterval(() => {
-        if (Date.now() - lastHeartbeat > 45000) ws.terminate();
+        if (authenticated && Date.now() - lastHeartbeat > 45000) ws.terminate();
       }, 15000);
-      ws.on("message", (data) => {
+      let processing = Promise.resolve();
+      ws.on("message", (data) => { processing = processing.then(async () => {
         try {
           const value = JSON.parse(data.toString());
           if (!authenticated) {
+            if (options.identity && value.type === 'pairing-start' && !proof) {
+              if (!/^[a-f0-9-]{36}$/.test(value.instanceId) || (instanceId && instanceId !== value.instanceId)) throw new Error();
+              serverNonce = randomBytes(32).toString('base64url');
+              proof = { pairingId: randomUUID(), bridgeId, origin: origin!, instanceId: value.instanceId,
+                publicKey: options.identity.publicKey, serverNonce, clientNonce: '' };
+              expiry = Date.now() + 120000;
+              clearTimeout(deadline);
+              deadline = setTimeout(() => ws.close(1008, 'Approval expired'), 120000);
+              pairingRequests.set(proof.pairingId, { expiresAt: expiry });
+              ws.send(JSON.stringify({ type: 'pairing-offer', pairingId: proof.pairingId, bridgeId,
+                publicKey: proof.publicKey, commitment: await nonceCommitment(serverNonce), expiresAt: expiry }));
+              return;
+            }
+            if (proof && options.identity) {
+              if (value.pairingId !== proof.pairingId || Date.now() >= expiry) throw new Error();
+              if (value.type === 'pairing-challenge' && !challengeComplete) {
+                if (typeof value.clientNonce !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value.clientNonce)) throw new Error();
+                proof.clientNonce = value.clientNonce;
+                challengeComplete = true;
+                pairingRequests.set(proof.pairingId, { code: await pairingCode(proof), expiresAt: expiry });
+                ws.send(JSON.stringify({ type: 'pairing-proof', serverNonce, signature: options.identity.sign(proof) }));
+                return;
+              }
+              if (!challengeComplete) throw new Error();
+              if (value.type === 'pairing-wait') {
+                ws.send(JSON.stringify({ type: 'heartbeat' })); return;
+              }
+              if (value.type === 'resume') {
+                if (!bindings.some(b => b.origin === origin && b.instanceId === proof!.instanceId && typeof value.token === 'string' && equal(b.token, value.token))) throw new Error();
+                connected(); return;
+              }
+              if (value.type === 'approve') {
+                if ((peer && peer.readyState === WebSocket.OPEN) || (instanceId && instanceId !== proof.instanceId)) throw new Error();
+                const binding = { origin: origin!, instanceId: proof.instanceId, token: randomBytes(32).toString('base64url') };
+                const save = savingBinding.then(async () => {
+                  const next = [...bindings.filter(b => b.instanceId !== binding.instanceId), binding];
+                  if (next.length > 20) throw new Error();
+                  await options.saveBindings?.(next); bindings = next;
+                });
+                savingBinding = save.catch(() => {}); await save;
+                if (ws.readyState !== WebSocket.OPEN || Date.now() >= expiry) throw new Error();
+                ws.send(JSON.stringify({ type: 'paired', pairingId: proof.pairingId, token: binding.token }));
+                connected(); return;
+              }
+              throw new Error();
+            }
             if (
+              origin !== extensionOrigin ||
               value.type !== "hello" ||
               value.bridgeId !== bridgeId ||
               typeof value.token !== "string" ||
@@ -283,6 +363,15 @@ export function createBridge(
             return;
           }
           if (ws !== peer) throw new Error();
+          if (value.type === 'forget' && proof) {
+            const save = savingBinding.then(async () => {
+              const next = bindings.filter(b => !(b.origin === origin && b.instanceId === proof!.instanceId));
+              await options.saveBindings?.(next); bindings = next;
+            });
+            savingBinding = save.catch(() => {}); await save;
+            instanceId = undefined;
+            ws.send(JSON.stringify({ type: 'forgotten' })); ws.close(); return;
+          }
           if (value.type === "heartbeat") {
             lastHeartbeat = Date.now();
             ws.send(JSON.stringify({ type: "heartbeat" }));
@@ -303,8 +392,9 @@ export function createBridge(
         } catch {
           ws.close(1008, "Invalid bridge message");
         }
-      });
+      }); });
       ws.on("close", () => {
+        if (proof) pairingRequests.delete(proof.pairingId);
         clearTimeout(deadline);
         clearInterval(watchdog);
         if (peer === ws) disconnect();

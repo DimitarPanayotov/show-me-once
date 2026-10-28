@@ -1,91 +1,57 @@
-# Optional external coding-agent integration
+# Optional local coding-agent connection — 0.7.0
 
-The primary product is [request → Run inside the extension](agent.md). This page describes the optional external-chat path. Open **External coding agent (optional)** to access these controls. After connecting once, open your coding agent and ask it to use a skill. It starts the connector automatically. Chrome shows progress and asks for approval. **No separate helper terminal needs to stay open.**
+The main product remains request → Run inside the extension. External coding agents are optional and use the same guarded browser actions, approvals and Stop controls. Your existing agent supplies its own model and account; MCP does not launch a second model.
 
-Your existing agent owns the conversation, model and decisions. MCP supplies guarded browser tools and never starts another Codex/model process. This integration does not drive the main Run button.
+## Connect once
 
-## One-time setup (0.6.2)
+You need Chrome, Node.js 24 (including npx), and an MCP-capable agent. Open **Skills & activity → External coding agent (optional) → Connect your coding agent**.
 
-Load the reviewer's extension folder in Chrome, then open its popup. Connection steps open inline on first use; there is no separate HTML guide. You need Chrome, Node.js 24 and a local coding agent supporting MCP over stdio. Codex is the configured example.
+1. Choose **Codex**, **Claude Code**, **Cursor**, **VS Code / Copilot**, or **Other MCP client**.
+2. Cursor/VS Code: choose **Add to…** and approve installation in the editor. Codex/Claude Code: choose **Copy setup command**, run that registration command once in a terminal, then close the terminal. Other clients: paste the supplied configuration into their MCP settings. Reconnect/restart the agent if it asks.
+3. Ask the agent: **Use Show Me Once and list my skills.**
+4. Open the extension and compare its six-digit code with the code the agent reports. If they match, choose **Codes match — Allow connection**. The code is a comparison value, not a password; nothing needs to be copied back into the extension.
+5. The extension shows **Connected to your coding agent**. Ask the agent to use a skill with new inputs. It can discover and read SKILL.md directly; no skill-file installation is needed.
 
-1. Load/reload the kit's **extension** folder in Chrome (source builds: apps/extension/.output/chrome-mv3). Confirm **0.6.2**.
-2. Open **Skills & activity → External coding agent (optional) → Connect your coding agent**, then **Copy ID**.
-3. Open **connector/Connect with Codex.cmd** on Windows, or run **node setup.mjs** in the connector folder on macOS/Linux. Paste the ID and choose Codex. Setup registers the connection automatically and prints a private pairing code.
-4. Restart/reconnect Codex. Paste the code into the extension and choose **Connect coding agent**.
-5. The visible **Connected to your coding agent** status confirms success. Close setup; no helper window needs to stay open.
+The agent starts the connector automatically and it exits after the last client leaves. No extension ID, pairing-secret copying, separate bridge command, or permanently open terminal is needed for this path. The extension remembers trust and reconnects automatically when the agent returns. Node.js remains a prerequisite for these command-based integrations.
 
-The wizard changes only the named MCP registration through Codex's CLI. It does not launch a model or extract sign-in credentials. If automatic registration is unavailable, it prints manual stdio settings and a command. Other clients use those settings; their exact UI and end-to-end behavior have not been verified.
+The install links and commands use a self-contained versioned package at the app's `/downloads/show-me-once-mcp-0.7.0.tgz`. It is launched through npx, so it does not depend on an extracted ZIP remaining at the same local path. This download contains connector code only, with no account credentials. The adjacent `.sha256` records the packaged checksum.
 
-For source builds, run node dist/mcp/setup.mjs interactively after pnpm mcp:bundle. Noninteractive setup remains available as node setup.mjs YOUR_EXTENSION_ID --codex. Without --codex it only creates settings and prints manual configuration.
+## What the statuses mean
 
-Codex's /mcp should show seven tools: list_skills, get_skill, start_skill, observe_run, act, get_run_status, stop_run. Configuring a server does not refresh an already-running session. [Official configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+- **Waiting for your agent**: registration or startup is still needed. Ask the configured agent to list your skills, or use Check connection.
+- **Connection approval needed**: compare the codes, then Allow in the extension. This does not approve protected browser actions.
+- **Connected**: an authenticated live connection has completed; registration alone never produces this label.
+- **Waiting for your coding agent** after pairing: trust is saved and reconnection is automatic.
+- **Different connector**: the saved identity did not match. The extension keeps the previous trust and does not send its credential. Reconnect the original installation, or explicitly Forget connection before approving a replacement.
 
-Existing 0.4.1 users can keep their installed extension folder, reload it to 0.6.2, and restart/reconnect their agent to load the seven tools; pairing is retained.
+**Not now** rejects the pending connection. **Forget connection** clears local trust and, when connected, revokes the remembered browser credential on the connector. Neither option changes the extension's primary Run settings. Connection approval expires after two minutes. It can only be granted in an extension page, not through an agent tool or website.
 
-Pairing survives browser/agent restarts. The extension retries automatically, or immediately through **Check connection**. **Forget connection** removes pairing. Close the old manual relay once when upgrading from 0.4.0; it must not occupy port 4320.
+## Everyday use
 
-## Everyday use and demo
+Open a recorded/saved skill and copy its agent request, or ask the agent to discover a skill. It calls list_skills/get_skill, reads the instructions and starts a run with new non-secret parameters. The extension shows actions and meaningful protected-action approvals. Pause, Resume and Stop remain in the extension. Approval and reconnection never automatically repeat an uncertain action.
 
-1. Open a skill, expand **External coding agent (optional)**, connect once, then choose **Open GitHub & copy triage request** or **Copy agent request**.
-2. Paste the request into your existing agent. It opens GitHub Advanced search for a public issue-triage task.
-3. The agent calls list_skills/get_skill, reads the full parameterized SKILL.md, and starts a run. No account or filesystem skill installation is needed.
-4. Watch Chrome and the popup. Approve the search only after reviewing its action-specific preview. If the agent ended its reply while waiting, say: **I approved in the extension. Continue the same run.**
-5. Verify the opened issue belongs to the requested repository/topic and the activity is completed. Return to GitHub Advanced search and repeat with microsoft/TypeScript + inference + open + bug.
-6. On a third run, choose **Stop run** before approval. Ask the agent for status; it must report stopped and perform no later action.
+The GitHub issue-triage example has twelve steps: fill repository/topic/state/label, submit with approval, sort results by Recently updated and open an issue. Run it twice with different repositories/topics and inspect the visible results. Then test Stop before approving another search.
 
-The reference skill has 12 steps: start checkpoint; topic; repository; state select; label; search submission with approval; results checkpoint; open Sort by; choose Recently updated; sorted-results checkpoint; open the first actual matching issue; issue-page checkpoint. It stops if the intended controls or a matching issue are unavailable. It reads no issue body and makes no repository changes.
+The seven tools are list_skills, get_skill, start_skill, observe_run, act, get_run_status and stop_run. They expose guarded skill actions, not arbitrary JavaScript or unrestricted browser control. Page text cannot grant extra permissions.
 
-Control observations support accessible menu items and explicit accessible labels. A delayed SPA URL poll does not erase a newly observed page; URL changes invalidate old observations and approvals. Link destinations expose only sanitized origin/path depth; full URLs and field values remain absent. The model still chooses each live target; tests use controlled documents and do not establish real-model/GitHub acceptance.
+## Offline reviewer kit / development
 
-For your own task, choose **Record**, demonstrate it once and select **Stop & create skill → Run this skill**. To use this optional path, expand **External coding agent (optional)**, open the task's starting page, and copy the external-agent request into your agent. The new skill is immediately discoverable. Earlier local drafts are retained when switching skills; a library account is optional for this external path.
+Online setup in the popup is preferred. For an offline installation, keep the kit's connector folder at a permanent path and open **Connect with Codex.cmd**, or run `node setup.mjs --agent=codex`. Claude Code uses `--agent=claude-code`; `--agent=other` prints configuration. This registers only the chosen MCP server and never asks for an extension ID or prints a private secret. The agent still starts the connector automatically. Existing legacy pairings remain compatible.
 
-Sign in to save versions and share with another registered user. Cloud access is checked for the current account; signing out removes cloud entries from discovery. Markdown and agent ZIP exports remain optional under **Edit skill & export**.
+Build with `pnpm mcp:bundle`. This also creates the versioned download in `apps/web/public/downloads`; include it when deploying the web app. `pnpm reviewer:package` bundles the extension and offline connector. This MCP setup is independent of the subscription helper under Agent settings.
 
-The recommended demo is: demonstrate → review the generated skill → copy a request → agent reads it → browser actions → meaningful approval → result → same skill with a new input. Keep setup separate from normal use.
+## Architecture and privacy
 
-## Relationship to the main Run flow
+The MCP client starts server.mjs over stdio. It initializes private settings if missing and starts/reuses one authenticated relay on 127.0.0.1:4320. Shared leases prevent one agent closing another's connection; the relay exits about 30 seconds after the final controller leaves. Chrome manages its own extension worker and reconnect alarm.
 
-The extension now has its own automatic model-driven Run loop, with personal API keys or a Chrome-managed Codex subscription helper. It does not depend on this MCP connection. The external chat owns decisions only for runs started through its MCP tools. Both paths use the same browser guards and approval controls.
+First pairing uses a signed P-256 transcript containing the browser origin, browser instance, relay identity, pairing request ID and random nonces from both sides. The connector commits to its random nonce before receiving the browser's. Both sides derive the six-digit comparison code from the full transcript. No skill, tab observation or action is sent until the user approves in the extension. Subsequent connections verify the pinned public key and fresh signed challenge before sending a browser credential. A process taking over the port cannot obtain that credential merely by answering a request.
 
-## Lifecycle checks
+Private root credentials live in ~/.show-me-once/mcp-settings.json; approved browser bindings in mcp-browsers.json. Files use private permissions where supported and the user's Windows profile ACL otherwise. Tokens never enter URLs, tool results, install links, skill exports or the clipboard. HTTP agent endpoints reject browser Origins; browser sockets require a literal extension Origin. Host checks, bounded messages and single-controller run ownership remain enforced. Pairing pins a local connector, not the claimed brand/name of a client.
 
-- Close all agent sessions; the connector should exit after about 30 seconds. Reopen the agent: saved pairing should reconnect without another terminal/code.
-- With two sessions open, closing one must leave the other connected. Each run retains one owner; another session cannot take it over.
-- A crash/disconnect pauses a run. Automatic reconnection never automatically resumes interrupted actions. Inspect the page; Stop and start again if controller/bridge identity changed.
-- Restart the extension worker mid-run: observations must be invalidated and execution paused. Lost results are uncertain; never blindly repeat the action.
-- Use **Stop run** to cancel a task. **Forget connection** removes pairing.
+Each action binds controller, connector, browser connection, run, selected tab, step and a fresh single-use observation. Disconnects/restarts pause runs and invalidate observations/approvals. Current MCP activity remains local; extension-led library runs retain their backend per-version history.
 
-## Architecture and credentials
+## Verification
 
-| Component                       | Lifecycle                     | Responsibility                                                |
-| ------------------------------- | ----------------------------- | ------------------------------------------------------------- |
-| Existing coding-agent session   | Opened by user                | Model, skill, conversation, tool decisions                    |
-| `server.mjs`                    | Started by MCP client         | Seven guarded tools; automatic connector startup              |
-| `relay.mjs`                     | Started automatically, hidden | Authenticated shared loopback transport; exits when idle      |
-| Extension worker/content script | Managed by Chrome             | Tab/run/step checks, safe observations, approvals, Pause/Stop |
+Automated checks cover real stdio clients, fresh setup without an ID/settings file, first-discovery timing, matching-code approval, blocked access before approval, retained trust across idle restart, changed-identity rejection, browser-Origin rejection and revocation. Popup tests cover all client setup formats and the approval UI while preserving the primary in-extension Run path. Browser automation is not used. Installation through real Cursor/VS Code links and a live Codex/Claude Code browser task still require manual acceptance; protocol tests do not establish those client UI results.
 
-The relay binds only `127.0.0.1:4320`, validates literal Host and exact extension Origin, rejects browser Origins for agent endpoints, and separates extension and agent credentials. One browser instance is pinned per relay lifetime. Concurrent startups race for one listener; losing processes exit without replacing it. No model subprocess is launched.
-
-Stable credentials live in `$HOME/.show-me-once/mcp-settings.json`, outside the repository (directory 700/file 600 where supported; Windows inherits private profile ACL). The extension remembers its credential in local storage, never sync. Run inputs remain session-only. Reconnection authenticates with the saved token and refreshes relay identity. Tokens are never in URLs, tool results or skill exports.
-
-Clients renew leases every 10 seconds; vanished clients expire after roughly 30 seconds. The relay exits about 30 seconds after the last controller leaves/expires (up to about a minute after a crash). The extension uses WebSocket heartbeats and a reconnect alarm. Dropped connections, expired leases and worker restarts pause runs and invalidate observations; no command is replayed.
-
-Actions bind controller, bridge/connection, run, selected tab, current step and a single-use observation expiring after 15 seconds. Unknown/ambiguous/sensitive targets block dispatch. No arbitrary JS, HTML, screenshots, unrestricted page text, shell, free navigation, approval or Resume tool is exposed. Links and cross-origin form destinations must fit current/next checkpoint scope; unexpected JavaScript navigation is blocked by the subsequent checkpoint. Same-origin form submissions may use an intermediate endpoint, such as Wikipedia's search redirect, but still require explicit action-specific approval and the final navigation checkpoint. Form-action overrides are checked, and destructive destination wording takes precedence over search labels. Page text and skill prose cannot grant extra capabilities.
-
-MCP runs currently retain the current generic activity log locally; they are not automatically linked to backend library version/history. Extension-led library runs retain their backend history behavior.
-
-## Troubleshooting
-
-- **Waiting for your coding agent:** open/reconnect the configured client; open the popup or choose **Check connection**. No bridge command is needed.
-- **MCP startup fails:** run one-time setup; check Node 24 and the permanent absolute server path. Close an old manual bridge once. An unrelated process on port 4320 is never killed or replaced.
-- **Pairing not recognized:** verify extension ID and setup code. Repeat setup to see the same code. Forget an old pairing before replacing it. Changing extension ID requires explicit new setup.
-- **Skill/tools missing:** verify `/mcp`, skill selector, workspace and folder structure; restart/reconnect.
-- **Unsaved draft conflict:** save before starting a different imported skill. Matching skill runs preserve edited name/description.
-- **Stale observation:** obtain a fresh one after navigation, approval, Pause or reconnect.
-- **Unknown outcome:** inspect page/activity; Stop and restart when uncertain. Do not blindly retry.
-
-Build from source with `pnpm mcp:bundle`; set `WXT_API_BASE_URL` to the deployment and run `pnpm --filter @show-me-once/extension zip`. Custom installations can set `SMO_MCP_HOME` to a private settings directory. Legacy explicit `SMO_MCP_CONNECTION_FILE` configuration remains compatible with manually managed relays for development; it is not the default demo path.
-
-## Verification limit
-
-Automated tests use real stdio MCP processes, automatic startup/sharing/idle shutdown/restart, HTTP/WebSocket authentication, saved browser pairing, and the actual run controller with simulated content execution. No browser automation was used, as requested. Real Codex/Chrome acceptance remains pending: this conversation has not loaded the integration's MCP tools. Earlier 0.3.x real-site evidence validates the separate extension-led mode. Follow the manual procedure above before claiming a successful two-input real-agent demo.
+Official configuration references: [Codex](https://learn.chatgpt.com/docs/extend/mcp?surface=cli), [Claude Code](https://code.claude.com/docs/en/mcp), [Cursor](https://cursor.com/docs/mcp/install-links), [VS Code](https://code.visualstudio.com/api/extension-guides/ai/mcp). The connection UX follows the [Browser MCP](https://browsermcp.io/docs/) pattern.

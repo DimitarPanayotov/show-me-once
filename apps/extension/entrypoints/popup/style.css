@@ -479,6 +479,8 @@ progress::-webkit-progress-value {
 .error {
   color: #b91c1c;
 }
+.pairing-code { display: block; font-size: 30px; letter-spacing: 6px; padding: 12px 0; color: #78350f; }
+#mcp-install-command { min-height: 90px; font-family: monospace; font-size: 11px; }
 .alert.error {
   background: #fff1f2;
   border: 1px solid #fecdd3;

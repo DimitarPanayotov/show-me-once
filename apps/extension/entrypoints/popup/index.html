@@ -373,6 +373,14 @@
             <p id="mcp-connected-help" class="hint" hidden>
               Ask your agent to use a skill. Actions and approvals appear here.
             </p>
+            <div id="mcp-approval" class="confirmation-preview" hidden>
+              <h3>Allow this local agent connection?</h3>
+              <p>Check that your agent shows the same code:</p>
+              <strong id="mcp-pairing-code" class="pairing-code"></strong>
+              <p>This lets local agents using this connector discover your skills and request browser actions. Protected actions still need approval. You can stop a run or forget this connection at any time.</p>
+              <button id="mcp-approve" type="button" class="button primary full">Codes match — Allow connection</button>
+              <button id="mcp-reject" type="button" class="button quiet full">Not now</button>
+            </div>
             <details id="mcp-settings">
               <summary id="mcp-settings-summary">
                 Connect your coding agent
@@ -382,45 +390,27 @@
                 helper window is needed.
               </p>
               <div id="mcp-pair-form">
+                <label for="mcp-agent">Your coding agent</label>
+                <select id="mcp-agent">
+                  <option value="codex">Codex</option>
+                  <option value="claude-code">Claude Code</option>
+                  <option value="cursor">Cursor</option>
+                  <option value="vscode">VS Code / Copilot</option>
+                  <option value="other">Other MCP client</option>
+                </select>
                 <ol class="connection-steps">
-                  <li><strong>Copy the extension ID</strong> below.</li>
-                  <li>
-                    In the download's <strong>connector</strong> folder, open
-                    <strong>Connect with Codex</strong> and paste that ID.
-                  </li>
-                  <li>
-                    Restart your agent, then paste the connection code from
-                    setup here.
-                  </li>
+                  <li>Add Show Me Once to your chosen agent below. Do this once.</li>
+                  <li>Ask your agent: <strong>Use Show Me Once and list my skills.</strong></li>
+                  <li>Compare the code it shows with this extension, then choose <strong>Allow connection</strong>.</li>
                 </ol>
-                <p class="hint">
-                  Extension ID:
-                  <code id="mcp-extension-id"></code>
-                  <button
-                    id="mcp-copy-id"
-                    type="button"
-                    class="button quiet small"
-                  >
-                    Copy ID
-                  </button>
-                </p>
-                <label for="mcp-code">Connection code from setup</label>
-                <input id="mcp-code" type="password" autocomplete="off" />
-                <button
-                  id="mcp-pair"
-                  type="button"
-                  class="button secondary full"
-                >
-                  Connect coding agent
-                </button>
+                <a id="mcp-install-link" class="button primary full" target="_blank" rel="noopener" hidden>Add to your agent</a>
+                <textarea id="mcp-install-command" readonly aria-label="One-time agent setup command" spellcheck="false"></textarea>
+                <button id="mcp-copy-command" type="button" class="button secondary full">Copy setup command</button>
+                <p id="mcp-install-notice" class="save-feedback" role="status"></p>
                 <details class="connection-help">
                   <summary>Need help connecting?</summary>
                   <p class="hint">
-                    You need a local coding agent and Node.js 24. On
-                    macOS/Linux, run <code>node setup.mjs</code> in the
-                    connector folder. For another MCP client, choose manual
-                    setup and use the command and path it prints. Setup is
-                    one-time; no helper window stays open.
+                    Command-based clients need Node.js 24. Run the copied registration command once in a terminal, or use the editor's install button. Restart or reconnect your agent if it asks. The agent starts and stops the connector itself; no helper terminal stays open. Setup commands contain no passwords or pairing secrets.
                   </p>
                 </details>
               </div>
@@ -428,7 +418,6 @@
                 id="mcp-check"
                 type="button"
                 class="button secondary full"
-                hidden
               >
                 Check connection
               </button>
