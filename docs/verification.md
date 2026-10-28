@@ -1,5 +1,17 @@
 # Manual verification
 
+## Inline onboarding and issue triage — 0.5.1
+
+The default example is now a twelve-step public GitHub issue-triage workflow: four inputs, protected submission, sort menu, first matching result, and issue-page checkpoint. First-use connection guidance is inside the popup; no START-HERE.html is required or packaged.
+
+Controlled-document tests execute the actual content script and run controller for microsoft/vscode + terminal and microsoft/TypeScript + inference. They verify native text/select input, approval before submission, accessible menu-item execution, sort-before-open ordering, sanitized link destinations and parameter-free persistent logs. A separate test checks recording a nested menu-item click. The model/provider boundary rejects unredacted destination URLs.
+
+The current suite has 66 passing automated tests. Inline first-launch guidance and clean starter migration have document tests; user-authored local recordings are preserved. A SPA-navigation regression verifies that a fresh observation survives the delayed URL poll and old observations are rejected after a query change.
+
+Workspace type checks and production extension/connector/reviewer-kit builds pass. The extracted kit passes four stdio/lifecycle checks and a one-time setup smoke check using temporary settings without changing the user's agent registration. Its popup has unique IDs, the inline connection steps, and no separate HTML guide; the manifest is 0.5.1.
+
+Static HTTP reads confirmed GitHub Advanced search's repository/state/label controls and public issue-search results with a Sort by control. This is DOM evidence, not a real browser or model run. The reference skill is a built-in example; live two-input GitHub acceptance is still pending. No Chrome automation was used.
+
 ## Agent-first reviewer flow — 0.5.0
 
 The current popup exposes one agent-led flow. In-memory document tests execute the actual popup code and check the example handoff, no provider/replay controls, recording without an account, continuous editor focus, direct skill discovery, and action-specific approval/Pause/Resume/Stop. Catalog tests check current-account cloud access and local secret/invalid-skill exclusion. Real stdio protocol tests discover seven tools and read an example without installing a skill file. Installer tests check safe MCP-registration arguments and failure reporting.

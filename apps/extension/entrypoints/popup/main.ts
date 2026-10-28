@@ -18,6 +18,9 @@ import {
   keepLocalDraft,
   localSkillId,
   EXAMPLE_ID,
+  EXAMPLE_START_URL,
+  EXAMPLE_REQUEST,
+  EXAMPLE_STEP_LABELS,
   type CatalogDraft,
 } from "../../lib/skill-catalog";
 
@@ -117,7 +120,7 @@ function showParameters(markdown: string) {
 function renderHandoff() {
   const request = currentDraft
     ? currentDraft.sourceRecordingId === EXAMPLE_ID
-      ? "Use Show Me Once to run the Wikipedia search example for Grace Hopper. Ask me to approve the search in the extension."
+      ? EXAMPLE_REQUEST
       : "Use Show Me Once to run skill " +
         localSkillId(currentDraft) +
         " (" +
@@ -125,6 +128,10 @@ function renderHandoff() {
         "). Ask me for the new inputs you need."
     : "";
   setValue(element<HTMLTextAreaElement>("agent-request"), request);
+  element("copy-request").textContent =
+    currentDraft?.sourceRecordingId === EXAMPLE_ID
+      ? "Open GitHub & copy triage request"
+      : "Copy agent request";
   element<HTMLButtonElement>("copy-request").disabled =
     !currentDraft || !mcpConnected || !!activeRun?.active || !planValid;
   element<HTMLButtonElement>("try-example").disabled =
@@ -137,15 +144,16 @@ function renderHandoff() {
     const start = currentDraft
       ? parseSkillPlan(currentDraft.markdown).steps[0]?.url
       : undefined;
-    if (start && !start.includes("…")) url = start;
+    if (currentDraft?.sourceRecordingId === EXAMPLE_ID) url = EXAMPLE_START_URL;
+    else if (start && !start.includes("…")) url = start;
     element("starting-page").textContent = start
-      ? "Starting page: " + start
+      ? "Starting page: " + (url ?? start)
       : "";
   } catch {
     /* Invalid Markdown stays editable. */
   }
   const open = element<HTMLButtonElement>("open-start-page");
-  open.hidden = !url;
+  open.hidden = !url || currentDraft?.sourceRecordingId === EXAMPLE_ID;
   open.disabled = !!activeRun?.active || !!currentRecording?.active;
   open.dataset.url = url;
 }
@@ -275,6 +283,7 @@ async function refreshMcp() {
     type: "mcp-status",
   })) as { paired: boolean; connected: boolean };
   mcpConnected = status.connected;
+  if (!status.paired) element<HTMLDetailsElement>("mcp-settings").open = true;
   const feedback = element("mcp-status");
   feedback.dataset.state = status.connected
     ? "connected"
@@ -296,7 +305,7 @@ async function refreshMcp() {
   element("mcp-extension-id").textContent = browser.runtime.id;
   element("connection-heading").textContent = status.paired
     ? "Your coding agent"
-    : "1. Connect your coding agent";
+    : "Connect your coding agent";
   renderHandoff();
 }
 
@@ -377,8 +386,12 @@ function renderRun(
     const progress = element<HTMLProgressElement>("run-progress");
     progress.max = run.totalSteps;
     progress.value = run.nextStep;
+    const exampleStep =
+      currentDraft?.sourceRecordingId === EXAMPLE_ID
+        ? EXAMPLE_STEP_LABELS[run.nextStep]
+        : undefined;
     element("run-status").textContent =
-      `Step ${run.nextStep + 1}: ${copy ? "Waiting for your approval" : run.thinking ? "Agent is choosing a safe action…" : waiting ? "Waiting for navigation…" : upcoming?.kind === "navigation" ? "Checking the page" : upcoming?.kind === "input" ? "Filling the supplied input" : upcoming?.kind === "key" ? "Pressing Enter" : "Clicking the target"}`;
+      `Step ${run.nextStep + 1}: ${copy ? "Waiting for your approval" : run.thinking ? "Agent is choosing a safe action…" : waiting ? "Waiting for navigation…" : (exampleStep ?? (upcoming?.kind === "navigation" ? "Checking the page" : upcoming?.kind === "input" ? "Filling the supplied input" : upcoming?.kind === "key" ? "Pressing Enter" : "Clicking the target"))}`;
     element("run-context").textContent = confirmation
       ? (copy?.continuation ??
         "Preparing the action preview. Approval is unavailable until it is ready.")
@@ -869,6 +882,8 @@ element("copy-request").addEventListener("click", () => {
     .then(() => {
       element("handoff-notice").textContent =
         "✓ Request copied. Paste it into your coding agent.";
+      if (currentDraft?.sourceRecordingId === EXAMPLE_ID)
+        return browser.tabs.create({ url: EXAMPLE_START_URL });
     })
     .catch(report);
 });
@@ -878,7 +893,7 @@ element("try-example").addEventListener("click", () => {
     await navigator.clipboard.writeText(
       element<HTMLTextAreaElement>("agent-request").value,
     );
-    await browser.tabs.create({ url: "https://www.wikipedia.org/" });
+    await browser.tabs.create({ url: EXAMPLE_START_URL });
   })().catch(report);
 });
 element("open-start-page").addEventListener("click", () => {
@@ -893,11 +908,6 @@ element("mcp-copy-id").addEventListener("click", () => {
     })
     .catch(report);
 });
-element("mcp-guide").addEventListener("click", () => {
-  void browser.tabs
-    .create({ url: browser.runtime.getURL("/setup.html") })
-    .catch(report);
-});
 browser.storage.onChanged.addListener((changes, area) => {
   if (
     area === "local" &&
@@ -909,7 +919,24 @@ browser.storage.onChanged.addListener((changes, area) => {
     void refreshMcp().catch(report);
 });
 void (async () => {
-  const saved = await browser.storage.local.get(["popupView"]);
+  const saved = await browser.storage.local.get([
+    "popupView",
+    "skillDraft",
+    "runState",
+    "recording",
+  ]);
+  const previous = saved.skillDraft as SkillDraft | undefined;
+  if (
+    previous?.sourceRecordingId === "example:wikipedia-search" &&
+    previous.readOnly &&
+    !previous.dirty &&
+    !(saved.runState as RunState | undefined)?.active &&
+    !(saved.recording as Recording | undefined)?.active
+  )
+    await browser.runtime.sendMessage({
+      type: "mcp-open-skill",
+      skillId: EXAMPLE_ID,
+    });
   view = saved.popupView === "record" ? "record" : "run";
   await render();
   await refreshMcp();

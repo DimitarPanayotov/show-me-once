@@ -89,6 +89,18 @@ export default defineContentScript({
         target instanceof HTMLSelectElement;
       return safeAgentLabel(
         target.getAttribute("aria-label") ||
+          (target.getAttribute("aria-labelledby") ?? "")
+            .split(/\s+/)
+            .slice(0, 4)
+            .map((id) => {
+              const label = document.getElementById(id);
+              return label &&
+                !label.matches("input,textarea,select,[contenteditable]")
+                ? (label.textContent?.slice(0, 160) ?? "")
+                : "";
+            })
+            .join(" ")
+            .trim() ||
           target.getAttribute("title") ||
           (field
             ? [...(target.labels ?? [])]
@@ -179,7 +191,7 @@ export default defineContentScript({
           : "";
       const candidates = [
         ...document.querySelectorAll(
-          'input,textarea,select,button,a,[role="button"],[role="link"]',
+          'input,textarea,select,button,a,[role="button"],[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"],[role="link"]',
         ),
       ]
         .filter(usable)
@@ -196,7 +208,9 @@ export default defineContentScript({
               ? 0
               : el.tagName.toLowerCase() === hintedTag
                 ? 1
-                : el.matches('input,textarea,select,button,[role="button"]')
+                : el.matches(
+                      'input,textarea,select,button,[role="button"],[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"]',
+                    )
                   ? 2
                   : 3;
           return rank(a) - rank(b);
@@ -213,7 +227,7 @@ export default defineContentScript({
         const label = agentLabel(target);
         if (label.includes("[redacted]")) continue;
         const role = target.matches(
-          'button,[role="button"],input[type="submit"],input[type="button"]',
+          'button,[role="button"],[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"],input[type="submit"],input[type="button"]',
         )
           ? "button"
           : target.matches('a,[role="link"]')
@@ -227,6 +241,9 @@ export default defineContentScript({
           role,
           label,
           selector: structuralSelector(target),
+          ...(target instanceof HTMLAnchorElement && sanitizeUrl(target.href)
+            ? { destination: sanitizeUrl(target.href)! }
+            : {}),
           ...(role === "input"
             ? {
                 inputKind:
@@ -288,7 +305,7 @@ export default defineContentScript({
         const wanted = value.trim().toLocaleLowerCase();
         const named = [
           ...document.querySelectorAll(
-            'a,button,[role="link"],[role="button"]',
+            'a,button,[role="link"],[role="button"],[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"]',
           ),
         ]
           .filter(usable)
@@ -303,7 +320,7 @@ export default defineContentScript({
         else if (named.length === 0) {
           const partial = [
             ...document.querySelectorAll(
-              'a,button,[role="link"],[role="button"]',
+              'a,button,[role="link"],[role="button"],[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"]',
             ),
           ]
             .filter(usable)
@@ -534,6 +551,14 @@ export default defineContentScript({
     browser.runtime.onMessage.addListener(
       (message: unknown, _sender, sendResponse) => {
         if (!message || typeof message !== "object") return;
+        if (
+          [
+            "observe-agent-page",
+            "execute-agent-action",
+            "execute-skill-step",
+          ].includes((message as { type?: string }).type ?? "")
+        )
+          trackNavigation();
         if ((message as { type?: string }).type === "recorder-ping") {
           sendResponse(true);
           return;
@@ -683,7 +708,7 @@ export default defineContentScript({
     function clickSelector(target: EventTarget | null): string | null {
       if (!(target instanceof Element)) return null;
       const interactive = target.closest(
-        'a,button,input,select,textarea,[role="button"],[role="link"]',
+        'a,button,input,select,textarea,[role="button"],[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"],[role="link"]',
       );
       if (!interactive || isSensitive(interactive)) return null;
       return structuralSelector(interactive);
@@ -824,15 +849,17 @@ export default defineContentScript({
       true,
     );
 
-    ctx.setInterval(() => {
+    function trackNavigation() {
       if (location.href === lastLocation) return;
       lastLocation = location.href;
       agentSnapshot = null;
+      pendingApproval = null;
       send({ kind: "navigation" });
       void browser.runtime
         .sendMessage({ type: "run-navigation" })
         .catch(() => undefined);
-    }, 500);
+    }
+    ctx.setInterval(trackNavigation, 500);
 
     // Never delay event listeners while a dormant service worker wakes up.
     const revisionAtRequest = stateRevision;

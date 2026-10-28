@@ -1,6 +1,6 @@
 {
   "name": "@show-me-once/extension",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
     "test:popup": "node tests/popup-smoke.mjs",
     "test:agent": "node tests/agent-smoke.mjs",
     "test:agent:sites": "node tests/real-sites-agent.mjs",
-    "test": "node --experimental-strip-types --test lib/*.test.ts tests/agent-ux.test.mjs",
+    "test": "node --experimental-strip-types --test lib/*.test.ts tests/agent-ux.test.mjs tests/triage-flow.test.mjs",
     "dev": "wxt --browser chrome",
     "build": "wxt build --browser chrome",
     "zip": "wxt zip --browser chrome",

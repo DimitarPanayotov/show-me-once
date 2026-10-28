@@ -42,11 +42,8 @@ for (const name of [
   files[`connector/${name}`] = new Uint8Array(
     await readFile(`dist/mcp/${name}`),
   );
-files["START-HERE.html"] = new Uint8Array(
-  await readFile("apps/extension/public/setup.html"),
-);
 files["README.txt"] = strToU8(
-  `Show Me Once ${version}\n\nOpen START-HERE.html for the short setup and first test.\n\nYou need Chrome, Node.js 24 and a local MCP-capable coding agent (Codex is the configured example).\nLoad the extension folder, run the connector's one-time setup, restart the agent and pair once.\nNo API key, library account or separate helper terminal is required for the example or local recordings.\nThe agent discovers skills directly; exporting/installing a skill file is optional.\n\nCloud saving, versions and sharing are available through the library account.\nManual real-agent/Chrome acceptance is still required before claiming the demo is verified.\n`,
+  `Show Me Once ${version}\n\nLoad the extension folder at chrome://extensions, then open Show Me Once. Connection guidance and the GitHub issue-triage example are inside the popup.\n\nYou need Chrome, Node.js 24 and a local MCP-capable coding agent (Codex is the configured example).\nLoad the extension folder, run the connector's one-time setup, restart the agent and pair once.\nNo API key, library account or separate helper terminal is required for the example or local recordings.\nThe agent discovers skills directly; exporting/installing a skill file is optional.\n\nCloud saving, versions and sharing are available through the library account.\nManual real-agent/Chrome acceptance is still required before claiming the demo is verified.\n`,
 );
 const path = `dist/show-me-once-reviewer-kit-${version}.zip`;
 await writeFile(path, zipSync(files));

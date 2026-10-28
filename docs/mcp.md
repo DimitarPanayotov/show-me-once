@@ -4,11 +4,11 @@ After connecting once, open your coding agent and ask it to use a skill. It star
 
 Your existing agent owns the conversation, model and decisions. MCP supplies guarded browser tools and never starts another Codex/model process. Version 0.5 focuses the interface on this single agent-led workflow.
 
-## One-time setup (0.5.0)
+## One-time setup (0.5.1)
 
-Download the reviewer kit and open **START-HERE.html**. You need Chrome, Node.js 24 and a local coding agent supporting MCP over stdio. Codex is the configured example.
+Load the reviewer's extension folder in Chrome, then open its popup. Connection steps open inline on first use; there is no separate HTML guide. You need Chrome, Node.js 24 and a local coding agent supporting MCP over stdio. Codex is the configured example.
 
-1. Load/reload the kit's **extension** folder in Chrome (source builds: apps/extension/.output/chrome-mv3). Confirm **0.5.0**.
+1. Load/reload the kit's **extension** folder in Chrome (source builds: apps/extension/.output/chrome-mv3). Confirm **0.5.1**.
 2. Open **Skills & activity → Connect your coding agent**, then **Copy ID**.
 3. Open **connector/Connect with Codex.cmd** on Windows, or run **node setup.mjs** in the connector folder on macOS/Linux. Paste the ID and choose Codex. Setup registers the connection automatically and prints a private pairing code.
 4. Restart/reconnect Codex. Paste the code into the extension and choose **Connect coding agent**.
@@ -20,18 +20,22 @@ For source builds, run node dist/mcp/setup.mjs interactively after pnpm mcp:bund
 
 Codex's /mcp should show seven tools: list_skills, get_skill, start_skill, observe_run, act, get_run_status, stop_run. Configuring a server does not refresh an already-running session. [Official configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
-Existing 0.4.1 users can keep their installed extension folder, reload it to 0.5.0, and restart/reconnect their agent to load the seven tools; pairing is retained.
+Existing 0.4.1 users can keep their installed extension folder, reload it to 0.5.1, and restart/reconnect their agent to load the seven tools; pairing is retained.
 
 Pairing survives browser/agent restarts. The extension retries automatically, or immediately through **Check connection**. **Forget connection** removes pairing. Close the old manual relay once when upgrading from 0.4.0; it must not occupy port 4320.
 
 ## Everyday use and demo
 
-1. Connect once, then choose **Open Wikipedia & copy example request**.
-2. Select English on Wikipedia and paste the request into your existing agent.
+1. Connect once, then choose **Open GitHub & copy triage request**.
+2. Paste the request into your existing agent. It opens GitHub Advanced search for a public issue-triage task.
 3. The agent calls list_skills/get_skill, reads the full parameterized SKILL.md, and starts a run. No account or filesystem skill installation is needed.
 4. Watch Chrome and the popup. Approve the search only after reviewing its action-specific preview. If the agent ended its reply while waiting, say: **I approved in the extension. Continue the same run.**
-5. Verify the Grace Hopper result and completed activity. Return to www.wikipedia.org and ask the same agent to use the same skill for Alan Turing.
+5. Verify the opened issue belongs to the requested repository/topic and the activity is completed. Return to GitHub Advanced search and repeat with microsoft/TypeScript + inference + open + bug.
 6. On a third run, choose **Stop run** before approval. Ask the agent for status; it must report stopped and perform no later action.
+
+The reference skill has 12 steps: start checkpoint; topic; repository; state select; label; search submission with approval; results checkpoint; open Sort by; choose Recently updated; sorted-results checkpoint; open the first actual matching issue; issue-page checkpoint. It stops if the intended controls or a matching issue are unavailable. It reads no issue body and makes no repository changes.
+
+Control observations support accessible menu items and explicit accessible labels. A delayed SPA URL poll does not erase a newly observed page; URL changes invalidate old observations and approvals. Link destinations expose only sanitized origin/path depth; full URLs and field values remain absent. The model still chooses each live target; tests use controlled documents and do not establish real-model/GitHub acceptance.
 
 For your own task, choose **Record**, demonstrate it once and select **Stop & create skill → Use with agent**. Open its starting page and copy the request into your agent. The new skill is immediately discoverable. Earlier local drafts are retained when switching skills; a library account is optional for local tasks.
 
@@ -58,7 +62,7 @@ No owner-funded API configuration is part of the default product. A reviewer's m
 | Component                       | Lifecycle                     | Responsibility                                                |
 | ------------------------------- | ----------------------------- | ------------------------------------------------------------- |
 | Existing coding-agent session   | Opened by user                | Model, skill, conversation, tool decisions                    |
-| `server.mjs`                    | Started by MCP client         | Five guarded tools; automatic connector startup               |
+| `server.mjs`                    | Started by MCP client         | Seven guarded tools; automatic connector startup              |
 | `relay.mjs`                     | Started automatically, hidden | Authenticated shared loopback transport; exits when idle      |
 | Extension worker/content script | Managed by Chrome             | Tab/run/step checks, safe observations, approvals, Pause/Stop |
 

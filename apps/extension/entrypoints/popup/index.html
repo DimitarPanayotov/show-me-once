@@ -100,7 +100,7 @@
       <section id="view-run" role="tabpanel" aria-labelledby="tab-run">
         <section class="card" id="coding-agent-connection">
           <div class="section-heading">
-            <h2 id="connection-heading">1. Connect your coding agent</h2>
+            <h2 id="connection-heading">Connect your coding agent</h2>
           </div>
           <p
             id="mcp-status"
@@ -123,15 +123,18 @@
             </p>
             <div id="mcp-pair-form">
               <ol class="connection-steps">
+                <li><strong>Copy the extension ID</strong> below.</li>
                 <li>
-                  Open the connector's <strong>Connect with Codex</strong> setup
-                  once.
+                  In the download's <strong>connector</strong> folder, open
+                  <strong>Connect with Codex</strong> and paste that ID.
                 </li>
-                <li>Paste this extension ID, then restart your agent.</li>
-                <li>Paste the pairing code from setup below.</li>
+                <li>
+                  Restart your agent, then paste the connection code from setup
+                  here.
+                </li>
               </ol>
               <p class="hint">
-                For the one-time setup, use this extension ID:
+                Extension ID:
                 <code id="mcp-extension-id"></code>
                 <button
                   id="mcp-copy-id"
@@ -141,14 +144,21 @@
                   Copy ID
                 </button>
               </p>
-              <label for="mcp-code">One-time pairing code</label>
+              <label for="mcp-code">Connection code from setup</label>
               <input id="mcp-code" type="password" autocomplete="off" />
               <button id="mcp-pair" type="button" class="button secondary full">
                 Connect coding agent
               </button>
-              <button id="mcp-guide" type="button" class="button quiet full">
-                Open connection guide ↗
-              </button>
+              <details class="connection-help">
+                <summary>Need help connecting?</summary>
+                <p class="hint">
+                  You need a local coding agent and Node.js 24. On macOS/Linux,
+                  run <code>node setup.mjs</code> in the connector folder. For
+                  another MCP client, choose manual setup and use the command
+                  and path it prints. Setup is one-time; no helper window stays
+                  open.
+                </p>
+              </details>
             </div>
             <button
               id="mcp-check"
@@ -194,17 +204,17 @@
         </div>
         <div id="run-empty" class="empty-state">
           <span class="empty-icon" aria-hidden="true">↗</span>
-          <h2>Try your first skill</h2>
+          <h2>Triage GitHub issues</h2>
           <p>
-            Start with the Wikipedia example, then record a task of your own. No
-            library account is needed.
+            Filter issues by repository, topic, state and label. Sort by recent
+            activity, then open a matching issue.
           </p>
           <button id="try-example" type="button" class="button primary full">
-            Open Wikipedia & copy example request
+            Open GitHub & copy triage request
           </button>
           <p class="hint">
-            Choose English on Wikipedia, then paste the request into your coding
-            agent.
+            12 steps · 4 reusable inputs · public issues only. Paste the copied
+            request into your agent.
           </p>
           <button id="empty-record" type="button" class="button secondary full">
             Record a new task</button

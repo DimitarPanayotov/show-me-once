@@ -123,7 +123,7 @@ test("official SDK client discovers seven tools, reads an example directly and f
     assert.match(
       (document.structuredContent as { skill: { markdown: string } }).skill
         .markdown,
-      /name: wikipedia-search/,
+      /name: github-issue-triage/,
     );
     assert.equal(received, 3);
     const rejected = await client.callTool({

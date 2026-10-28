@@ -1,19 +1,18 @@
 import { mkdir, writeFile, readFile, copyFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { withMcpInstructions } from "../packages/shared/src/mcp.ts";
+import { exampleDraft } from "../apps/extension/lib/example-skill.ts";
 const require = createRequire(
   new URL("../apps/extension/package.json", import.meta.url),
 );
 const { zipSync, strToU8 } = require("fflate");
 await mkdir("dist/mcp", { recursive: true });
-const markdown = withMcpInstructions(
-  await readFile("examples/wikipedia-search/SKILL.md", "utf8"),
-);
+const markdown = withMcpInstructions(exampleDraft.markdown);
 const setup = await readFile("docs/mcp.md", "utf8");
 await writeFile(
-  "dist/mcp/wikipedia-search-agent-skill.zip",
+  "dist/mcp/github-issue-triage-agent-skill.zip",
   zipSync({
-    ".agents/skills/wikipedia-search/SKILL.md": strToU8(markdown),
+    ".agents/skills/github-issue-triage/SKILL.md": strToU8(markdown),
     "INSTALL.md": strToU8(setup),
   }),
 );

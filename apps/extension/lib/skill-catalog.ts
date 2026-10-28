@@ -1,8 +1,17 @@
+import { parseSkillPlan } from "@show-me-once/shared";
 import {
-  createSkillMarkdown,
-  parseSkillPlan,
-  type Recording,
-} from "@show-me-once/shared";
+  EXAMPLE_ID,
+  EXAMPLE_START_URL,
+  exampleDraft,
+} from "./example-skill.ts";
+export {
+  EXAMPLE_ID,
+  EXAMPLE_START_URL,
+  EXAMPLE_REQUEST,
+  EXAMPLE_ALTERNATIVE_REQUEST,
+  EXAMPLE_STEP_LABELS,
+  exampleDraft,
+} from "./example-skill.ts";
 import { safeAgentLabel } from "@show-me-once/shared/agent";
 import {
   withMcpInstructions,
@@ -19,56 +28,6 @@ export type CatalogDraft = {
   savedVersion?: number;
   dirty?: boolean;
 };
-export const EXAMPLE_ID = "example:wikipedia-search";
-const recording: Recording = {
-  id: EXAMPLE_ID,
-  active: false,
-  tabId: 0,
-  startedAt: "2026-10-28T00:00:00Z",
-  actions: [
-    {
-      id: "1",
-      at: "2026-10-28T00:00:00Z",
-      kind: "navigation",
-      url: "https://www.wikipedia.org",
-    },
-    {
-      id: "2",
-      at: "2026-10-28T00:00:01Z",
-      kind: "input",
-      url: "https://www.wikipedia.org",
-      inputKind: "search",
-      selector:
-        "body:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(2) > form:nth-of-type(1) > fieldset:nth-of-type(1) > div:nth-of-type(1) > input:nth-of-type(1)",
-    },
-    {
-      id: "3",
-      at: "2026-10-28T00:00:02Z",
-      kind: "click",
-      url: "https://www.wikipedia.org",
-      selector:
-        "body:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(2) > form:nth-of-type(1) > fieldset:nth-of-type(1) > button:nth-of-type(1)",
-    },
-    {
-      id: "4",
-      at: "2026-10-28T00:00:03Z",
-      kind: "navigation",
-      url: "https://en.wikipedia.org/…/…",
-    },
-  ],
-};
-export const exampleDraft: CatalogDraft = {
-  sourceRecordingId: EXAMPLE_ID,
-  name: "Wikipedia search",
-  description: "Search English Wikipedia for a new topic.",
-  markdown: createSkillMarkdown(
-    recording,
-    "wikipedia-search",
-    "Search English Wikipedia for a supplied topic.",
-  ),
-  readOnly: true,
-  dirty: false,
-};
 export function localSkillId(draft: CatalogDraft) {
   return draft.sourceRecordingId === EXAMPLE_ID
     ? EXAMPLE_ID
@@ -77,7 +36,13 @@ export function localSkillId(draft: CatalogDraft) {
       : `local:${draft.sourceRecordingId}`;
 }
 export function keepLocalDraft(saved: CatalogDraft[], draft?: CatalogDraft) {
-  if (!draft || draft.remoteSkillId || draft.sourceRecordingId === EXAMPLE_ID)
+  if (
+    !draft ||
+    draft.remoteSkillId ||
+    (draft.sourceRecordingId.startsWith("example:") &&
+      draft.readOnly &&
+      !draft.dirty)
+  )
     return saved;
   return [
     draft,
@@ -111,6 +76,12 @@ export class SkillCatalog {
       NonNullable<ExternalResult["skills"]>[number]
     >();
     for (const value of [exampleDraft, ...skills, ...(draft ? [draft] : [])]) {
+      if (
+        value.sourceRecordingId === "example:wikipedia-search" &&
+        value.readOnly &&
+        !value.dirty
+      )
+        continue;
       if (value.remoteSkillId) continue; // Cloud access must be checked for the current account.
       try {
         withMcpInstructions(value.markdown);
@@ -166,7 +137,10 @@ export class SkillCatalog {
         name: safeAgentLabel(draft.name),
         description: safeAgentLabel(draft.description),
         markdown,
-        startUrl: parseSkillPlan(markdown).steps[0]!.url,
+        startUrl:
+          skillId === EXAMPLE_ID
+            ? EXAMPLE_START_URL
+            : parseSkillPlan(markdown).steps[0]!.url,
       },
     };
   }

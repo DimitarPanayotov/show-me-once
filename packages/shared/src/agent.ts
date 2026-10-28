@@ -7,6 +7,7 @@ export type AgentControl = {
   label: string;
   inputKind?: string;
   selector: string;
+  destination?: string;
 };
 export type AgentObservation = {
   id: string;

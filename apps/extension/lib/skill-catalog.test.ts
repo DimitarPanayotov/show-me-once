@@ -54,12 +54,19 @@ test("a new reviewer can discover and read a valid parameterized example without
     [EXAMPLE_ID],
   );
   const result = await f.catalog.get(EXAMPLE_ID);
-  assert.equal(result.skill?.startUrl, "https://www.wikipedia.org");
+  assert.equal(result.skill?.startUrl, "https://github.com/search/advanced");
   assert.deepEqual(parseSkillPlan(result.skill!.markdown).parameters, [
-    { name: "search_1", type: "string" },
+    { name: "topic", type: "string" },
+    { name: "repository", type: "string" },
+    { name: "state", type: "string" },
+    { name: "label", type: "string" },
   ]);
   assert.match(result.skill!.markdown, /show-me-once-mcp/);
-  assert.doesNotMatch(result.skill!.markdown, /Grace Hopper/);
+  assert.equal(parseSkillPlan(result.skill!.markdown).steps.length, 12);
+  assert.doesNotMatch(
+    result.skill!.markdown,
+    /microsoft\/vscode|terminal|microsoft\/TypeScript/,
+  );
 });
 test("recorded drafts are immediately discoverable, and switching tasks preserves local edits", async () => {
   const f = fixture();

@@ -66,6 +66,9 @@ export function checkedInput(value: unknown): AgentInput {
       c.label !== safeAgentLabel(c.label) ||
       typeof c.selector !== "string" ||
       !/^[a-z0-9:()> -]{1,400}$/.test(c.selector) ||
+      (c.destination !== undefined &&
+        (typeof c.destination !== "string" ||
+          sanitizeUrl(c.destination) !== c.destination)) ||
       (c.inputKind !== undefined &&
         !["text", "search", "checkbox", "radio", "select"].includes(
           c.inputKind,
@@ -77,6 +80,7 @@ export function checkedInput(value: unknown): AgentInput {
       role: c.role,
       label: c.label,
       selector: c.selector,
+      ...(c.destination ? { destination: c.destination } : {}),
       ...(c.inputKind ? { inputKind: c.inputKind } : {}),
     };
   });

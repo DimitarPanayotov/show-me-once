@@ -220,8 +220,8 @@ test("reviewer onboarding has one agent path, a working example handoff, and no 
     assert.match(f.element("mcp-status").textContent, /Connected/);
     f.element("try-example").click();
     await until(() => f.tabs.length === 1);
-    assert.equal(f.tabs[0].url, "https://www.wikipedia.org/");
-    assert.match(f.clipboard(), /Grace Hopper/);
+    assert.equal(f.tabs[0].url, "https://github.com/search/advanced");
+    assert.match(f.clipboard(), /microsoft\/vscode.*terminal/);
     assert.equal(f.local.skillDraft.sourceRecordingId, EXAMPLE_ID);
     assert.equal(f.element("current-meta").textContent, "Example skill");
     assert.equal(f.element("error").textContent, "");
@@ -229,6 +229,42 @@ test("reviewer onboarding has one agent path, a working example handoff, and no 
       f.messages.some((m) => /^(agent-|start-run)/.test(m.type)),
       false,
     );
+  } finally {
+    await f.close();
+  }
+});
+
+test("first launch explains connection inline without opening or requiring an external guide", async () => {
+  const f = await fixture({ connected: false });
+  try {
+    assert.equal(f.element("mcp-settings").open, true);
+    assert.equal(f.element("mcp-pair-form").hidden, false);
+    assert.equal(
+      f.element("mcp-pair-form").querySelectorAll("ol li").length,
+      3,
+    );
+    assert.equal(f.element("mcp-guide"), null);
+    assert.equal(f.element("try-example").disabled, true);
+    assert.equal(f.element("start").disabled, false);
+    assert.equal(f.tabs.length, 0);
+  } finally {
+    await f.close();
+  }
+});
+
+test("a clean cached Wikipedia starter upgrades to issue triage without archiving or overwriting user recordings", async () => {
+  const f = await fixture({
+    draft: {
+      ...exampleDraft,
+      sourceRecordingId: "example:wikipedia-search",
+      name: "Wikipedia search",
+    },
+  });
+  try {
+    assert.equal(f.local.skillDraft.sourceRecordingId, EXAMPLE_ID);
+    assert.deepEqual(f.local.localSkills, []);
+    assert.match(f.element("agent-request").value, /microsoft\/vscode/);
+    assert.equal(f.element("open-start-page").hidden, true);
   } finally {
     await f.close();
   }
@@ -273,28 +309,28 @@ test("active agent runs expose action-specific approval and Pause/Resume/Stop wi
     engine: "external",
     mode: "automatic",
     skillKey: EXAMPLE_ID,
-    nextStep: 2,
-    totalSteps: 4,
-    confirmationStep: 2,
+    nextStep: 5,
+    totalSteps: 12,
+    confirmationStep: 5,
     logs: [],
   };
   const confirmation = {
     runId: run.id,
-    step: 2,
+    step: 5,
     details: {
       token: "07118f12-a190-4ddd-9dd9-d7ee5e69f98b",
       intent: "search",
       interaction: "click",
       targetLabel: "Search",
       targetTag: "button",
-      origin: "https://www.wikipedia.org",
+      origin: "https://github.com",
     },
   };
   const f = await fixture({ draft: exampleDraft, run, confirmation });
   try {
     assert.match(
       f.element("confirmation-title").textContent,
-      /Submit search on www.wikipedia.org/,
+      /Submit search on github.com/,
     );
     assert.equal(f.element("run-setup").hidden, true);
     assert.equal(f.element("run-confirm").disabled, false);
@@ -318,41 +354,114 @@ test("active agent runs expose action-specific approval and Pause/Resume/Stop wi
 
 test("the actual content executor exposes a search redirect button, requires approval and rejects cross-origin submitter overrides", async () => {
   const bundle = await rolldown({
-    input: new URL("../entrypoints/content.ts", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"),
-    plugins: [{ name: "fake-chrome", resolveId(id) { if (id === "wxt/browser") return "\0browser"; }, load(id) { if (id === "\0browser") return "export const browser = globalThis.__smoBrowser;"; } }],
+    input: new URL(
+      "../entrypoints/content.ts",
+      import.meta.url,
+    ).pathname.replace(/^\/([A-Za-z]:)/, "$1"),
+    plugins: [
+      {
+        name: "fake-chrome",
+        resolveId(id) {
+          if (id === "wxt/browser") return "\0browser";
+        },
+        load(id) {
+          if (id === "\0browser")
+            return "export const browser = globalThis.__smoBrowser;";
+        },
+      },
+    ],
   });
-  const compiled = await bundle.generate({ format: "iife", name: "contentFixture" });
+  const compiled = await bundle.generate({
+    format: "iife",
+    name: "contentFixture",
+  });
   await bundle.close();
   const window = new Window({ url: "https://www.wikipedia.org/" });
-  window.document.write('<form id="search" action="//www.wikipedia.org/search-redirect.php"><input type="search" name="search" aria-label="Search" value="do-not-send-this-value"></form><button id="go" type="submit" form="search">Search</button>');
-  window.HTMLElement.prototype.getClientRects = () => [{ width: 100, height: 30 }];
+  window.document.write(
+    '<form id="search" action="//www.wikipedia.org/search-redirect.php"><input type="search" name="search" aria-label="Search" value="do-not-send-this-value"></form><button id="go" type="submit" form="search">Search</button>',
+  );
+  window.HTMLElement.prototype.getClientRects = () => [
+    { width: 100, height: 30 },
+  ];
   window.HTMLElement.prototype.scrollIntoView = () => {};
-  let handler, clicks = 0;
-  window.__smoBrowser = { storage: { onChanged: { addListener() {} } }, runtime: { onMessage: { addListener(fn) { handler = fn; } }, sendMessage: async () => ({ active: false }) } };
-  window.defineContentScript = config => {
-    config.main({ isValid: true, setTimeout: (...args) => window.setTimeout(...args), setInterval: () => 0, addEventListener: (target, ...args) => target.addEventListener(...args) });
+  let handler,
+    clicks = 0;
+  window.__smoBrowser = {
+    storage: { onChanged: { addListener() {} } },
+    runtime: {
+      onMessage: {
+        addListener(fn) {
+          handler = fn;
+        },
+      },
+      sendMessage: async () => ({ active: false }),
+    },
+  };
+  window.defineContentScript = (config) => {
+    config.main({
+      isValid: true,
+      setTimeout: (...args) => window.setTimeout(...args),
+      setInterval: () => 0,
+      addEventListener: (target, ...args) => target.addEventListener(...args),
+    });
     return config;
   };
   try {
-    window.eval(compiled.output.find(item => item.type === "chunk").code);
-    const call = message => { let result; handler(message, {}, value => { result = value; }); return result; };
-    const step = { kind: "click", url: "https://www.wikipedia.org", selector: "button:nth-of-type(1)" };
+    window.eval(compiled.output.find((item) => item.type === "chunk").code);
+    const call = (message) => {
+      let result;
+      handler(message, {}, (value) => {
+        result = value;
+      });
+      return result;
+    };
+    const step = {
+      kind: "click",
+      url: "https://www.wikipedia.org",
+      selector: "button:nth-of-type(1)",
+    };
     const navigationScope = [step.url, "https://en.wikipedia.org/…/…"];
-    const observe = () => call({ type: "observe-agent-page", step, navigationScope });
+    const observe = () =>
+      call({ type: "observe-agent-page", step, navigationScope });
     const observation = observe();
-    const target = observation.controls.find(control => control.role === "button" && control.label === "Search");
-    assert.ok(target, "The same-origin redirect submitter must be discoverable, including a form-associated external button.");
+    const target = observation.controls.find(
+      (control) => control.role === "button" && control.label === "Search",
+    );
+    assert.ok(
+      target,
+      "The same-origin redirect submitter must be discoverable, including a form-associated external button.",
+    );
     assert.doesNotMatch(JSON.stringify(observation), /do-not-send-this-value/);
-    window.document.getElementById("go").click = () => { clicks++; };
-    const request = { type: "execute-agent-action", step, navigationScope, observationId: observation.id, targetId: target.id, executionKey: "run:2" };
+    window.document.getElementById("go").click = () => {
+      clicks++;
+    };
+    const request = {
+      type: "execute-agent-action",
+      step,
+      navigationScope,
+      observationId: observation.id,
+      targetId: target.id,
+      executionKey: "run:2",
+    };
     const pending = call(request);
     assert.equal(pending.status, "confirmation-required");
     assert.equal(pending.confirmation.intent, "search");
     assert.equal(clicks, 0);
-    const done = call({ ...request, confirmed: true, approvalToken: pending.confirmation.token });
+    const done = call({
+      ...request,
+      confirmed: true,
+      approvalToken: pending.confirmation.token,
+    });
     assert.equal(done.status, "done");
     await until(() => clicks === 1);
-    window.document.getElementById("go").setAttribute("formaction", "https://unrelated.example/pay");
-    assert.equal(observe().controls.some(control => control.role === "button"), false);
-  } finally { await window.happyDOM.abort(); }
+    window.document
+      .getElementById("go")
+      .setAttribute("formaction", "https://unrelated.example/pay");
+    assert.equal(
+      observe().controls.some((control) => control.role === "button"),
+      false,
+    );
+  } finally {
+    await window.happyDOM.abort();
+  }
 });

@@ -48,6 +48,40 @@ const decision = {
   parameter: "search_1",
   value: "Foundation",
 };
+
+test("link destinations crossing the model boundary contain only sanitized origin and path depth", () => {
+  const observation = {
+    ...input.observation,
+    controls: [
+      {
+        ...input.observation.controls[0]!,
+        role: "link",
+        destination: "https://example.com/…/…",
+      },
+    ],
+  };
+  assert.equal(
+    checkedInput({ ...input, observation }).observation.controls[0]
+      ?.destination,
+    "https://example.com/…/…",
+  );
+  for (const destination of [
+    "https://example.com/private/path?token=value",
+    "https://user:secret@example.com/",
+    "javascript:alert(1)",
+  ])
+    assert.throws(
+      () =>
+        checkedInput({
+          ...input,
+          observation: {
+            ...observation,
+            controls: [{ ...observation.controls[0], destination }],
+          },
+        }),
+      /Unsafe/,
+    );
+});
 for (const id of ["openai", "anthropic"] as const) {
   test(`${id} adapter normalizes its tool call into the same guarded action`, async () => {
     let payload: Record<string, unknown> = {};

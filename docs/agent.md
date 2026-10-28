@@ -1,6 +1,6 @@
 # Historical extension-led adapter implementation
 
-The current 0.5.0 popup exposes the [agent-led MCP workflow](mcp.md). The provider picker and local decision-helper controls described below are no longer part of the reviewer experience. This document describes compatibility code and earlier verification.
+The current 0.5.1 popup exposes the [agent-led MCP workflow](mcp.md). The provider picker and local decision-helper controls described below are no longer part of the reviewer experience. This document describes compatibility code and earlier verification.
 
 # Agent execution
 

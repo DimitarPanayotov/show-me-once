@@ -2,19 +2,21 @@
 
 Record a browser task once, then ask your existing coding agent to repeat it with new inputs. Chrome shows the actions and keeps approval, Pause and Stop under your control.
 
-[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.5.0](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.5.0-demo) · [Setup and demo](docs/mcp.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
+[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.5.1](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.5.1-demo) · [Setup and demo](docs/mcp.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
 
 ## Start here
 
-Download and extract the reviewer kit to a permanent folder, then open **START-HERE.html**. It contains the extension, a one-time connector setup wizard, and a built-in Wikipedia example.
+Download and extract the reviewer kit to a permanent folder. Load its extension folder in Chrome, then open Show Me Once: the popup guides connection and use inline. No separate HTML guide is required.
 
 You need Chrome, Node.js 24 and a local MCP-capable coding agent. Codex is the configured example; other clients use the same stdio tools but have not been verified end to end.
 
 1. Load the kit's **extension** folder at chrome://extensions.
 2. Copy the extension ID and open **connector/Connect with Codex.cmd** on Windows, or run **node setup.mjs** in that folder on macOS/Linux. The wizard registers Codex automatically.
 3. Restart/reconnect your agent and paste the setup's pairing code into the extension once.
-4. Choose **Open Wikipedia & copy example request**, select English on Wikipedia, and paste the request into your agent.
-5. Review the search approval in Chrome and check the result. Repeat with a different topic.
+4. Choose **Open GitHub & copy triage request**, then paste it into your agent.
+5. Approve the advanced search. The agent fills repository/topic/state/label, sorts by recent activity, and opens a matching public issue. Repeat with another repository and topic.
+
+The reference workflow has **12 steps and four parameters**: topic, repository, state and label. The default request uses microsoft/vscode + terminal + open + bug; a second input is microsoft/TypeScript + inference + open + bug. The SKILL.md has no fixed repository or topic values. It includes the advanced form, protected submission, sort menu, result selection and issue-page checkpoint.
 
 No owner API key, provider selection, separate helper terminal, library account, or skill-file installation is required for this flow. Pairing is remembered, and the agent manages the connector automatically.
 

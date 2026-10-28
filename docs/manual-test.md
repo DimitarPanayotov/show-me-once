@@ -1,9 +1,9 @@
-# Current manual test — 0.5.0
+# Current manual test — 0.5.1
 
-Open START-HERE.html in the reviewer kit for the installation and first example. The full setup, two-input test, Stop test and recovery checks are in [the agent-led guide](mcp.md).
+Load the extension and follow its inline connection steps. No separate HTML guide is required. The full setup, two-input test, Stop test and recovery checks are in [the agent-led guide](mcp.md).
 
-1. Verify version 0.5.0 and connect your coding agent once. No library account or owner API key is needed for local tests.
-2. Try the built-in Wikipedia example with Grace Hopper, then Alan Turing, using the same agent conversation and skill. Verify the actual pages, approvals, final status and absence of manual Next buttons.
+1. Verify version 0.5.1 and connect your coding agent once. No library account or owner API key is needed for local tests.
+2. Try GitHub issue triage with microsoft/vscode + terminal + open + bug, then microsoft/TypeScript + inference + open + bug, using the same agent conversation and skill. Verify all four fields, search approval, Recently updated sorting, the opened issue's repository/topic, final status, and absence of manual Next buttons. The full workflow has 12 steps. A missing result must stop rather than silently selecting a navigation link.
 3. Record a fresh task, edit its name/description/instructions continuously, choose Use with agent and run with two different inputs. The agent must discover the skill directly, without an exported file installation.
 4. Check Pause/Resume, Stop before approval, popup closure, connector restart and worker recovery. No uncertain action may repeat automatically.
 5. Sign into the library, save a version, edit/save another version, and share with a second registered account. Check owner-only editing, recipient access and local activity. MCP activity is not yet automatically associated with backend library history.
