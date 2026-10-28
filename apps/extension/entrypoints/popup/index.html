@@ -32,7 +32,7 @@
           aria-selected="true"
           aria-controls="view-run"
         >
-          Run</button
+          Skills & activity</button
         ><button
           id="tab-record"
           role="tab"
@@ -99,7 +99,9 @@
 
       <section id="view-run" role="tabpanel" aria-labelledby="tab-run">
         <section class="card" id="coding-agent-connection">
-          <div class="section-heading"><h2>Your coding agent</h2></div>
+          <div class="section-heading">
+            <h2 id="connection-heading">1. Connect your coding agent</h2>
+          </div>
           <p
             id="mcp-status"
             class="agent-connection-status"
@@ -120,22 +122,33 @@
               helper window is needed.
             </p>
             <div id="mcp-pair-form">
+              <ol class="connection-steps">
+                <li>
+                  Open the connector's <strong>Connect with Codex</strong> setup
+                  once.
+                </li>
+                <li>Paste this extension ID, then restart your agent.</li>
+                <li>Paste the pairing code from setup below.</li>
+              </ol>
               <p class="hint">
                 For the one-time setup, use this extension ID:
                 <code id="mcp-extension-id"></code>
+                <button
+                  id="mcp-copy-id"
+                  type="button"
+                  class="button quiet small"
+                >
+                  Copy ID
+                </button>
               </p>
               <label for="mcp-code">One-time pairing code</label>
               <input id="mcp-code" type="password" autocomplete="off" />
               <button id="mcp-pair" type="button" class="button secondary full">
                 Connect coding agent
               </button>
-              <a
-                class="text-link"
-                href="https://github.com/DimitarPanayotov/show-me-once/blob/main/docs/mcp.md"
-                target="_blank"
-                rel="noopener"
-                >One-time setup guide ↗</a
-              >
+              <button id="mcp-guide" type="button" class="button quiet full">
+                Open connection guide ↗
+              </button>
             </div>
             <button
               id="mcp-check"
@@ -155,7 +168,7 @@
             </button>
           </details>
         </section>
-        <div id="library-controls" class="library-picker" hidden>
+        <div id="library-controls" class="library-picker">
           <div class="section-heading">
             <label for="library-skills">Your skills</label
             ><button
@@ -181,14 +194,22 @@
         </div>
         <div id="run-empty" class="empty-state">
           <span class="empty-icon" aria-hidden="true">↗</span>
-          <h2>Your next task, on repeat.</h2>
+          <h2>Try your first skill</h2>
           <p>
-            Choose a saved skill, or show us a browser task once to create one.
+            Start with the Wikipedia example, then record a task of your own. No
+            library account is needed.
           </p>
-          <button id="empty-record" type="button" class="button primary full">
+          <button id="try-example" type="button" class="button primary full">
+            Open Wikipedia & copy example request
+          </button>
+          <p class="hint">
+            Choose English on Wikipedia, then paste the request into your coding
+            agent.
+          </p>
+          <button id="empty-record" type="button" class="button secondary full">
             Record a new task</button
           ><button id="sign-in-prompt" type="button" class="button quiet full">
-            Sign in to your library
+            Sign in for saving & sharing
           </button>
         </div>
         <section id="run-panel" hidden>
@@ -198,108 +219,33 @@
             <p id="current-description" class="muted"></p>
           </div>
           <p id="run-summary" class="alert success" role="status" hidden></p>
-          <div id="run-setup">
-            <div id="agent-setup">
-              <label for="task-request">What would you like to do?</label>
-              <textarea
-                id="task-request"
-                rows="2"
-                maxlength="2000"
-                placeholder="For example: Search Wikipedia for Katherine Johnson"
-              ></textarea>
-              <label for="agent-provider">Agent provider</label>
-              <select id="agent-provider">
-                <option value="codex-local">Local Codex (subscription)</option>
-                <option value="openai">OpenAI (hosted)</option>
-                <option value="anthropic">Anthropic (hosted)</option>
-              </select>
-              <p id="agent-help" class="hint" role="status"></p>
-              <p
-                id="agent-connection-status"
-                class="agent-connection-status"
-                role="status"
-                aria-live="polite"
-              ></p>
-              <details id="agent-connection">
-                <summary id="agent-connection-summary">
-                  Connect a local agent
-                </summary>
-                <div id="agent-pair-form">
-                  <p class="hint">
-                    Start the local bridge using the setup guide, then enter its
-                    pairing code. Your Codex sign-in stays with Codex.
-                  </p>
-                  <p class="hint">
-                    Extension origin: <code id="extension-origin"></code>
-                  </p>
-                  <label for="agent-pair-code">Pairing code</label
-                  ><input
-                    id="agent-pair-code"
-                    type="password"
-                    autocomplete="off"
-                  />
-                  <button
-                    id="agent-pair"
-                    type="button"
-                    class="button secondary full"
-                  >
-                    Connect local agent
-                  </button>
-                </div>
-                <p id="agent-connected-help" class="hint" hidden>
-                  Your local helper is connected. Keep its window open while
-                  running skills.
-                </p>
-                <button
-                  id="agent-check"
-                  type="button"
-                  class="button secondary full"
-                  hidden
-                >
-                  Check connection
-                </button>
-                <button
-                  id="agent-disconnect"
-                  type="button"
-                  class="button quiet full"
-                  hidden
-                >
-                  Disconnect local agent
-                </button>
-                <a
-                  class="text-link"
-                  href="https://github.com/DimitarPanayotov/show-me-once/blob/main/docs/agent.md"
-                  target="_blank"
-                  rel="noopener"
-                  >Agent setup guide ↗</a
-                >
-              </details>
-            </div>
-            <p id="run-help" class="hint">
-              Runs all steps and pauses when it needs your confirmation.
-            </p>
-            <button id="run-start" type="button" class="button primary full">
-              Run skill
+          <div id="run-setup" class="handoff-card">
+            <h3>Use this skill with your agent</h3>
+            <p id="handoff-help" class="hint"></p>
+            <p id="starting-page" class="hint"></p>
+            <label for="agent-request">Request to paste into your agent</label>
+            <textarea id="agent-request" rows="3" readonly></textarea>
+            <button id="copy-request" type="button" class="button primary full">
+              Copy agent request
             </button>
-            <details id="parameter-options">
-              <summary>Parameters (optional)</summary>
-              <div id="run-parameters"></div>
-            </details>
-            <details id="execution-options">
-              <summary>Execution options</summary>
-              <label for="run-engine">Executor</label
-              ><select id="run-engine">
-                <option value="agent">AI agent</option>
-                <option value="recorded">Recorded steps (no AI)</option>
-              </select>
-              <div id="run-mode-row" class="mode-row">
-                <label for="run-mode">Execution</label
-                ><select id="run-mode">
-                  <option value="automatic">Automatic</option>
-                  <option value="manual">Step by step</option>
-                </select>
-              </div>
-            </details>
+            <button
+              id="open-start-page"
+              type="button"
+              class="button secondary full"
+              hidden
+            >
+              Open starting page ↗
+            </button>
+            <p
+              id="handoff-notice"
+              class="save-feedback"
+              role="status"
+              aria-live="polite"
+            ></p>
+            <p class="hint">
+              Your agent reads the skill directly. It will ask for new inputs
+              and run the steps here.
+            </p>
           </div>
           <div id="run-controls" class="run-card" hidden>
             <div class="section-heading">
@@ -343,9 +289,7 @@
               Confirm & continue
             </button>
             <div class="inline-controls">
-              <button id="run-next" type="button" class="button primary" hidden>
-                Next step</button
-              ><button
+              <button
                 id="run-pause"
                 type="button"
                 class="button secondary"
@@ -450,10 +394,14 @@
         </details>
         <div class="save-bar">
           <div class="inline-controls">
-            <button id="save-library" type="button" class="button primary grow">
+            <button
+              id="save-library"
+              type="button"
+              class="button secondary grow"
+            >
               Save to library</button
-            ><button id="try-skill" type="button" class="button secondary">
-              Try skill
+            ><button id="try-skill" type="button" class="button primary">
+              Use with agent
             </button>
           </div>
           <p
@@ -463,14 +411,6 @@
             aria-live="polite"
           ></p>
           <p id="save-error" class="save-feedback error" role="alert"></p>
-          <button
-            id="save-run"
-            type="button"
-            class="button success-button full"
-            hidden
-          >
-            Run saved skill →
-          </button>
         </div>
       </section>
     </main>

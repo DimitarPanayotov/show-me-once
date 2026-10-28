@@ -3,9 +3,40 @@ import assert from "node:assert/strict";
 import {
   ExternalRunController,
   externalDraft,
+  prepareExternalDraft,
   externalStatus,
   type ExternalSession,
 } from "./external-run.ts";
+import { exampleDraft } from "./skill-catalog.ts";
+
+test("switching agent tasks archives unsaved local work while cloud edits still require an explicit save", () => {
+  const previous = {
+    ...exampleDraft,
+    sourceRecordingId: "my-recording",
+    readOnly: false,
+    dirty: true,
+    markdown: exampleDraft.markdown + "\nMy local edit",
+  };
+  const next = prepareExternalDraft(
+    previous,
+    [],
+    exampleDraft.markdown,
+    "next-run",
+  );
+  assert.equal(next.skills[0], previous);
+  assert.equal(next.skills[0]?.markdown, previous.markdown);
+  assert.notEqual(next.draft, previous);
+  assert.throws(
+    () =>
+      prepareExternalDraft(
+        { ...previous, remoteSkillId: "cloud" },
+        [],
+        exampleDraft.markdown,
+        "next-run",
+      ),
+    /Save/,
+  );
+});
 import {
   applyStepOutcome,
   canAutoAdvance,

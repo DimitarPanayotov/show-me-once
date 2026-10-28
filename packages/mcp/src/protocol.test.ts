@@ -9,8 +9,12 @@ import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { WebSocket } from "ws";
 import { createBridge } from "./bridge.ts";
+import {
+  SkillCatalog,
+  EXAMPLE_ID,
+} from "../../../apps/extension/lib/skill-catalog.ts";
 
-test("official SDK client negotiates stdio, lists five tools and forwards validated calls over the authenticated bridge", async () => {
+test("official SDK client discovers seven tools, reads an example directly and forwards guarded calls over the authenticated bridge", async () => {
   const origin = "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   const bridge = createBridge(origin, { port: 0 });
   const port = await bridge.listen();
@@ -46,6 +50,8 @@ test("official SDK client negotiates stdio, lists five tools and forwards valida
     assert.deepEqual(tools.map((t) => t.name).sort(), [
       "act",
       "get_run_status",
+      "get_skill",
+      "list_skills",
       "observe_run",
       "start_skill",
       "stop_run",
@@ -66,7 +72,15 @@ test("official SDK client negotiates stdio, lists five tools and forwards valida
     );
     await once(socket, "message");
     let received = 0;
-    socket.on("message", (bytes) => {
+    const catalog = new SkillCatalog({
+      readLocal: async () => ({}),
+      listLibrary: async () => [],
+      getLibrary: async () => {
+        throw new Error("Not signed in");
+      },
+      userId: async () => undefined,
+    });
+    socket.on("message", async (bytes) => {
       const m = JSON.parse(String(bytes));
       if (m.type === "command") {
         received++;
@@ -75,7 +89,12 @@ test("official SDK client negotiates stdio, lists five tools and forwards valida
           JSON.stringify({
             type: "result",
             id: m.id,
-            result: { status: "stopped", runId: "run-one" },
+            result:
+              m.command.kind === "list_skills"
+                ? await catalog.list()
+                : m.command.kind === "get_skill"
+                  ? await catalog.get(m.command.skillId)
+                  : { status: "stopped", runId: "run-one" },
           }),
         );
       }
@@ -89,6 +108,24 @@ test("official SDK client negotiates stdio, lists five tools and forwards valida
       "stopped",
     );
     assert.equal(received, 1);
+    const listed = await client.callTool({
+      name: "list_skills",
+      arguments: {},
+    });
+    assert.equal(
+      (listed.structuredContent as { skills: { id: string }[] }).skills[0]?.id,
+      EXAMPLE_ID,
+    );
+    const document = await client.callTool({
+      name: "get_skill",
+      arguments: { skillId: EXAMPLE_ID },
+    });
+    assert.match(
+      (document.structuredContent as { skill: { markdown: string } }).skill
+        .markdown,
+      /name: wikipedia-search/,
+    );
+    assert.equal(received, 3);
     const rejected = await client.callTool({
       name: "act",
       arguments: {
@@ -101,7 +138,7 @@ test("official SDK client negotiates stdio, lists five tools and forwards valida
       },
     });
     assert.equal(rejected.isError, true);
-    assert.equal(received, 1);
+    assert.equal(received, 3);
   } finally {
     await client.close();
     socket?.terminate();

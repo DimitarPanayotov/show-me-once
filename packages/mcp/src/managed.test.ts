@@ -81,7 +81,7 @@ test("MCP clients automatically start, share, stop and restart the connector wit
         stderr: "pipe",
       }),
     );
-    assert.equal((await client.listTools()).tools.length, 5);
+    assert.equal((await client.listTools()).tools.length, 7);
     return client;
   };
   const pair = async () => {

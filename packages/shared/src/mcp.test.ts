@@ -5,12 +5,57 @@ import {
   checkedExternalCommand,
   withMcpInstructions,
   permittedDestination,
+  permittedFormDestination,
 } from "./mcp.ts";
 import { parseSkillPlan } from "./index.ts";
 const markdown = await readFile(
   new URL("../../../examples/wikipedia-search/SKILL.md", import.meta.url),
   "utf8",
 );
+
+test("same-origin search redirect forms are allowed while cross-origin, credential-bearing and unexpected-page submissions stay blocked", () => {
+  const scope = ["https://www.wikipedia.org", "https://en.wikipedia.org/…/…"];
+  const current = "https://www.wikipedia.org/";
+  assert.equal(
+    permittedDestination(
+      "https://www.wikipedia.org/search-redirect.php",
+      scope,
+    ),
+    false,
+  );
+  assert.equal(
+    permittedFormDestination(
+      "https://www.wikipedia.org/search-redirect.php",
+      scope,
+      current,
+    ),
+    true,
+  );
+  assert.equal(
+    permittedFormDestination(
+      "https://en.wikipedia.org/w/index.php",
+      scope,
+      current,
+    ),
+    true,
+  );
+  for (const raw of [
+    "https://unrelated.example/search",
+    "https://www.wikipedia.org.evil.invalid/search",
+    "javascript:alert(1)",
+    "https://user:secret@www.wikipedia.org/search",
+    "https://en.wikipedia.org/unexpected/path/depth",
+  ])
+    assert.equal(permittedFormDestination(raw, scope, current), false);
+  assert.equal(
+    permittedFormDestination(
+      "https://www.wikipedia.org/search-redirect.php",
+      scope,
+      "https://unrelated.example/",
+    ),
+    false,
+  );
+});
 test("agent export preserves the executable plan and adds discoverable MCP instructions exactly once", () => {
   const exported = withMcpInstructions(markdown);
   assert.deepEqual(parseSkillPlan(exported), parseSkillPlan(markdown));

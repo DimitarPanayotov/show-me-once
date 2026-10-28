@@ -2,6 +2,8 @@ import { parseSkillPlan, sanitizeUrl, type SkillStep } from "./index.ts";
 import { containsSecret, type AgentObservation } from "./agent.ts";
 
 export type ExternalCommand =
+  | { kind: "list_skills" }
+  | { kind: "get_skill"; skillId: string }
   | {
       kind: "start";
       markdown: string;
@@ -34,6 +36,19 @@ export type ExternalResult = {
   step?: SkillStep;
   observation?: AgentObservation;
   message?: string;
+  skills?: {
+    id: string;
+    name: string;
+    description: string;
+    source: "example" | "local" | "library";
+  }[];
+  skill?: {
+    id: string;
+    name: string;
+    description: string;
+    markdown: string;
+    startUrl: string;
+  };
 };
 export type ExternalIdentity = {
   controllerId: string;
@@ -52,10 +67,46 @@ export function permittedDestination(raw: string, scope: string[]): boolean {
   }
 }
 
+/** A same-origin form may use an intermediate endpoint before the next checkpoint. */
+export function permittedFormDestination(
+  raw: string,
+  scope: string[],
+  current: string,
+): boolean {
+  try {
+    const url = new URL(raw),
+      page = new URL(current);
+    if (
+      !scope.includes(sanitizeUrl(current) ?? "") ||
+      url.username ||
+      url.password ||
+      !["http:", "https:"].includes(url.protocol)
+    )
+      return false;
+    return url.origin === page.origin || permittedDestination(raw, scope);
+  } catch {
+    return false;
+  }
+}
+
 export function checkedExternalCommand(raw: unknown): ExternalCommand {
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
     throw new Error("Invalid browser command.");
   const c = raw as Record<string, unknown>;
+  if (c.kind === "list_skills") {
+    if (Object.keys(c).length !== 1)
+      throw new Error("Unsupported catalog command fields.");
+    return { kind: "list_skills" };
+  }
+  if (c.kind === "get_skill") {
+    if (
+      Object.keys(c).some((k) => k !== "kind" && k !== "skillId") ||
+      typeof c.skillId !== "string" ||
+      !/^[a-zA-Z0-9:_-]{1,160}$/.test(c.skillId)
+    )
+      throw new Error("Invalid skill identity.");
+    return { kind: "get_skill", skillId: c.skillId };
+  }
   const allowed =
     c.kind === "start"
       ? ["kind", "markdown", "parameters"]

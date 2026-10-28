@@ -1,10 +1,10 @@
 # Architecture
 
-## Agent-led MCP path (0.4.1)
+## Current agent-led product (0.5.0)
 
-An existing coding-agent session owns the model and loads an exported skill. Its stdio MCP server automatically starts/reuses an authenticated loopback relay at port 4320. The relay exits after the last client leaves; no separate terminal is needed. One-time settings and browser pairing persist across restarts. The extension opens the outbound WebSocket and retains run/tab/step binding, fresh control observations, target validation, confirmation, Pause and Stop. This path does not import or invoke the Codex decision adapter. The extension-led modes below remain separate. See [MCP design and setup](mcp.md) for process ownership, pairing, lifecycle, credential storage and exact Codex configuration. Browser acceptance remains pending under the requested non-browser testing constraint.
+An existing coding-agent session owns the model and loads an exported skill. The agent first discovers available skills through list_skills/get_skill, which read the example, local recordings and the current user's authorized library. No skill-file installation is required. Its stdio MCP server automatically starts/reuses an authenticated loopback relay at port 4320. The relay exits after the last client leaves; no separate terminal is needed. One-time settings and browser pairing persist across restarts. The extension opens the outbound WebSocket and retains run/tab/step binding, fresh control observations, target validation, confirmation, Pause and Stop. This path does not import or invoke the Codex decision adapter. The current popup exposes only this agent-led path; the extension-led adapters below are retained as compatibility implementation, outside the reviewer flow. See [MCP design and setup](mcp.md) for process ownership, pairing, lifecycle, credential storage and exact Codex configuration. Browser acceptance remains pending under the requested non-browser testing constraint.
 
-## What runs where
+## Shared recorder, executor and compatibility implementation
 
 | Layer | Responsibility |
 | --- | --- |

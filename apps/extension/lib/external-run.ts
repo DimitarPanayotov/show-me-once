@@ -14,6 +14,24 @@ import {
   type ExternalIdentity,
   type ExternalResult,
 } from "@show-me-once/shared/mcp";
+import { keepLocalDraft, type CatalogDraft } from "./skill-catalog.ts";
+
+export function prepareExternalDraft(
+  previous: CatalogDraft | undefined,
+  skills: CatalogDraft[],
+  markdown: string,
+  runId: string,
+) {
+  try {
+    return { ...externalDraft(previous, markdown, runId), skills };
+  } catch (error) {
+    if (!previous?.dirty || previous.remoteSkillId) throw error;
+    return {
+      ...externalDraft(undefined, markdown, runId),
+      skills: keepLocalDraft(skills, previous),
+    };
+  }
+}
 
 /** Preserve an existing edited draft when it represents the same exported skill. */
 export function externalDraft(
@@ -116,6 +134,8 @@ export class ExternalRunController {
     raw: unknown,
   ): Promise<ExternalResult> {
     const command = checkedExternalCommand(raw);
+    if (command.kind === "list_skills" || command.kind === "get_skill")
+      throw new Error("Catalog commands must use the read-only skill catalog.");
     if (command.kind === "start") {
       if ((await this.ports.readRun())?.active)
         throw new Error("Stop the current run first.");

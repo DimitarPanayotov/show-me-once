@@ -1,6 +1,6 @@
 {
   "name": "@show-me-once/extension",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
     "test:popup": "node tests/popup-smoke.mjs",
     "test:agent": "node tests/agent-smoke.mjs",
     "test:agent:sites": "node tests/real-sites-agent.mjs",
-    "test": "node --experimental-strip-types --test lib/*.test.ts",
+    "test": "node --experimental-strip-types --test lib/*.test.ts tests/agent-ux.test.mjs",
     "dev": "wxt --browser chrome",
     "build": "wxt build --browser chrome",
     "zip": "wxt zip --browser chrome",
@@ -21,6 +21,7 @@
     "fflate": "0.8.2"
   },
   "devDependencies": {
+    "happy-dom": "21.0.4",
     "typescript": "5.9.3",
     "wxt": "0.21.4"
   }

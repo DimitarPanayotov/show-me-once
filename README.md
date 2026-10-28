@@ -1,78 +1,47 @@
 # Show Me Once
 
-Teach a browser task once, save it as a reusable skill, and run it again with new inputs.
+Record a browser task once, then ask your existing coding agent to repeat it with new inputs. Chrome shows the actions and keeps approval, Pause and Stop under your control.
 
-**Agent-led MCP preview (0.4.1):** export a skill to Codex's `.agents/skills` folder and let your existing coding-agent session call guarded browser tools through the paired extension. After one-time registration and pairing, the agent starts and manages the connector automatically; no helper terminal is needed. Approval/Pause/Stop stay in the extension, and no second Codex decision process is launched. [Download the preview](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.4.1-demo) · [Setup, architecture and verification limits](docs/mcp.md). Real browser acceptance of this new path is pending; the extension-led modes remain available.
+[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.5.0](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.5.0-demo) · [Setup and demo](docs/mcp.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
 
-[Open the app](https://show-me-once-dimitar.vercel.app) · [Extension and local-agent helper](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.3.1-demo)
+## Start here
 
-**Current demo:** AI execution uses a local Codex helper and the user's existing ChatGPT sign-in. Node.js 24 and Codex CLI are required. This adds a helper setup step beyond loading the extension and signing into the library. [Agent setup and architecture](docs/agent.md).
+Download and extract the reviewer kit to a permanent folder, then open **START-HERE.html**. It contains the extension, a one-time connector setup wizard, and a built-in Wikipedia example.
 
-## How it works
+You need Chrome, Node.js 24 and a local MCP-capable coding agent. Codex is the configured example; other clients use the same stdio tools but have not been verified end to end.
 
-1. **Record:** open a task's starting page, switch to **Record**, and demonstrate the task. Choose **Stop & create skill** when finished.
-2. **Save:** a parameterized skill is created locally. Review its name and choose **Save to library**. The button shows progress and confirms the saved version in place.
-3. **Run:** switch to **Run**, choose a saved skill, and ask for the task with new inputs. The connected agent reads the skill and chooses live page controls. Choose **Run skill** once; it continues with the popup closed and pauses for confirmation or an unavailable target.
-4. **Control:** use **Pause**, **Resume run**, or **Stop run** at any time. **Step by step** execution is also available. The extension badge shows when a run needs attention.
-5. **Share:** use the web app to edit versions, share with another registered account, and inspect run history. **Instructions & download** contains the editable `SKILL.md` and export action.
+1. Load the kit's **extension** folder at chrome://extensions.
+2. Copy the extension ID and open **connector/Connect with Codex.cmd** on Windows, or run **node setup.mjs** in that folder on macOS/Linux. The wizard registers Codex automatically.
+3. Restart/reconnect your agent and paste the setup's pairing code into the extension once.
+4. Choose **Open Wikipedia & copy example request**, select English on Wikipedia, and paste the request into your agent.
+5. Review the search approval in Chrome and check the result. Repeat with a different topic.
 
-## Stack and design
+No owner API key, provider selection, separate helper terminal, library account, or skill-file installation is required for this flow. Pairing is remembered, and the agent manages the connector automatically.
 
-- WXT, TypeScript, and Chrome Manifest V3 for recording and execution.
-- Next.js and shadcn/ui for the skill library, versions, sharing, and run history.
-- oRPC, Prisma, PostgreSQL, and Vercel for the backend and deployment.
-- Local deterministic skill generation: recorded values and page text are excluded.
-- Agent execution through a common action contract with OpenAI, Anthropic, and local Codex adapters. The local adapter uses the existing Codex sign-in. Hosted adapters require backend configuration and have contract tests; live verification is recorded by provider.
+**Manual real-agent/Chrome acceptance is still pending.** Automated protocol/controller/document checks are not evidence of a completed live-browser demo. See verification for the exact boundary.
 
-The **Run** and **Record** views keep unrelated controls out of the way. The timeline and raw Markdown are expandable details. Recordings and run progress survive service-worker suspension; run parameters and extension tokens stay in browser session storage.
+## Teach a task
 
-The AI agent completed two new inputs each on Wikipedia, GitHub, and Python documentation. Separate real-model tests cover a moved search field, natural-language input extraction, popup closure, confirmation, and Stop during inference. Open Library was verified with the earlier recorded executor; its current agent results are pending because of human verification and connection errors. See [verification](docs/verification.md) for the exact site and provider coverage.
+Open its starting page, choose **Record → Start recording**, do the task, then **Stop & create skill**. Review the skill and choose **Use with agent**. The agent discovers local and saved skills directly through list_skills/get_skill and reads the generated SKILL.md before running it. It asks for new inputs as needed.
 
-Before approval, the extension names the pending action, live target control, website, and likely effect. Approval applies only to that action; a changed or replaced target requires a new preview and approval.
+The popup has one execution path. Provider pickers, the old Codex decision helper, manual stepping and recorded-replay controls have been removed from the current interface. Older adapters remain in source for compatibility/testing, outside the reviewer flow.
 
-The [architecture note](docs/architecture.md) explains the skill format, background scheduler, privacy boundaries, and current limits. [Agent execution](docs/agent.md) explains provider adapters and local subscription setup. The [manual test guide](docs/manual-test.md) covers the full user flow.
+## Library and privacy
 
-## Local setup
+Local skills work without an account. Sign in for PostgreSQL-backed saving, immutable versions and sharing with another registered user. Recipients can read and run shared skills; owners control editing/sharing. Markdown/agent ZIP exports remain optional.
 
-Requires Node.js 24.11+, pnpm 10, Docker, and Chrome 120+.
+Recording excludes typed values and sensitive controls. Skills contain parameters, bounded structural hints and sanitized navigation checkpoints. The extension validates fresh live targets and asks for action-specific approval before protected actions. Unknown outcomes pause instead of replaying actions. Cloud access is rechecked for the current account. Imported MCP run activity is currently local; automatic association with backend skill-version history remains a limitation.
 
-```powershell
-pnpm install
-Copy-Item apps/web/.env.example apps/web/.env.local
-docker compose up -d
-pnpm --filter @show-me-once/web exec prisma migrate deploy
-pnpm dev:web
-```
+## Implementation
 
-In another terminal:
+WXT / Chrome MV3 / TypeScript; Next.js and shadcn/ui; oRPC; PostgreSQL and Prisma; Vercel. Skill generation is deterministic and local. The existing coding-agent session owns model inference; our connector does not launch a separate model.
 
-```powershell
-pnpm --filter @show-me-once/extension build
-```
+The recorder and guarded executor persist state across worker suspension. A stdio MCP server exposes discovery plus five execution tools, starts/reuses a loopback connector automatically, and closes it when idle. One-time credentials stay outside the repository.
 
-At `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `apps/extension/.output/chrome-mv3`. Register in the local web app, then use the popup's **Sign in** button with the same account. Web and extension sessions are independent.
+## Build and checks
 
-To build a ZIP for the deployed app:
+Use Node.js 24 and pnpm 10. For local web development, copy apps/web/.env.example to apps/web/.env.local, start PostgreSQL with docker compose up -d, apply Prisma migrations, and run pnpm dev:web.
 
-```powershell
-$env:WXT_API_BASE_URL = 'https://show-me-once-dimitar.vercel.app'
-pnpm --filter @show-me-once/extension zip
-```
+Run pnpm test and pnpm typecheck. Set WXT_API_BASE_URL=https://show-me-once-dimitar.vercel.app, then run pnpm reviewer:package to build the deploy-targeted extension, bundled connector and reviewer kit. The packaging script refuses a kit pointed at localhost. No credentials are packaged.
 
-Extract the ZIP and load the folder containing `manifest.json`. After rebuilding an existing unpacked installation, choose **Reload** on its extension card.
-
-## Checks
-
-```powershell
-pnpm test
-pnpm typecheck
-pnpm build
-```
-
-Browser tests additionally cover recording to automatic draft creation, inline save feedback, automatic runs with two inputs, navigation with the popup closed, confirmations, Pause/Resume/Stop, manual mode, ambiguous targets, worker termination recovery, and server logs. See [browser testing](docs/browser-testing.md) for setup.
-
-## Deployment
-
-Import the repository into Vercel with **Root Directory** set to `apps/web` and **Include source files outside of the Root Directory** enabled. Use Node.js 24.x and connect PostgreSQL through Vercel Storage or provide `DATABASE_URL`.
-
-The web build runs `prisma migrate deploy` before `next build`. Prisma reads `.env.local` locally and the environment variable in Vercel. Build the extension with `WXT_API_BASE_URL` set to the public production origin; API access is scoped to that origin and the local helper at `127.0.0.1:4319`. Recording and execution use the content script and active-tab permissions. [Vercel monorepo guidance](https://vercel.com/docs/monorepos/monorepo-faq).
+Configure the Vercel project with root apps/web, workspace sources enabled, Node.js 24, and DATABASE_URL. The web build applies Prisma migrations before Next.js. Browser tests for older execution modes are historical fixtures; current popup tests run in an in-memory document without controlling Chrome.

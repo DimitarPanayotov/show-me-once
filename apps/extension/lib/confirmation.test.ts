@@ -34,6 +34,7 @@ test("destructive and payment actions cannot be disguised by search context", ()
   );
   assert.equal(confirmationIntent({ ...search, label: "Pay now" }), "payment");
   assert.equal(confirmationIntent({ ...search, label: "Search" }), "search");
+  assert.equal(confirmationIntent({ ...search, label: "Search", destination: "https://example.com/delete-item" }), "delete");
   assert.equal(
     confirmationIntent({ ...search, label: "Save", search: false }),
     "submit",

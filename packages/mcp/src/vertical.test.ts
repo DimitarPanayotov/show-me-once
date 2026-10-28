@@ -9,6 +9,7 @@ import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { WebSocket } from "ws";
 import { createBridge } from "./bridge.ts";
+import { SkillCatalog } from "../../../apps/extension/lib/skill-catalog.ts";
 import {
   ExternalRunController,
   type ExternalSession,
@@ -53,6 +54,21 @@ test("non-browser vertical slice: real MCP transport, actual controller, two inp
     ],
   };
   const markdown = `---\nname: wikipedia-search\ndescription: Search\n---\n\n\`\`\`json show-me-once\n${JSON.stringify(plan)}\n\`\`\``;
+  const catalog = new SkillCatalog({
+    readLocal: async () => ({
+      draft: {
+        sourceRecordingId: "demo",
+        name: "Recorded search",
+        description: "Search",
+        markdown,
+      },
+    }),
+    listLibrary: async () => [],
+    getLibrary: async () => {
+      throw new Error("Not signed in");
+    },
+    userId: async () => undefined,
+  });
   let run: RunState | null = null,
     session: ExternalSession | undefined,
     parameters: Record<string, string | boolean> = {},
@@ -127,15 +143,20 @@ test("non-browser vertical slice: real MCP transport, actual controller, two inp
   socket.on("message", (bytes) => {
     const m = JSON.parse(String(bytes));
     if (m.type === "command")
-      void controller
-        .handle(
-          {
-            controllerId: m.controllerId,
-            bridgeId: m.bridgeId,
-            connectionId: m.connectionId,
-          },
-          m.command,
-        )
+      void (
+        m.command.kind === "list_skills"
+          ? catalog.list()
+          : m.command.kind === "get_skill"
+            ? catalog.get(m.command.skillId)
+            : controller.handle(
+                {
+                  controllerId: m.controllerId,
+                  bridgeId: m.bridgeId,
+                  connectionId: m.connectionId,
+                },
+                m.command,
+              )
+      )
         .catch(() => ({ status: "blocked" }))
         .then((value) =>
           socket.send(
@@ -177,9 +198,16 @@ test("non-browser vertical slice: real MCP transport, actual controller, two inp
       any
     >;
   try {
+    const discovered = await call("list_skills", {});
+    assert.ok(
+      discovered.skills.some(
+        (skill: { id: string }) => skill.id === "local:demo",
+      ),
+    );
+    const document = await call("get_skill", { skillId: "local:demo" });
     for (const value of ["Grace Hopper", "Alan Turing"]) {
       const started = await call("start_skill", {
-          markdown,
+          markdown: document.skill.markdown,
           parameters: { search_1: value },
         }),
         runId = started.runId;

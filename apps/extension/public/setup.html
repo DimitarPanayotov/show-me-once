@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Connect Show Me Once</title>
+    <style>
+      body {
+        font:
+          16px/1.65 system-ui,
+          sans-serif;
+        color: #172033;
+        background: #f7f8fc;
+        max-width: 780px;
+        margin: 48px auto;
+        padding: 0 24px;
+      }
+      h1 {
+        font-size: 36px;
+        line-height: 1.15;
+        letter-spacing: -1px;
+      }
+      h2 {
+        font-size: 22px;
+        margin-top: 30px;
+      }
+      .card {
+        background: white;
+        border: 1px solid #dce3ee;
+        border-radius: 16px;
+        padding: 24px;
+        margin: 24px 0;
+      }
+      li {
+        margin: 14px 0;
+      }
+      code {
+        background: #eef2ff;
+        border-radius: 5px;
+        padding: 2px 5px;
+        overflow-wrap: anywhere;
+      }
+      a {
+        color: #1d4ed8;
+      }
+      .tag {
+        color: #1d4ed8;
+        font-weight: 700;
+      }
+      details {
+        margin-top: 22px;
+      }
+      summary {
+        cursor: pointer;
+        font-weight: 650;
+      }
+      .muted {
+        color: #64748b;
+      }
+      pre {
+        white-space: pre-wrap;
+        padding: 14px;
+        background: #eef2ff;
+        border-radius: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <p class="tag">Show Me Once · Getting started</p>
+    <h1>Connect once.<br />Then just ask your agent.</h1>
+    <p>
+      Record a browser task, then let your existing coding agent repeat it with
+      new inputs. Chrome shows the actions and asks for approval when needed.
+    </p>
+    <section class="card">
+      <h2>1. Connect your agent</h2>
+      <p>
+        You need Chrome, Node.js 24, and a local coding agent. Codex is the
+        configured example. Use the supplied reviewer kit; there is no server
+        window to keep running.
+      </p>
+      <ol>
+        <li>
+          At <code>chrome://extensions</code>, turn on Developer mode, choose
+          <strong>Load unpacked</strong>, and select the kit's
+          <strong>extension</strong> folder. Pin Show Me Once to the toolbar.
+        </li>
+        <li>
+          Open the extension → <strong>Connect your coding agent</strong> and
+          choose <strong>Copy ID</strong>.
+        </li>
+        <li>
+          In the kit's <strong>connector</strong> folder, open
+          <strong>Connect with Codex.cmd</strong> on Windows. On macOS/Linux,
+          run <code>node setup.mjs</code> there. Paste the extension ID. Choose
+          Codex to register the connection automatically.
+        </li>
+        <li>
+          Restart/reconnect Codex so it loads the new connection. Return to the
+          extension and paste the pairing code printed by setup. Choose
+          <strong>Connect coding agent</strong>.
+        </li>
+      </ol>
+      <p>
+        <strong>✓ Connected to your coding agent</strong> confirms success.
+        Close the setup window. Your agent manages the connection from now on;
+        pairing is remembered.
+      </p>
+      <p class="muted">
+        The pairing code is private. Paste it only into the extension, never
+        into an agent conversation.
+      </p>
+    </section>
+    <section class="card">
+      <h2>2. Try a complete example</h2>
+      <ol>
+        <li>
+          In <strong>Skills & activity</strong>, choose
+          <strong>Open Wikipedia & copy example request</strong>.
+        </li>
+        <li>
+          On Wikipedia, choose <strong>English</strong> as the search language.
+        </li>
+        <li>
+          Paste the copied request into your coding agent. It discovers and
+          reads the example automatically; no skill-file installation is needed.
+        </li>
+        <li>
+          Watch the browser. When approval is requested, open the extension,
+          review the search action, and confirm. If the agent ended its reply
+          while waiting, tell it:
+          <strong>I approved in the extension. Continue the same run.</strong>
+        </li>
+        <li>
+          Verify the Grace Hopper result and completed activity. Return to
+          Wikipedia's starting page and ask for
+          <strong>Alan Turing</strong> using the same skill.
+        </li>
+      </ol>
+    </section>
+    <section class="card">
+      <h2>3. Teach your own task</h2>
+      <ol>
+        <li>
+          Open the task's starting page. In <strong>Record</strong>, choose
+          <strong>Start recording</strong>.
+        </li>
+        <li>
+          Do the task once, then choose <strong>Stop & create skill</strong>.
+        </li>
+        <li>
+          Review its name and choose <strong>Use with agent</strong>. Open the
+          starting page again and copy the request into your agent. It will ask
+          for new inputs.
+        </li>
+      </ol>
+      <p>
+        <strong>Pause, Resume, and Stop</strong> stay in the extension. You can
+        close the popup while the agent works.
+      </p>
+      <p>
+        No library account is needed for the example or local recordings. Sign
+        in when you want cloud saving, versions, or sharing. Markdown and skill
+        ZIP exports are optional.
+      </p>
+    </section>
+    <details>
+      <summary>Other coding agents and manual configuration</summary>
+      <p>
+        Use a local client that supports MCP over stdio. In setup choose the
+        manual option. Configure the server with command <code>node</code> and
+        the absolute path to <code>connector/server.mjs</code> as its argument.
+        Reconnect the client and verify seven tools, including
+        <code>list_skills</code> and <code>get_skill</code>. Other clients have
+        not been verified end to end.
+      </p>
+    </details>
+    <details>
+      <summary>If something does not connect</summary>
+      <p>
+        Confirm Node.js 24 and the correct extension ID. Reconnect your agent,
+        then use <strong>Check connection</strong> in the extension. If
+        upgrading, close an old manually started connector once. Use
+        <strong>Forget connection</strong> only to remove pairing. Never run a
+        second helper to fix a lost connection.
+      </p>
+      <p>
+        A changed page, a human-verification screen, or an uncertain action
+        pauses the run. Inspect the page before continuing; Stop and start again
+        if the connection identity changed.
+      </p>
+    </details>
+    <p class="muted">
+      Verification: the protocol and controller have automated coverage. A real
+      connected coding-agent/Chrome acceptance run of this version is still
+      required before claiming the demo is verified.
+    </p>
+  </body>
+</html>

@@ -12,6 +12,30 @@
   font-synthesis: none;
   font-size: 13px;
 }
+#agent-request {
+  min-height: 88px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  background: #f7f9ff;
+}
+.handoff-card {
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid #dce3ee;
+  background: white;
+}
+.handoff-card .button {
+  margin-top: 10px;
+}
+.connection-steps {
+  padding-left: 20px;
+  color: #64748b;
+  line-height: 1.6;
+}
+.connection-steps li {
+  margin: 6px 0;
+}
 * {
   box-sizing: border-box;
 }

@@ -1,3 +1,7 @@
+# Historical extension-led adapter implementation
+
+The current 0.5.0 popup exposes the [agent-led MCP workflow](mcp.md). The provider picker and local decision-helper controls described below are no longer part of the reviewer experience. This document describes compatibility code and earlier verification.
+
 # Agent execution
 
 Version 0.3.0 adds an AI decision loop inside the extension experience. The user selects a skill, asks for the task with new inputs, and starts one run. The background worker observes the page, asks the selected provider to choose one guarded action, validates the response, executes it through the content script, and repeats. Safe steps advance automatically. The model cannot approve protected actions or disable Stop.

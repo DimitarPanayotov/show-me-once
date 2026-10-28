@@ -11,10 +11,15 @@ import {
 } from "@show-me-once/shared";
 import { requestApi } from "../lib/api";
 import { ExternalBridgeClient } from "../lib/external-bridge";
+import {
+  SkillCatalog,
+  keepLocalDraft,
+  type CatalogDraft,
+} from "../lib/skill-catalog";
 import type { ExternalResult } from "@show-me-once/shared/mcp";
 import {
   ExternalRunController,
-  externalDraft,
+  prepareExternalDraft,
   type ExternalSession,
 } from "../lib/external-run";
 import {
@@ -531,7 +536,27 @@ async function recoverRun(): Promise<void> {
 
 export default defineBackground(() => {
   // Remembered connector credentials belong to trusted extension pages/worker.
-  void browser.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+  void browser.storage.local.setAccessLevel({
+    accessLevel: "TRUSTED_CONTEXTS",
+  });
+  const catalog = new SkillCatalog({
+    readLocal: async () => {
+      const stored = await browser.storage.local.get([
+        "skillDraft",
+        "localSkills",
+      ]);
+      return {
+        draft: stored.skillDraft as CatalogDraft | undefined,
+        skills: stored.localSkills as CatalogDraft[] | undefined,
+      };
+    },
+    listLibrary: async () => {
+      const account = await readAccount();
+      return account ? api("skill/list", {}, account) : [];
+    },
+    getLibrary: async (id) => api("skill/get", { id }, await requiredAccount()),
+    userId: async () => (await readAccount())?.user.id,
+  });
   const external = new ExternalRunController({
     readRun,
     readSession: async () =>
@@ -564,9 +589,16 @@ export default defineBackground(() => {
         );
       await ensureRecorder(tab.id);
       const id = crypto.randomUUID();
-      const previousDraft = (await browser.storage.local.get("skillDraft"))
-        .skillDraft as Record<string, unknown> | undefined;
-      const selection = externalDraft(previousDraft, markdown, id);
+      const storedDrafts = await browser.storage.local.get([
+        "skillDraft",
+        "localSkills",
+      ]);
+      const selection = prepareExternalDraft(
+        storedDrafts.skillDraft as CatalogDraft | undefined,
+        (storedDrafts.localSkills as CatalogDraft[] | undefined) ?? [],
+        markdown,
+        id,
+      );
       const run: RunState = {
         id,
         tabId: tab.id,
@@ -581,6 +613,8 @@ export default defineBackground(() => {
       await browser.storage.local.set({
         runPlan: plan,
         skillDraft: selection.draft,
+        localSkills: selection.skills,
+        popupView: "run",
       });
       await browser.storage.session.set({ runParameters: parameters });
       await browser.storage.session.remove([
@@ -718,6 +752,9 @@ export default defineBackground(() => {
             message:
               "Connection changed. Inspect the extension before continuing.",
           };
+        if (kind === "list_skills") return catalog.list();
+        if (kind === "get_skill")
+          return catalog.get((command as { skillId: string }).skillId);
         if (
           interruptedControllers.has(identity.controllerId) &&
           kind !== "status" &&
@@ -776,6 +813,28 @@ export default defineBackground(() => {
         void mcp.connect().catch(() => {});
         return mcp.status();
       }
+      if (request.type === "mcp-skills") return catalog.list();
+      if (request.type === "mcp-open-skill")
+        return serial(async () => {
+          if ((await readRun())?.active || (await read())?.active)
+            throw new Error("Stop the current run or recording first.");
+          if (typeof request.skillId !== "string")
+            throw new Error("Choose a skill.");
+          const draft = await catalog.load(request.skillId);
+          const stored = await browser.storage.local.get([
+            "skillDraft",
+            "localSkills",
+          ]);
+          const skills = keepLocalDraft(
+            (stored.localSkills as CatalogDraft[] | undefined) ?? [],
+            stored.skillDraft as CatalogDraft | undefined,
+          );
+          await browser.storage.local.set({
+            skillDraft: draft,
+            localSkills: skills,
+          });
+          return draft;
+        });
       if (request.type === "mcp-connect")
         return mcp.connect().then(() => mcp.status());
       if (request.type === "mcp-pair")

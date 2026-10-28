@@ -1,5 +1,13 @@
 # Manual verification
 
+## Agent-first reviewer flow — 0.5.0
+
+The current popup exposes one agent-led flow. In-memory document tests execute the actual popup code and check the example handoff, no provider/replay controls, recording without an account, continuous editor focus, direct skill discovery, and action-specific approval/Pause/Resume/Stop. Catalog tests check current-account cloud access and local secret/invalid-skill exclusion. Real stdio protocol tests discover seven tools and read an example without installing a skill file. Installer tests check safe MCP-registration arguments and failure reporting.
+
+The current suite has 60 passing automated tests. Workspace type checks and the production extension/connector/reviewer-kit builds pass. A static HTTP read of Wikipedia confirmed its search form uses a same-origin redirect endpoint; regression tests cover that path, actual content-script discovery/approval/dispatch in an in-memory document, and cross-origin/credential/unsafe-scheme rejection. No browser was controlled for this check.
+
+These checks use simulated Chrome storage/content execution. A real model and ordinary Chrome have not completed acceptance of this version under the user's no-browser-automation constraint. The reviewer kit includes the exact manual procedure; do not claim it has already passed. Older real-site evidence below applies to earlier execution paths.
+
 ## Agent-led MCP preview — 0.4.1
 
 This is a separate path from all earlier browser evidence. Non-browser automated tests exercise the official MCP SDK over stdio, authenticated HTTP/WebSocket relay, strict tool contracts, controller/run/tab/step binding, stale and single-use observations, extension-only approval, two replacement inputs, Stop, disconnect/timeout recovery, and controller lease expiry. Browser/content execution is simulated in the vertical test. Additional real-process tests cover automatic connector startup, concurrent clients, idle shutdown, forced-crash recovery and restart with stable pairing; the extension connection test simulates Chrome storage and sockets to verify remembered pairing and identity refresh. No new Codex decision process or browser automation is used.
@@ -10,14 +18,14 @@ All 48 automated tests and the workspace TypeScript checks pass. The extension Z
 
 The three-site table records checks reported by the candidate during local Chrome testing. Automated production checks are documented separately below.
 
-| Site | Recorded task | New input | Result | Evidence |
-| --- | --- | --- | --- | --- |
-| Wikipedia | Search from `www.wikipedia.org` | Grace Hopper | Passed (reported) | Five steps completed; search submit required confirmation; the candidate reported the destination opened. |
-| Wikipedia | Same recording and skill | Alan Turing | Passed (reported) | Five steps completed with confirmation; destination was `https://en.wikipedia.org/wiki/Alan_Turing`. |
-| GitHub | Public repository search/filter | actions | Passed (reported) | Five steps completed; Enter required confirmation; destination was `https://github.com/orgs/github/repositories?q=actions`. |
-| GitHub | Same recording and skill | docs | Passed (reported) | Five steps completed with confirmation; destination was `https://github.com/orgs/github/repositories?q=docs`. |
-| Open Library | Advanced Search by title | Foundation | Passed (reported) | Five steps completed; search submit required confirmation; destination was `https://openlibrary.org/search?title=Foundation`. |
-| Open Library | Same recording and skill | Frankenstein | Passed (reported) | Five steps completed with confirmation; destination was `https://openlibrary.org/search?title=Frankenstein`. |
+| Site         | Recorded task                   | New input    | Result            | Evidence                                                                                                                      |
+| ------------ | ------------------------------- | ------------ | ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Wikipedia    | Search from `www.wikipedia.org` | Grace Hopper | Passed (reported) | Five steps completed; search submit required confirmation; the candidate reported the destination opened.                     |
+| Wikipedia    | Same recording and skill        | Alan Turing  | Passed (reported) | Five steps completed with confirmation; destination was `https://en.wikipedia.org/wiki/Alan_Turing`.                          |
+| GitHub       | Public repository search/filter | actions      | Passed (reported) | Five steps completed; Enter required confirmation; destination was `https://github.com/orgs/github/repositories?q=actions`.   |
+| GitHub       | Same recording and skill        | docs         | Passed (reported) | Five steps completed with confirmation; destination was `https://github.com/orgs/github/repositories?q=docs`.                 |
+| Open Library | Advanced Search by title        | Foundation   | Passed (reported) | Five steps completed; search submit required confirmation; destination was `https://openlibrary.org/search?title=Foundation`. |
+| Open Library | Same recording and skill        | Frankenstein | Passed (reported) | Five steps completed with confirmation; destination was `https://openlibrary.org/search?title=Frankenstein`.                  |
 
 The run log showed step kind, status and generic result text. The candidate's pasted logs contained no search terms. Recorded form values are absent from the generated `SKILL.md`; parameters are supplied when running.
 
@@ -47,11 +55,11 @@ The run log showed step kind, status and generic result text. The candidate's pa
 
 Real-site automatic runs were also verified using one new recording per site:
 
-| Site | Demonstration | New automatic inputs | Result |
-| --- | --- | --- | --- |
-| Wikipedia | Ada Lovelace search | Grace Hopper; Alan Turing | Both completed, including www → en cross-origin navigation. |
-| GitHub | Organization repository search for copilot | actions; docs | Both completed, including Enter submission and SPA navigation. |
-| Open Library | Advanced Search Title: Dune | Foundation; Frankenstein | Both completed with the expected title query URLs. |
+| Site         | Demonstration                              | New automatic inputs      | Result                                                         |
+| ------------ | ------------------------------------------ | ------------------------- | -------------------------------------------------------------- |
+| Wikipedia    | Ada Lovelace search                        | Grace Hopper; Alan Turing | Both completed, including www → en cross-origin navigation.    |
+| GitHub       | Organization repository search for copilot | actions; docs             | Both completed, including Enter submission and SPA navigation. |
+| Open Library | Advanced Search Title: Dune                | Foundation; Frankenstein  | Both completed with the expected title query URLs.             |
 
 Each run advanced safe steps automatically, paused for explicit submission confirmation, and completed its final checkpoint. The popup was closed after confirmation acceptance while navigation and checkpoint execution continued.
 
@@ -68,12 +76,12 @@ Each run advanced safe steps automatically, paused for explicit submission confi
 - Known human-verification and browser connection-error pages now block a checkpoint. A verification page must not be reported as a successful search merely because its origin/path depth matches.
 - Thirty-one unit tests and the workspace typecheck pass. OpenAI and Anthropic adapters have network-contract tests; they have not been exercised with live provider credentials.
 
-| Site | New inputs through the Codex agent | Verified outcome |
-| --- | --- | --- |
-| Wikipedia | Grace Hopper; Alan Turing | Both reached the correct article URLs. |
-| GitHub | actions; docs | Both reached the expected organization repository search URLs. |
-| Python documentation | asyncio; pathlib | Both reached the correct query URLs and populated visible search results. One freshly recorded json search skill was reused unchanged for both requests. |
-| Open Library | Foundation; Frankenstein | The agent filled and submitted both titles, but the site redirected to human verification. These are not completed searches. A subsequent manual attempt encountered a connection-error page, and independent requests timed out. Live end-result verification remains pending. |
+| Site                 | New inputs through the Codex agent | Verified outcome                                                                                                                                                                                                                                                                |
+| -------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Wikipedia            | Grace Hopper; Alan Turing          | Both reached the correct article URLs.                                                                                                                                                                                                                                          |
+| GitHub               | actions; docs                      | Both reached the expected organization repository search URLs.                                                                                                                                                                                                                  |
+| Python documentation | asyncio; pathlib                   | Both reached the correct query URLs and populated visible search results. One freshly recorded json search skill was reused unchanged for both requests.                                                                                                                        |
+| Open Library         | Foundation; Frankenstein           | The agent filled and submitted both titles, but the site redirected to human verification. These are not completed searches. A subsequent manual attempt encountered a connection-error page, and independent requests timed out. Live end-result verification remains pending. |
 
 The eight attempts used 24 real model decisions. Six runs on three live websites completed. Earlier Open Library evidence above belongs to the previous recorded executor and must not be presented as successful 0.3.0 agent verification. Python documentation was added as the third verified agent demonstration because Open Library was unavailable.
 

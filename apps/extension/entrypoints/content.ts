@@ -1,5 +1,8 @@
 import { browser } from "wxt/browser";
-import { permittedDestination } from "@show-me-once/shared/mcp";
+import {
+  permittedDestination,
+  permittedFormDestination,
+} from "@show-me-once/shared/mcp";
 import {
   sanitizeUrl,
   structuralSelector,
@@ -40,6 +43,24 @@ function isSensitive(element: Element): boolean {
   return /password|passwd|secret|token|otp|one.time|auth|credit|card|cvc|cvv|ssn|private|key|pin|hidden|email|tel|phone/.test(
     attributes,
   );
+}
+
+function formFor(target: HTMLElement): HTMLFormElement | null {
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLButtonElement ||
+    target instanceof HTMLSelectElement ||
+    target instanceof HTMLTextAreaElement
+  )
+    return target.form;
+  return target.closest("form");
+}
+function formDestination(target: HTMLElement, form: HTMLFormElement): string {
+  return (target instanceof HTMLButtonElement ||
+    target instanceof HTMLInputElement) &&
+    target.hasAttribute("formaction")
+    ? target.formAction
+    : form.action;
 }
 
 export default defineContentScript({
@@ -118,13 +139,17 @@ export default defineContentScript({
         !permittedDestination(anchor.href, scope)
       )
         return false;
-      const form = target.closest("form");
+      const form = formFor(target);
       if (
         form instanceof HTMLFormElement &&
         target.matches(
           'button[type="submit"],button:not([type]),input[type="submit"]',
         ) &&
-        !permittedDestination(form.action, scope)
+        !permittedFormDestination(
+          formDestination(target, form),
+          scope,
+          location.href,
+        )
       )
         return false;
       return true;
@@ -161,11 +186,9 @@ export default defineContentScript({
         .filter((target) => scopedTarget(target, navigationScope))
         .filter(
           (target) =>
-            !target
-              .closest("form")
-              ?.querySelector(
-                'input[type="password"],input[autocomplete^="cc-"]',
-              ),
+            !formFor(target)?.querySelector(
+              'input[type="password"],input[autocomplete^="cc-"]',
+            ),
         )
         .sort((a, b) => {
           const rank = (el: HTMLElement) =>
@@ -307,10 +330,14 @@ export default defineContentScript({
       if (!target) return { status: "blocked" };
 
       if (step.kind === "click" || step.kind === "key") {
-        const form = target.closest("form");
+        const form = formFor(target);
         const label = `${target.getAttribute("aria-label") ?? ""} ${target.getAttribute("title") ?? ""} ${target.innerText ?? ""}`;
         const destination =
-          target instanceof HTMLAnchorElement ? target.href : "";
+          target instanceof HTMLAnchorElement
+            ? target.href
+            : form instanceof HTMLFormElement
+              ? formDestination(target, form)
+              : "";
         const submits =
           (target instanceof HTMLButtonElement ||
             target instanceof HTMLInputElement) &&
@@ -354,8 +381,8 @@ export default defineContentScript({
           );
           const destinationOrigin =
             form instanceof HTMLFormElement &&
-            /^https?:$/.test(new URL(form.action).protocol)
-              ? new URL(form.action).origin
+            /^https?:$/.test(new URL(formDestination(target, form)).protocol)
+              ? new URL(formDestination(target, form)).origin
               : undefined;
           // Bind consent to the live element and its meaning. A changed/replaced target requires new approval.
           const signature = JSON.stringify({
@@ -364,7 +391,7 @@ export default defineContentScript({
             intent,
             targetLabel,
             destination,
-            action: form?.action,
+            action: form ? formDestination(target, form) : undefined,
             method: form?.method,
             type: target.getAttribute("type"),
           });
@@ -423,7 +450,7 @@ export default defineContentScript({
         if (!confirmed) return { status: "confirmation-required" };
         ctx.setTimeout(() => {
           if (!ctx.isValid) return;
-          const form = target.closest("form");
+          const form = formFor(target);
           if (form instanceof HTMLFormElement) form.requestSubmit();
           else {
             target.focus();
@@ -584,10 +611,14 @@ export default defineContentScript({
             return;
           }
           if (request.step.kind === "key" && request.navigationScope) {
-            const form = matched.element.closest("form");
+            const form = formFor(matched.element);
             if (
               form instanceof HTMLFormElement &&
-              !permittedDestination(form.action, request.navigationScope)
+              !permittedFormDestination(
+                form.action,
+                request.navigationScope,
+                location.href,
+              )
             ) {
               sendResponse({ status: "blocked" });
               return;
