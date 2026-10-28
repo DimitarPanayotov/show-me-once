@@ -12,6 +12,7 @@ export default defineConfig({
       "activeTab",
       "alarms",
       "clipboardWrite",
+      "nativeMessaging",
     ],
     minimum_chrome_version: "120",
     host_permissions: [

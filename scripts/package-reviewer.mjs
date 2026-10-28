@@ -31,6 +31,15 @@ async function collect(folder, prefix) {
 }
 await collect(root, "extension");
 for (const name of [
+  "host.mjs",
+  "setup.mjs",
+  "Install subscription helper.cmd",
+  "SETUP.md",
+])
+  files[`subscription-helper/${name}`] = new Uint8Array(
+    await readFile(`dist/subscription-helper/${name}`),
+  );
+for (const name of [
   "server.mjs",
   "relay.mjs",
   "setup.mjs",
@@ -43,7 +52,7 @@ for (const name of [
     await readFile(`dist/mcp/${name}`),
   );
 files["README.txt"] = strToU8(
-  `Show Me Once ${version}\n\nLoad the extension folder at chrome://extensions, then open Show Me Once. Connection guidance and the GitHub issue-triage example are inside the popup.\n\nYou need Chrome, Node.js 24 and a local MCP-capable coding agent (Codex is the configured example).\nLoad the extension folder, run the connector's one-time setup, restart the agent and pair once.\nNo API key, library account or separate helper terminal is required for the example or local recordings.\nThe agent discovers skills directly; exporting/installing a skill file is optional.\n\nCloud saving, versions and sharing are available through the library account.\nManual real-agent/Chrome acceptance is still required before claiming the demo is verified.\n`,
+  `Show Me Once ${version}\n\nLoad the extension folder at chrome://extensions, then open Show Me Once and sign into the library.\nRecord -> review SKILL.md -> save -> type a new request -> Run inside the extension. Safe steps continue automatically; approve protected actions or Stop at any time.\n\nUnder Agent settings, choose your own OpenAI/Anthropic API key or a Codex subscription on this computer. Keys stay only in the Chrome session and are forwarded transiently through the app backend.\nFor a subscription, you need Node.js 24 and Codex signed in with ChatGPT. Open subscription-helper/Install subscription helper.cmd once, paste the extension ID, then Check subscription in the extension. Chrome starts the helper automatically; close the installer. No bridge terminal or external chat is required during normal use. See subscription-helper/SETUP.md.\n\nTry GitHub issue triage for a twelve-step example, then record your own task. Saving, versions, sharing and extension-led run history use the web library.\nThe connector folder is only for External coding agent (optional). It is independent of Run.\nReal Chrome acceptance is still required before claiming the demo is verified.\n`,
 );
 const path = `dist/show-me-once-reviewer-kit-${version}.zip`;
 await writeFile(path, zipSync(files));

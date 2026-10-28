@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { loginAccount, registerAccount, revokeSession } from './auth';
 import { db } from './db';
 import { checkedInput, hostedProvider } from '@show-me-once/agent';
+import { DEFAULT_AGENT_MODELS } from '@show-me-once/shared/agent';
 
 type Identity = { id: string; email: string; name: string | null };
 type Context = { user: Identity | null; token: string | null; signal?: AbortSignal };
@@ -40,14 +41,16 @@ export const router = {
         { id: 'anthropic', label: 'Anthropic', available: !!process.env.ANTHROPIC_API_KEY && !!process.env.ANTHROPIC_MODEL },
       ];
     }),
-    decide: base.input(z.object({ provider: z.enum(['openai', 'anthropic']), input: z.unknown() })).handler(async ({ input, context }) => {
+    decide: base.input(z.object({ provider: z.enum(['openai', 'anthropic']), input: z.unknown(), apiKey: z.string().min(16).max(512).regex(/^[\x21-\x7e]+$/).optional(), model: z.string().regex(/^[a-zA-Z0-9._:-]{1,128}$/).optional() })).handler(async ({ input, context }) => {
       requireUser(context.user);
       const prefix = input.provider === 'openai' ? 'OPENAI' : 'ANTHROPIC';
-      if (!process.env[`${prefix}_API_KEY`] || !process.env[`${prefix}_MODEL`])
-        throw new ORPCError('PRECONDITION_FAILED', { message: `${input.provider} is not configured. Connect a local agent or configure the server provider.` });
+      const key = input.apiKey ?? process.env[`${prefix}_API_KEY`];
+      const model = input.model ?? process.env[`${prefix}_MODEL`] ?? DEFAULT_AGENT_MODELS[input.provider];
+      if (!key)
+        throw new ORPCError('PRECONDITION_FAILED', { message: 'Add your API key in the extension Agent settings.' });
       try {
         const request = checkedInput(input.input);
-        const provider = hostedProvider(input.provider, { key: process.env[`${prefix}_API_KEY`]!, model: process.env[`${prefix}_MODEL`]! });
+        const provider = hostedProvider(input.provider, { key, model });
         return { decision: await provider.decide(request, AbortSignal.any([AbortSignal.timeout(25000), ...(context.signal ? [context.signal] : [])])) };
       } catch (error) { throw new ORPCError('BAD_REQUEST', { message: error instanceof Error ? error.message : 'The agent could not choose an action.' }); }
     }),
@@ -147,14 +150,14 @@ export const router = {
       }),
   },
   run: {
-    start: base.input(z.object({ skillId: z.string().min(1) })).handler(async ({ input, context }) => {
+    start: base.input(z.object({ skillId: z.string().min(1), version: z.number().int().positive().optional() })).handler(async ({ input, context }) => {
       const user = requireUser(context.user);
       const skill = await db().skill.findFirst({
         where: { id: input.skillId, OR: [{ ownerId: user.id }, { shares: { some: { recipientId: user.id } } }] },
       });
       if (!skill) throw new ORPCError('NOT_FOUND', { message: 'Skill not found.' });
       const version = await db().skillVersion.findUnique({
-        where: { skillId_number: { skillId: skill.id, number: skill.currentVersion } },
+        where: { skillId_number: { skillId: skill.id, number: input.version ?? skill.currentVersion } },
       });
       if (!version) throw new ORPCError('NOT_FOUND', { message: 'Skill version not found.' });
       const run = await db().run.create({ data: {

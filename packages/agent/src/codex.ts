@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import spawn from "cross-spawn";
+import { subscriptionEnvironment } from "./subscription-auth.ts";
 import { mkdtemp, writeFile, rm, rmdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,7 +15,7 @@ import {
   type AgentProvider,
 } from "./providers.ts";
 
-/** Local development only. Codex owns its subscription authentication; credentials never enter this app. */
+/** Subscription adapter for the installed helper. Codex owns authentication; credentials never enter this app. */
 export function codexSubscriptionProvider(executable = "codex"): AgentProvider {
   return {
     id: "codex-local",
@@ -51,7 +52,12 @@ export function codexSubscriptionProvider(executable = "codex"): AgentProvider {
               "--json",
               "-",
             ],
-            { cwd, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] },
+            {
+              cwd,
+              env: subscriptionEnvironment(),
+              windowsHide: true,
+              stdio: ["pipe", "pipe", "pipe"],
+            },
           );
           let stdout = "",
             settled = false;
@@ -76,13 +82,13 @@ export function codexSubscriptionProvider(executable = "codex"): AgentProvider {
             abort();
             return;
           }
-          child.stdout.on("data", (chunk) => {
+          child.stdout!.on("data", (chunk) => {
             stdout += chunk.toString();
             if (stdout.length > 200_000)
               finish(new Error("Unexpected local agent output."));
           });
           // Never print process stderr: it can contain account identifiers or request context.
-          child.stderr.on("data", () => {});
+          child.stderr!.on("data", () => {});
           child.on("error", () =>
             finish(
               new Error(
@@ -119,8 +125,8 @@ export function codexSubscriptionProvider(executable = "codex"): AgentProvider {
               );
             }
           });
-          child.stdin.on("error", () => {});
-          child.stdin.end(`${AGENT_INSTRUCTIONS}\n\n${agentPrompt(input)}`);
+          child.stdin!.on("error", () => {});
+          child.stdin!.end(`${AGENT_INSTRUCTIONS}\n\n${agentPrompt(input)}`);
         });
         let decision: unknown;
         try {

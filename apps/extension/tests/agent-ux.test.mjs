@@ -53,23 +53,40 @@ async function until(check) {
   }
   assert.fail("Popup did not reach the expected state.");
 }
-async function fixture({ connected = true, draft, run, confirmation } = {}) {
+async function fixture({
+  connected = true,
+  draft,
+  run,
+  confirmation,
+  signedIn = false,
+  provider = "openai",
+  nativeReady = true,
+} = {}) {
   const window = new Window({ url: "https://extension.example/popup.html" });
   window.document.write(html.replace(/<script[\s\S]*?<\/script>/, ""));
   const local = {
+    agentConfig: {
+      provider,
+      model: provider === "openai" ? "gpt-5.4-mini" : "",
+    },
     ...(draft ? { skillDraft: draft } : {}),
     ...(run
       ? { runState: run, runPlan: parseSkillPlan(exampleDraft.markdown) }
       : {}),
   };
   const session = {
+    ...(provider !== "codex-local"
+      ? {
+          agentApiKey: { provider, key: "test-only-key-not-a-live-credential" },
+        }
+      : {}),
     ...(confirmation ? { runConfirmation: confirmation } : {}),
   };
   const listeners = [],
     messages = [],
     tabs = [];
   let clipboard = "",
-    user = null;
+    user = signedIn ? { id: "user-one", email: "reviewer@example.test" } : null;
   window.scrollTo = () => {};
   window.HTMLElement.prototype.scrollIntoView = () => {};
   Object.defineProperty(window.navigator, "clipboard", {
@@ -96,6 +113,9 @@ async function fixture({ connected = true, draft, run, confirmation } = {}) {
       );
       Object.assign(store, structuredClone(values));
       for (const listener of listeners) listener(changes, name);
+    },
+    remove: async (keys) => {
+      for (const key of Array.isArray(keys) ? keys : [keys]) delete store[key];
     },
   });
   const storage = {
@@ -132,6 +152,59 @@ async function fixture({ connected = true, draft, run, confirmation } = {}) {
           return { paired: connected, connected };
         if (message.type === "mcp-skills") return catalog.list();
         if (message.type === "account-status") return user;
+        if (message.type === "account-login") {
+          user = { id: "user-one", email: message.email };
+          return user;
+        }
+        if (message.type === "account-logout") {
+          user = null;
+          return true;
+        }
+        if (message.type === "agent-status")
+          return {
+            provider: local.agentConfig.provider,
+            model: local.agentConfig.model,
+            hasKey:
+              session.agentApiKey?.provider === local.agentConfig.provider,
+            extensionOrigin:
+              "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          };
+        if (message.type === "agent-check-native")
+          return { ready: nativeReady };
+        if (message.type === "agent-configure") {
+          if (message.apiKey)
+            session.agentApiKey = {
+              provider: message.provider,
+              key: message.apiKey,
+            };
+          await storage.local.set({
+            agentConfig: { provider: message.provider, model: message.model },
+          });
+          return { ok: true };
+        }
+        if (message.type === "agent-forget-key") {
+          delete session.agentApiKey;
+          return { ok: true };
+        }
+        if (message.type === "library-save")
+          return { id: "saved-skill", currentVersion: 1 };
+        if (message.type === "start-run") {
+          await storage.local.set({
+            runPlan: parseSkillPlan(message.markdown),
+            runState: {
+              id: "extension-run",
+              active: true,
+              engine: message.engine,
+              mode: message.mode,
+              skillKey: message.skillKey,
+              tabId: 1,
+              nextStep: 0,
+              totalSteps: parseSkillPlan(message.markdown).steps.length,
+              logs: [],
+            },
+          });
+          return local.runState;
+        }
         if (message.type === "get-run") return local.runState ?? null;
         if (message.type === "mcp-open-skill") {
           const value = await catalog.load(message.skillId);
@@ -205,28 +278,28 @@ async function fixture({ connected = true, draft, run, confirmation } = {}) {
   };
 }
 
-test("reviewer onboarding has one agent path, a working example handoff, and no provider or replay setup", async () => {
+test("the main example opens an editable request and Run; the external coding agent is optional", async () => {
   const f = await fixture();
   try {
-    for (const id of [
-      "agent-provider",
-      "run-engine",
-      "run-mode",
-      "run-start",
-      "run-next",
-      "agent-pair",
-    ])
+    for (const id of ["run-engine", "run-mode", "run-next", "agent-pair"])
       assert.equal(f.element(id), null);
     assert.match(f.element("mcp-status").textContent, /Connected/);
     f.element("try-example").click();
     await until(() => f.tabs.length === 1);
     assert.equal(f.tabs[0].url, "https://github.com/search/advanced");
-    assert.match(f.clipboard(), /microsoft\/vscode.*terminal/);
+    assert.equal(f.clipboard(), "");
+    assert.match(
+      f.element("task-request").value,
+      /microsoft\/vscode.*terminal/,
+    );
+    assert.equal(f.element("task-request").readOnly, false);
+    assert.equal(f.element("external-agent-details").open, false);
+    assert.equal(f.element("run-start").textContent, "Sign in to run");
     assert.equal(f.local.skillDraft.sourceRecordingId, EXAMPLE_ID);
     assert.equal(f.element("current-meta").textContent, "Example skill");
     assert.equal(f.element("error").textContent, "");
     assert.equal(
-      f.messages.some((m) => /^(agent-|start-run)/.test(m.type)),
+      f.messages.some((m) => m.type === "start-run"),
       false,
     );
   } finally {
@@ -234,19 +307,112 @@ test("reviewer onboarding has one agent path, a working example handoff, and no 
   }
 });
 
-test("first launch explains connection inline without opening or requiring an external guide", async () => {
-  const f = await fixture({ connected: false });
+test("first launch works without external pairing and keeps its integration collapsed", async () => {
+  const f = await fixture({
+    connected: false,
+    provider: "codex-local",
+    nativeReady: false,
+  });
   try {
-    assert.equal(f.element("mcp-settings").open, true);
+    assert.equal(f.element("mcp-settings").open, false);
     assert.equal(f.element("mcp-pair-form").hidden, false);
     assert.equal(
       f.element("mcp-pair-form").querySelectorAll("ol li").length,
       3,
     );
     assert.equal(f.element("mcp-guide"), null);
-    assert.equal(f.element("try-example").disabled, true);
+    assert.equal(f.element("try-example").disabled, false);
+    assert.equal(f.element("external-agent-details").open, false);
     assert.equal(f.element("start").disabled, false);
     assert.equal(f.tabs.length, 0);
+  } finally {
+    await f.close();
+  }
+});
+
+test("Run saves the skill and starts an automatic extension agent without a connected external chat", async () => {
+  const f = await fixture({
+    draft: exampleDraft,
+    connected: false,
+    signedIn: true,
+  });
+  try {
+    const input = f.element("task-request");
+    input.focus();
+    input.value =
+      "Find open issues in microsoft/TypeScript about inference with label bug.";
+    input.dispatchEvent(new f.window.Event("input", { bubbles: true }));
+    assert.equal(f.window.document.activeElement, input);
+    f.element("run-form").dispatchEvent(
+      new f.window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    await until(() => f.local.runState?.active);
+    const message = f.messages.find((m) => m.type === "start-run");
+    assert.equal(message.engine, "agent");
+    assert.equal(message.mode, "automatic");
+    assert.equal(message.remoteSkillId, "saved-skill");
+    assert.match(message.taskRequest, /inference/);
+    assert(
+      f.messages.findIndex((m) => m.type === "library-save") <
+        f.messages.indexOf(message),
+    );
+    assert.equal(JSON.stringify(f.local).includes("about inference"), false);
+    assert.equal(f.tabs.length, 0);
+    assert.equal(f.clipboard(), "");
+    assert.equal(f.element("run-controls").hidden, false);
+    assert.equal(f.element("run-setup").hidden, true);
+  } finally {
+    await f.close();
+  }
+});
+
+test("API keys are entered under settings, cleared from the field and kept outside persistent popup state", async () => {
+  const f = await fixture({ draft: exampleDraft, signedIn: true });
+  try {
+    f.element("agent-api-key").value = "test-only-replacement-key";
+    f.element("agent-api-key").dispatchEvent(
+      new f.window.Event("input", { bubbles: true }),
+    );
+    f.element("run-form").dispatchEvent(
+      new f.window.Event("submit", { cancelable: true }),
+    );
+    assert.equal(f.element("execution-settings").open, true);
+    assert.equal(
+      f.messages.some((m) => m.type === "start-run"),
+      false,
+    );
+    f.element("save-agent-settings").click();
+    await until(() =>
+      f.element("agent-settings-notice").textContent.includes("saved"),
+    );
+    assert.equal(f.element("agent-api-key").value, "");
+    assert.equal(
+      JSON.stringify(f.local).includes("test-only-replacement-key"),
+      false,
+    );
+    assert.equal(f.session.agentApiKey.key, "test-only-replacement-key");
+    f.element("forget-api-key").click();
+    await until(() => !f.session.agentApiKey);
+    await until(() => f.element("run-start").textContent === "Set up agent");
+  } finally {
+    await f.close();
+  }
+});
+
+test("a secret in a task request cannot start or save a run", async () => {
+  const f = await fixture({ draft: exampleDraft, signedIn: true });
+  try {
+    f.element("task-request").value = "password=do-not-submit-this";
+    f.element("run-form").dispatchEvent(
+      new f.window.Event("submit", { cancelable: true }),
+    );
+    await until(() => f.element("run-error").textContent.includes("secrets"));
+    assert.equal(
+      f.messages.some(
+        (m) => m.type === "start-run" || m.type === "library-save",
+      ),
+      false,
+    );
   } finally {
     await f.close();
   }

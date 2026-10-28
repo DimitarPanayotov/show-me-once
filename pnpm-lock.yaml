@@ -121,6 +121,9 @@ importers:
       '@show-me-once/shared':
         specifier: workspace:*
         version: link:../shared
+      cross-spawn:
+        specifier: 7.0.6
+        version: 7.0.6
     devDependencies:
       '@types/node':
         specifier: ^24.0.0

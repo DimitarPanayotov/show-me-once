@@ -1,15 +1,15 @@
-# Use Show Me Once with your coding agent
+# Optional external coding-agent integration
 
-After connecting once, open your coding agent and ask it to use a skill. It starts the connector automatically. Chrome shows progress and asks for approval. **No separate helper terminal needs to stay open.**
+The primary product is [request → Run inside the extension](agent.md). This page describes the optional external-chat path. Open **External coding agent (optional)** to access these controls. After connecting once, open your coding agent and ask it to use a skill. It starts the connector automatically. Chrome shows progress and asks for approval. **No separate helper terminal needs to stay open.**
 
-Your existing agent owns the conversation, model and decisions. MCP supplies guarded browser tools and never starts another Codex/model process. Version 0.5 focuses the interface on this single agent-led workflow.
+Your existing agent owns the conversation, model and decisions. MCP supplies guarded browser tools and never starts another Codex/model process. This integration does not drive the main Run button.
 
-## One-time setup (0.5.1)
+## One-time setup (0.6.0)
 
 Load the reviewer's extension folder in Chrome, then open its popup. Connection steps open inline on first use; there is no separate HTML guide. You need Chrome, Node.js 24 and a local coding agent supporting MCP over stdio. Codex is the configured example.
 
-1. Load/reload the kit's **extension** folder in Chrome (source builds: apps/extension/.output/chrome-mv3). Confirm **0.5.1**.
-2. Open **Skills & activity → Connect your coding agent**, then **Copy ID**.
+1. Load/reload the kit's **extension** folder in Chrome (source builds: apps/extension/.output/chrome-mv3). Confirm **0.6.0**.
+2. Open **Skills & activity → External coding agent (optional) → Connect your coding agent**, then **Copy ID**.
 3. Open **connector/Connect with Codex.cmd** on Windows, or run **node setup.mjs** in the connector folder on macOS/Linux. Paste the ID and choose Codex. Setup registers the connection automatically and prints a private pairing code.
 4. Restart/reconnect Codex. Paste the code into the extension and choose **Connect coding agent**.
 5. The visible **Connected to your coding agent** status confirms success. Close setup; no helper window needs to stay open.
@@ -20,13 +20,13 @@ For source builds, run node dist/mcp/setup.mjs interactively after pnpm mcp:bund
 
 Codex's /mcp should show seven tools: list_skills, get_skill, start_skill, observe_run, act, get_run_status, stop_run. Configuring a server does not refresh an already-running session. [Official configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
-Existing 0.4.1 users can keep their installed extension folder, reload it to 0.5.1, and restart/reconnect their agent to load the seven tools; pairing is retained.
+Existing 0.4.1 users can keep their installed extension folder, reload it to 0.6.0, and restart/reconnect their agent to load the seven tools; pairing is retained.
 
 Pairing survives browser/agent restarts. The extension retries automatically, or immediately through **Check connection**. **Forget connection** removes pairing. Close the old manual relay once when upgrading from 0.4.0; it must not occupy port 4320.
 
 ## Everyday use and demo
 
-1. Connect once, then choose **Open GitHub & copy triage request**.
+1. Open a skill, expand **External coding agent (optional)**, connect once, then choose **Open GitHub & copy triage request** or **Copy agent request**.
 2. Paste the request into your existing agent. It opens GitHub Advanced search for a public issue-triage task.
 3. The agent calls list_skills/get_skill, reads the full parameterized SKILL.md, and starts a run. No account or filesystem skill installation is needed.
 4. Watch Chrome and the popup. Approve the search only after reviewing its action-specific preview. If the agent ended its reply while waiting, say: **I approved in the extension. Continue the same run.**
@@ -37,17 +37,15 @@ The reference skill has 12 steps: start checkpoint; topic; repository; state sel
 
 Control observations support accessible menu items and explicit accessible labels. A delayed SPA URL poll does not erase a newly observed page; URL changes invalidate old observations and approvals. Link destinations expose only sanitized origin/path depth; full URLs and field values remain absent. The model still chooses each live target; tests use controlled documents and do not establish real-model/GitHub acceptance.
 
-For your own task, choose **Record**, demonstrate it once and select **Stop & create skill → Use with agent**. Open its starting page and copy the request into your agent. The new skill is immediately discoverable. Earlier local drafts are retained when switching skills; a library account is optional for local tasks.
+For your own task, choose **Record**, demonstrate it once and select **Stop & create skill → Run this skill**. To use this optional path, expand **External coding agent (optional)**, open the task's starting page, and copy the external-agent request into your agent. The new skill is immediately discoverable. Earlier local drafts are retained when switching skills; a library account is optional for this external path.
 
 Sign in to save versions and share with another registered user. Cloud access is checked for the current account; signing out removes cloud entries from discovery. Markdown and agent ZIP exports remain optional under **Edit skill & export**.
 
 The recommended demo is: demonstrate → review the generated skill → copy a request → agent reads it → browser actions → meaningful approval → result → same skill with a new input. Keep setup separate from normal use.
 
-## Current product scope
+## Relationship to the main Run flow
 
-The popup offers one execution path: the connected coding agent. Hosted-provider selection, the old decision-helper pairing and manual/replay controls have been removed from the interface. Compatibility adapters remain in source and older releases, outside the reviewer flow. The current extension requests only the deployed API and managed connector host permissions.
-
-No owner-funded API configuration is part of the default product. A reviewer's model and authentication belong to their existing agent. The connector cannot approve or resume itself.
+The extension now has its own automatic model-driven Run loop, with personal API keys or a Chrome-managed Codex subscription helper. It does not depend on this MCP connection. The external chat owns decisions only for runs started through its MCP tools. Both paths use the same browser guards and approval controls.
 
 ## Lifecycle checks
 

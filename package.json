@@ -5,14 +5,15 @@
   "scripts": {
     "build": "pnpm --filter @show-me-once/shared build && pnpm --filter @show-me-once/extension build && pnpm --filter @show-me-once/web build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm --filter @show-me-once/shared test && pnpm --filter @show-me-once/agent test && pnpm --filter @show-me-once/extension test && pnpm --filter @show-me-once/mcp test",
+    "test": "pnpm --filter @show-me-once/shared test && pnpm --filter @show-me-once/agent test && pnpm --filter @show-me-once/extension test && pnpm --filter @show-me-once/mcp test && pnpm --filter @show-me-once/web test:agent",
     "mcp:bridge": "pnpm --filter @show-me-once/mcp bridge",
     "mcp:bundle": "rolldown packages/mcp/src/bridge-cli.ts --platform node --format esm --file dist/mcp/bridge.mjs && rolldown packages/mcp/src/server.ts --platform node --format esm --file dist/mcp/server.mjs && rolldown packages/mcp/src/managed-relay.ts --platform node --format esm --file dist/mcp/relay.mjs && rolldown packages/mcp/src/setup.ts --platform node --format esm --file dist/mcp/setup.mjs && node --experimental-strip-types scripts/package-mcp.mjs",
     "agent:local": "pnpm --filter @show-me-once/agent bridge",
-    "reviewer:package": "pnpm mcp:bundle && pnpm --filter @show-me-once/extension zip && node scripts/package-reviewer.mjs",
+    "reviewer:package": "pnpm subscription:bundle && pnpm mcp:bundle && pnpm --filter @show-me-once/extension zip && node scripts/package-reviewer.mjs",
     "agent:bundle": "rolldown packages/agent/src/bridge.ts --platform node --format esm --file dist/local-agent/bridge.mjs && node scripts/package-agent.mjs",
     "dev:extension": "pnpm --filter @show-me-once/extension dev",
-    "dev:web": "pnpm --filter @show-me-once/web dev"
+    "dev:web": "pnpm --filter @show-me-once/web dev",
+    "subscription:bundle": "rolldown packages/agent/src/native-host.ts --platform node --format esm --file dist/subscription-helper/host.mjs && rolldown packages/agent/src/native-setup.ts --platform node --format esm --file dist/subscription-helper/setup.mjs && node scripts/package-subscription.mjs"
   },
   "devDependencies": {
     "rolldown": "1.2.15",

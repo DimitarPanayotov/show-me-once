@@ -1,6 +1,10 @@
 import type { SkillPlan } from "./index";
 
 export type AgentProviderId = "openai" | "anthropic" | "codex-local";
+export const DEFAULT_AGENT_MODELS = {
+  openai: "gpt-5.4-mini",
+  anthropic: "claude-sonnet-4-6",
+} as const;
 export type AgentControl = {
   id: string;
   role: "button" | "link" | "input" | "select";

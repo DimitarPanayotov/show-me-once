@@ -1,49 +1,49 @@
-# Architecture
+# Architecture — 0.6.0
 
-## Current agent-led product (0.5.1)
+Show Me Once turns one browser demonstration into a reusable parameterized skill. The primary flow stays inside the Chrome extension: Record → review SKILL.md → backend library → enter a request → Run. The extension owns the automatic decision loop. External coding-agent control is an optional additional integration.
 
-An existing coding-agent session owns the model and loads an exported skill. The agent first discovers available skills through list_skills/get_skill, which read the example, local recordings and the current user's authorized library. No skill-file installation is required. The popup contains first-use guidance and a twelve-step GitHub issue-triage reference workflow. Accessible menu items are recordable/actionable, and link observations include only sanitized destination shape. Its stdio MCP server automatically starts/reuses an authenticated loopback relay at port 4320. The relay exits after the last client leaves; no separate terminal is needed. One-time settings and browser pairing persist across restarts. The extension opens the outbound WebSocket and retains run/tab/step binding, fresh control observations, target validation, confirmation, Pause and Stop. This path does not import or invoke the Codex decision adapter. The current popup exposes only this agent-led path; the extension-led adapters below are retained as compatibility implementation, outside the reviewer flow. See [MCP design and setup](mcp.md) for process ownership, pairing, lifecycle, credential storage and exact Codex configuration. Browser acceptance remains pending under the requested non-browser testing constraint.
+## What runs where
 
-## Shared recorder, executor and compatibility implementation
+| Component                 | Responsibility                                                                                                                                                                                                                |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Content script            | Records structural click/input/Enter/navigation events, excludes values and sensitive controls, exposes bounded live control descriptions, validates and executes one guarded action.                                         |
+| MV3 service worker        | Owns recording/run state, account session, model calls, action sequencing, checkpoint validation, cancellation and backend log synchronization. Short timers advance work; Chrome alarms recover scheduling after suspension. |
+| Popup                     | Record/review/library selection, editable task request and Run, clear approval previews, Pause/Resume/Stop, activity and completion. Agent configuration and the external integration are secondary.                          |
+| Next.js + oRPC backend    | Auth, authorized skill CRUD, immutable versions, sharing, per-user run history, and transient API-key forwarding to the selected model provider.                                                                              |
+| PostgreSQL + Prisma       | Users, sessions, skills, versions, shares, runs pinned to versions, and ordered per-step logs.                                                                                                                                |
+| Subscription helper       | Chrome native-messaging host, launched hidden on demand. Uses Codex CLI with its existing ChatGPT sign-in to produce one constrained decision. No OAuth token extraction or manually running bridge.                          |
+| Optional MCP server/relay | Existing coding-agent chats discover skills and choose actions through seven guarded tools. This independent path is collapsed in the popup.                                                                                  |
 
-| Layer | Responsibility |
-| --- | --- |
-| Content script | Records structural click/input/Enter/navigation metadata. Values and page text never leave the page during recording. During execution it verifies that a target is unique, visible, enabled, and non-sensitive before performing an action. |
-| MV3 service worker | Owns recording, run progress, account sessions, and execution. It serializes state writes and browser actions. Automatic execution uses short scheduled ticks with a Chrome alarm as a recovery mechanism; it does not depend on an open popup. |
-| Agent provider adapter | Receives the complete skill, task request, current allowed step, and sanitized live controls. It returns one typed action. OpenAI and Anthropic adapters call the hosted model; the local Codex adapter uses an ephemeral CLI invocation under the user's existing sign-in. |
-| Popup | Has focused Run and Record views. Stopping a recording creates a draft locally. Save feedback stays beside the action; timeline and Markdown are expandable. It collects new run inputs and offers Pause, Stop, confirmation, retry, and optional manual execution. |
-| Next.js + oRPC | Provides authenticated skill versions, sharing, and per-step run history. The web app uses HttpOnly session cookies; the extension explicitly omits cookies and uses its own bearer token. |
-| PostgreSQL + Prisma | Persists users, hashed sessions, skills, immutable versions, shares, runs, and step types/statuses. Run parameter values are not in the database schema. |
+## Skill format and generation
 
-## Skill format and generalization
+SKILL.md contains name/description frontmatter, readable instructions, typed parameters, checkpoints, safety rules and a schema-versioned JSON executable plan. Generation is deterministic and local; no recording is sent to an LLM to generate the draft. A user can edit the prose and plan, and validation rejects malformed or unsafe executable data.
 
-`SKILL.md` contains name/description frontmatter, parameter definitions, numbered instructions, checkpoints, safety rules, and a validated `json show-me-once` executable plan. The plan constrains allowed action kinds and checkpoints. In agent mode the model also reads the prose and selects a current live control; in recorded mode the plan is interpreted directly.
+Recorded controls use bounded structural selectors without page text, IDs or attribute values that may contain private data. Text/select values become placeholders. URLs retain origin and path depth while dropping credentials, actual path segments, query and fragment. The human-readable skill and executable block travel together; edits must keep them aligned.
 
-Generation is deterministic and local. Form values are never recorded, so parameters replace input values rather than reproducing them. Click-only tasks ask for a target description, matched against visible local labels at run time. Structural selectors are hints; missing or ambiguous targets pause the run. URLs retain origin and path depth while dropping credentials, path text, query strings, and fragments. A checkpoint following an action also requires observing navigation.
+The agent reads the complete skill and user's new request. Each step uses a fresh sanitized observation of eligible controls, not raw HTML/screenshots/field values. Selectors are hints: the model chooses a live control by purpose. Accessible labels and menu items are supported. Only a schema-checked action for the current step and known control can execute. Replacement values must come from the explicit request or locally supplied parameters.
 
-In AI mode the content script builds at most 60 eligible control descriptors: temporary ID, role, bounded/redacted label, input kind, and structural hint. It excludes raw page text, HTML, field values, sensitive controls, and credential/payment forms. The agent can choose a moved control from those live candidates. It cannot return arbitrary JavaScript, invent a target outside the snapshot, change the allowed step kind, or approve an action. Major workflow redesigns remain outside this constrained agent's scope.
+## Extension-owned Run loop
 
-Task requests and replacement values stay in browser session storage and are omitted from persistent application logs. A natural-language task request is intentionally sent to the model so it can extract new non-secret inputs. Explicit parameter values can remain locally bound. The local helper does not receive library credentials or copy Codex OAuth tokens; Codex owns its sign-in. See [agent setup](agent.md) for provider and deployment details.
+The popup requires a signed-in library account, checks the chosen execution option, saves a new/edited owned skill, and starts a run against its saved version. The built-in example becomes an owned library copy on first Run; shared skills remain read-only.
 
-## Automatic execution and recovery
+The worker validates the starting page, observes the current step, asks the configured model for one decision, checks the decision, executes through the content script and validates the next checkpoint. Safe steps continue automatically. A protected action pauses for a target-bound preview. Approval executes only that pending action; subsequent steps then continue automatically. No external chat message or manual Next button is required.
 
-Run state, plan, execution mode, pause reason, confirmation index, and step logs are stored in `chrome.storage.local`. Inputs and the extension session remain in `chrome.storage.session`. Safe steps advance automatically; navigation waits for the target tab to finish loading. Confirmation, a failed target check, or a navigation timeout pauses execution. Confirming a protected action resumes automatic execution; manual mode advances only on explicit steps.
+Pause and Stop abort the pending model call and are checked before dispatch. An action already dispatched may finish. A worker interruption with an uncertain browser outcome pauses rather than replaying it. Popup closure does not stop a run. Browser restart clears session inputs and requires inspecting/restarting interrupted work.
 
-A short timer provides prompt progress while the worker is active. A repeating alarm recovers automatic work after worker suspension. Listeners are registered synchronously at startup, and persisted work is checked on each new worker lifetime. [Chrome's service-worker lifecycle](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle), [alarm API](https://developer.chrome.com/docs/extensions/reference/api/alarms).
+## Model access
 
-Before dispatching a browser action, the worker persists an in-flight marker. If the worker restarts without knowing the action's outcome, execution pauses for inspection instead of automatically repeating it. Pause and Stop interrupt scheduling immediately; an action already dispatched to a page cannot be undone. Run history sync is retried independently of the locally persisted action log.
+Personal OpenAI/Anthropic keys live only in trusted Chrome session storage and are cleared from the settings input after saving. Signed-out users cannot invoke the backend model API. The key passes over HTTPS through that backend only to the chosen provider; it is not saved in database rows, skill exports, prompts or logs. Provider/model names are remembered without the key. Logout removes the key.
 
-An in-flight model decision is cancellable and does not itself operate the browser. Stop/Pause abort the fetch; the local helper stops its Codex process. A restarted worker can safely request a new decision before dispatch, while an unknown browser action outcome still requires inspection. Snapshot IDs and live-element fingerprints prevent a delayed model response from acting on a replaced control.
+Alternatively, a one-time installer copies the bundled subscription helper into the user's .show-me-once/native directory, registers the exact extension origin with Chrome and resolves the installed Codex CLI. Windows registration uses HKCU only. Chrome starts a hidden process over framed stdin/stdout. Disconnect cancels the model request. The CLI runs ephemerally in a temporary directory, with schema output, read-only access and shell/apps/plugins/subagents/web search disabled. Codex owns authentication and subscription limits. The helper currently supports Codex subscriptions; it is not a generic subscription-to-API proxy.
 
-## Safety and access
+## Backend access and history
 
-- Sensitive controls, including passwords, token fields, and payment fields, are excluded from recording. Raw values and page text are omitted from recordings and server logs.
-- Submit controls, Enter submissions, and detected destructive/payment controls require explicit confirmation in both execution modes. The current detection is conservative and heuristic; it does not prove that every possible custom control is harmless.
-- Confirmation previews name the live action, control label, origin, and likely effect; cross-origin form destinations are shown separately. Preview labels and approval tokens stay in `chrome.storage.session` and are removed after the action or Stop. They never enter recordings, skill Markdown, persistent run state, or backend logs. Consent is bound to the run, step, live DOM element, and action signature; a changed/replaced target requires fresh approval. Rebuilding a missing preview cannot execute an action.
-- Only extension pages may invoke account, library, and run-control messages. The server retains cross-origin cookie protection; extension requests omit website cookies.
-- Skill access is limited to owners and explicit recipients. Only an owner can edit versions or share a skill. A recipient can read and run it. Run history belongs to the person who ran it.
-- Recording and drafts remain local until Save to library. The backend receives the skill and generic step types/statuses, without run input values.
+Web auth uses HttpOnly session cookies; extension requests omit cookies and use their own bearer session. Skills are visible only to owners and explicit recipients. Only owners edit or share. Runs and ordered logs belong to the person executing and reference a saved skill version. Logs contain step number, kind, status and timestamp, without new inputs, request text or live page labels.
 
-## Current limits
+The optional external MCP path reauthorizes cloud discovery for the current account, pins controllers/runs/tabs, uses single-use observations and keeps extension-only approval/Pause/Stop. Its activity remains local; the primary extension-owned Run path synchronizes backend history. Details: [MCP setup](mcp.md).
 
-Closed Shadow DOM controls are unsupported. A human-verification challenge must be completed by the user. Known challenge and connection-error pages block completion. URL checkpoints otherwise check origin/path depth, so the user should still inspect the actual result. Background recovery timing depends on Chrome alarm scheduling. The AI agent completed two inputs each on Wikipedia, GitHub, and Python documentation. Open Library's final agent verification is pending; the earlier recorded executor had completed it. These examples do not establish compatibility with arbitrary websites.
+## Deployment and limits
+
+The Next.js/oRPC app deploys to Vercel with PostgreSQL/Prisma and DATABASE_URL. No owner model key is necessary when users provide their own keys or use the local subscription helper. The extension is a production WXT MV3 build pointed at that deployed API; the reviewer kit contains no credentials.
+
+Known challenge/connection-error pages block execution and human verification remains manual. Closed Shadow DOM is unsupported. Origin/path-depth checkpoints cannot establish repository/topic semantics; inspect actual results. This is a constrained skill-following agent, not an unrestricted planner for arbitrary websites. Current automated and live-model evidence, and pending Chrome acceptance, are recorded in [verification](verification.md).

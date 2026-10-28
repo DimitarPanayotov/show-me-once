@@ -49,6 +49,22 @@ const decision = {
   value: "Foundation",
 };
 
+test("transport and response parsing errors cannot echo a user's API key", async () => {
+  const key = "test-only-private-key";
+  for (const fetcher of [
+    async () => {
+      throw new Error(key);
+    },
+    async () => new Response(key, { status: 200 }),
+  ]) {
+    const provider = hostedProvider("openai", { key, model: "test", fetcher });
+    await assert.rejects(
+      provider.decide(input),
+      (error) => error instanceof Error && !error.message.includes(key),
+    );
+  }
+});
+
 test("link destinations crossing the model boundary contain only sanitized origin and path depth", () => {
   const observation = {
     ...input.observation,

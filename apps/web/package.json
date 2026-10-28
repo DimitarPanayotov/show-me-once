@@ -8,7 +8,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev"
+    "db:migrate": "prisma migrate dev",
+    "test:agent": "node tests/run-agent-tests.mjs"
   },
   "dependencies": {
     "@orpc/server": "1.16.1",

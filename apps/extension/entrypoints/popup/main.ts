@@ -13,6 +13,11 @@ import {
 } from "../../lib/confirmation";
 import "./style.css";
 import { withMcpInstructions } from "@show-me-once/shared/mcp";
+import {
+  containsSecret,
+  DEFAULT_AGENT_MODELS,
+  type AgentProviderId,
+} from "@show-me-once/shared/agent";
 import { zipSync, strToU8 } from "fflate";
 import {
   keepLocalDraft,
@@ -72,6 +77,189 @@ let approvalToken: string | undefined;
 let approving = false;
 let mcpConnected = false;
 let catalogSize = 0;
+let runStarting = false;
+let runAfterSignIn = false;
+let requestKey = "";
+let taskRequests: Record<string, string> = {};
+let agentSettings: {
+  provider: AgentProviderId;
+  model: string;
+  hasKey: boolean;
+} = { provider: "codex-local", model: "", hasKey: false };
+let subscriptionReady = false;
+let agentSettingsDirty = false;
+const taskRequest = element<HTMLTextAreaElement>("task-request");
+function builtin(draft: SkillDraft | null) {
+  return draft?.sourceRecordingId === EXAMPLE_ID && !draft.remoteSkillId;
+}
+
+function renderExecution() {
+  const ready =
+    agentSettings.provider === "codex-local"
+      ? subscriptionReady
+      : agentSettings.hasKey;
+  element("execution-status").textContent = agentSettingsDirty
+    ? "Save your agent settings before running."
+    : !ready
+      ? agentSettings.provider === "codex-local"
+        ? "Set up or check your subscription under Agent settings."
+        : "Add your API key under Agent settings."
+      : !signedInUser
+        ? "Sign in to save this skill and its run history."
+        : agentSettings.provider === "codex-local"
+          ? "Ready · your Codex subscription. No coding-agent chat needed."
+          : "Ready · your API key. Steps run automatically.";
+  const button = element<HTMLButtonElement>("run-start");
+  button.textContent = runStarting
+    ? "Starting…"
+    : agentSettingsDirty
+      ? "Save agent settings"
+      : !ready
+        ? "Set up agent"
+        : !signedInUser
+          ? "Sign in to run"
+          : "Run";
+  button.disabled =
+    runStarting ||
+    !!activeRun?.active ||
+    !currentDraft ||
+    !planValid ||
+    !taskRequest.value.trim();
+  taskRequest.disabled = runStarting || !!activeRun?.active;
+  if (runStarting) {
+    for (const control of [
+      start,
+      libraryLoad,
+      librarySkills,
+      skillName,
+      skillDescription,
+      skillMarkdown,
+    ])
+      control.disabled = true;
+    element<HTMLButtonElement>("generate").disabled = true;
+  }
+  element<HTMLButtonElement>("open-task-page").disabled =
+    runStarting || !!activeRun?.active;
+  for (const id of [
+    "agent-provider",
+    "agent-api-key",
+    "agent-model",
+    "save-agent-settings",
+    "forget-api-key",
+    "check-subscription",
+  ])
+    element<HTMLInputElement>(id).disabled = runStarting || !!activeRun?.active;
+}
+
+async function refreshAgentSettings() {
+  agentSettings = (await browser.runtime.sendMessage({
+    type: "agent-status",
+  })) as typeof agentSettings;
+  agentSettingsDirty = false;
+  element<HTMLSelectElement>("agent-provider").value = agentSettings.provider;
+  setValue(element<HTMLInputElement>("agent-model"), agentSettings.model);
+  element<HTMLInputElement>("agent-api-key").placeholder = agentSettings.hasKey
+    ? "Key set for this Chrome session"
+    : "Paste your API key";
+  element("subscription-extension-id").textContent = browser.runtime.id;
+  renderAgentFields();
+  renderExecution();
+}
+
+function renderAgentFields() {
+  const provider = element<HTMLSelectElement>("agent-provider").value;
+  element("subscription-settings").hidden = provider !== "codex-local";
+  element("api-settings").hidden = provider === "codex-local";
+}
+
+async function checkSubscription() {
+  element("subscription-status").textContent = "Checking your subscription…";
+  try {
+    const status = (await browser.runtime.sendMessage({
+      type: "agent-check-native",
+    })) as { ready: boolean };
+    subscriptionReady = status.ready;
+    element("subscription-status").textContent = status.ready
+      ? "✓ Ready. Chrome will start your subscription agent when you click Run."
+      : "Codex is not signed in. Sign in with ChatGPT, then check again.";
+  } catch {
+    subscriptionReady = false;
+    element("subscription-status").textContent =
+      "Subscription helper unavailable. Install it once using the steps above, then check again.";
+  }
+  renderExecution();
+}
+
+async function startExtensionRun() {
+  if (runStarting || activeRun?.active || !currentDraft) return;
+  element("run-error").textContent = "";
+  const request = taskRequest.value.trim();
+  if (!request || request.length > 2000 || containsSecret(request)) {
+    element("run-error").textContent =
+      "Describe the task without passwords or secrets.";
+    return;
+  }
+  if (
+    agentSettingsDirty ||
+    (agentSettings.provider === "codex-local"
+      ? !subscriptionReady
+      : !agentSettings.hasKey)
+  ) {
+    element<HTMLDetailsElement>("execution-settings").open = true;
+    element("execution-settings").scrollIntoView({
+      block: "start",
+      behavior: "smooth",
+    });
+    return;
+  }
+  if (!signedInUser) {
+    runAfterSignIn = true;
+    openAccount();
+    return;
+  }
+  runStarting = true;
+  const startingMarkdown = currentDraft.markdown;
+  renderExecution();
+  try {
+    if (agentSettings.provider === "codex-local") {
+      subscriptionReady = false;
+      const status = (await browser.runtime.sendMessage({
+        type: "agent-check-native",
+      })) as { ready: boolean };
+      subscriptionReady = status.ready;
+      if (!status.ready)
+        throw new Error(
+          "Sign in to Codex with ChatGPT, then check your subscription under Agent settings.",
+        );
+    }
+    if (currentDraft.markdown !== startingMarkdown)
+      throw new Error("The selected skill changed. Review it and start again.");
+    if (!currentDraft.remoteSkillId || currentDraft.dirty) {
+      if (!(await saveDraft(true)))
+        throw new Error("Save the skill successfully before running it.");
+    }
+    const draft = currentDraft!;
+    await browser.runtime.sendMessage({
+      type: "start-run",
+      engine: "agent",
+      mode: "automatic",
+      provider: agentSettings.provider,
+      taskRequest: request,
+      markdown: draft.markdown,
+      remoteSkillId: draft.remoteSkillId,
+      skillKey: draft.remoteSkillId ?? draft.sourceRecordingId,
+      parameters: {},
+    });
+    await render();
+  } catch (cause) {
+    element("run-error").textContent =
+      cause instanceof Error ? cause.message : "Could not start this run.";
+  } finally {
+    runStarting = false;
+    await render();
+    renderExecution();
+  }
+}
 
 function report(cause: unknown) {
   error.textContent = cause instanceof Error ? cause.message : String(cause);
@@ -118,8 +306,17 @@ function showParameters(markdown: string) {
   }
 }
 function renderHandoff() {
+  const nextKey = currentDraft?.sourceRecordingId ?? "";
+  if (requestKey !== nextKey) {
+    requestKey = nextKey;
+    taskRequest.value =
+      taskRequests[nextKey] ??
+      (currentDraft?.sourceRecordingId === EXAMPLE_ID
+        ? "Find open issues in microsoft/vscode about terminal with label bug. Sort by recently updated and open the first matching issue."
+        : "");
+  }
   const request = currentDraft
-    ? currentDraft.sourceRecordingId === EXAMPLE_ID
+    ? builtin(currentDraft)
       ? EXAMPLE_REQUEST
       : "Use Show Me Once to run skill " +
         localSkillId(currentDraft) +
@@ -128,14 +325,17 @@ function renderHandoff() {
         "). Ask me for the new inputs you need."
     : "";
   setValue(element<HTMLTextAreaElement>("agent-request"), request);
-  element("copy-request").textContent =
-    currentDraft?.sourceRecordingId === EXAMPLE_ID
-      ? "Open GitHub & copy triage request"
-      : "Copy agent request";
+  element("copy-request").textContent = builtin(currentDraft)
+    ? "Open GitHub & copy triage request"
+    : "Copy agent request";
   element<HTMLButtonElement>("copy-request").disabled =
-    !currentDraft || !mcpConnected || !!activeRun?.active || !planValid;
+    !currentDraft ||
+    !mcpConnected ||
+    !!activeRun?.active ||
+    runStarting ||
+    !planValid;
   element<HTMLButtonElement>("try-example").disabled =
-    !mcpConnected || !!activeRun?.active || !!currentRecording?.active;
+    runStarting || !!activeRun?.active || !!currentRecording?.active;
   element("handoff-help").textContent = mcpConnected
     ? "Open the task's starting page, then paste this request into your coding agent. It can read the skill directly."
     : "Connect your coding agent above first. Your skill stays here.";
@@ -156,6 +356,11 @@ function renderHandoff() {
   open.hidden = !url || currentDraft?.sourceRecordingId === EXAMPLE_ID;
   open.disabled = !!activeRun?.active || !!currentRecording?.active;
   open.dataset.url = url;
+  element("run-starting-page").textContent =
+    element("starting-page").textContent;
+  element<HTMLButtonElement>("open-task-page").hidden = !url;
+  element("open-task-page").dataset.url = url;
+  renderExecution();
 }
 
 function showDraft(draft: SkillDraft | null) {
@@ -176,24 +381,22 @@ function showDraft(draft: SkillDraft | null) {
   setValue(skillMarkdown, draft.markdown);
   element("current-name").textContent = draft.name;
   element("current-description").textContent = draft.description;
-  element("current-meta").textContent =
-    draft.sourceRecordingId === EXAMPLE_ID
-      ? "Example skill"
-      : draft.readOnly
-        ? "Shared skill"
-        : draft.remoteSkillId
-          ? draft.dirty
-            ? "Draft · unsaved changes"
-            : "Saved skill"
-          : "New skill · not saved yet";
-  element("draft-label").textContent =
-    draft.sourceRecordingId === EXAMPLE_ID
-      ? "Example"
-      : draft.readOnly
-        ? "Read only"
-        : draft.remoteSkillId && !draft.dirty
-          ? "Saved"
-          : "Draft";
+  element("current-meta").textContent = builtin(draft)
+    ? "Example skill"
+    : draft.readOnly
+      ? "Shared skill"
+      : draft.remoteSkillId
+        ? draft.dirty
+          ? "Draft · unsaved changes"
+          : "Saved skill"
+        : "New skill · not saved yet";
+  element("draft-label").textContent = builtin(draft)
+    ? "Example"
+    : draft.readOnly
+      ? "Read only"
+      : draft.remoteSkillId && !draft.dirty
+        ? "Saved"
+        : "Draft";
   element("draft-label").classList.toggle(
     "saved",
     !!draft.remoteSkillId && !draft.dirty,
@@ -203,7 +406,7 @@ function showDraft(draft: SkillDraft | null) {
 }
 
 function renderSave() {
-  saveLibrary.hidden = currentDraft?.sourceRecordingId === EXAMPLE_ID;
+  saveLibrary.hidden = builtin(currentDraft);
   const saved = !!currentDraft?.savedVersion && !currentDraft.dirty;
   saveLibrary.disabled =
     saving ||
@@ -256,7 +459,8 @@ async function refreshLibrary() {
   }
   if (result.skills.some((s) => s.id === selected))
     librarySkills.value = selected;
-  libraryLoad.disabled = !!activeRun?.active || result.skills.length === 0;
+  libraryLoad.disabled =
+    !!activeRun?.active || runStarting || result.skills.length === 0;
   librarySkills.disabled = libraryLoad.disabled;
   element("library-empty").textContent = result.message ?? "";
   element("library-empty").hidden = !result.message;
@@ -268,7 +472,7 @@ async function renderAccount() {
   element("account-status").textContent = signedInUser
     ? `Signed in as ${signedInUser.email}`
     : "Sign in to save skills and access your library.";
-  element("account-toggle").textContent = signedInUser ? "Account" : "Library";
+  element("account-toggle").textContent = signedInUser ? "Account" : "Sign in";
   accountForm.hidden = !!signedInUser;
   element("account-logout").hidden = !signedInUser;
   element("library-controls").hidden =
@@ -276,6 +480,7 @@ async function renderAccount() {
   element("sign-in-prompt").hidden = !!signedInUser;
   await refreshLibrary();
   renderSave();
+  renderExecution();
 }
 
 async function refreshMcp() {
@@ -283,7 +488,6 @@ async function refreshMcp() {
     type: "mcp-status",
   })) as { paired: boolean; connected: boolean };
   mcpConnected = status.connected;
-  if (!status.paired) element<HTMLDetailsElement>("mcp-settings").open = true;
   const feedback = element("mcp-status");
   feedback.dataset.state = status.connected
     ? "connected"
@@ -317,6 +521,8 @@ function renderRun(
   activeRun = run;
   if (run?.active && run.engine === "external")
     element("current-meta").textContent = "Running with your coding agent";
+  else if (run?.active)
+    element("current-meta").textContent = "Running in this extension";
   approvalToken = undefined;
   element("run-confirmation").hidden = true;
   const active = !!run?.active;
@@ -333,13 +539,17 @@ function renderRun(
   element("run-setup").hidden = active;
   runControls.hidden = !active;
   element("run-editor-details").hidden = active;
+  element("external-handoff").hidden = !currentDraft || active;
+  element("external-agent-details").hidden = active;
+  element("execution-settings").hidden = active;
   skillName.disabled =
     skillDescription.disabled =
     skillMarkdown.disabled =
-      active || !!currentDraft?.readOnly;
+      active || runStarting || !!currentDraft?.readOnly;
   element<HTMLButtonElement>("generate").disabled =
-    active || !!currentDraft?.readOnly;
-  libraryLoad.disabled = active || librarySkills.options.length === 0;
+    active || runStarting || !!currentDraft?.readOnly;
+  libraryLoad.disabled =
+    active || runStarting || librarySkills.options.length === 0;
   librarySkills.disabled = active || librarySkills.options.length === 0;
   if (active && run) {
     const confirmation = run.confirmationStep === run.nextStep;
@@ -373,7 +583,7 @@ function renderRun(
         ? "Check the page"
         : paused
           ? "Paused"
-          : "Your agent is running";
+          : "Agent is running";
     element("run-step-count").textContent =
       `${run.nextStep} / ${run.totalSteps}`;
     runControls.dataset.state = confirmation
@@ -471,7 +681,7 @@ async function render() {
     : element("record-start-slot");
   if (start.parentElement !== startSlot) startSlot.append(start);
   start.hidden = recording;
-  start.disabled = !!run?.active;
+  start.disabled = !!run?.active || runStarting;
   start.textContent = review ? "Record another task" : "Start recording";
   start.className = `button ${review ? "quiet" : "primary"} full`;
   element("record-active").hidden = !recording;
@@ -580,13 +790,14 @@ async function createDraft(recording: Recording) {
   await render();
   await refreshLibrary();
 }
-async function saveDraft() {
+async function saveDraft(copyExample = false): Promise<SkillDraft | undefined> {
   if (!signedInUser) {
     saveAfterSignIn = true;
     openAccount();
     return;
   }
   if (saving || !currentDraft) return;
+  if (currentDraft.readOnly && !(copyExample && builtin(currentDraft))) return;
   saving = true;
   element("save-error").textContent = "";
   renderSave();
@@ -606,6 +817,7 @@ async function saveDraft() {
       remoteSkillId: saved.id,
       savedVersion: saved.currentVersion,
       dirty: false,
+      readOnly: false,
     };
     showDraft(draft);
     await browser.storage.local.set({ skillDraft: draft });
@@ -617,6 +829,7 @@ async function saveDraft() {
     } catch {
       /* The save has already succeeded. */
     }
+    return draft;
   } catch (cause) {
     element("save-error").textContent =
       cause instanceof Error ? cause.message : String(cause);
@@ -846,6 +1059,10 @@ accountForm.addEventListener("submit", (event) => {
         saveAfterSignIn = false;
         await saveDraft();
       }
+      if (runAfterSignIn) {
+        runAfterSignIn = false;
+        await startExtensionRun();
+      }
     } catch (cause) {
       report(cause);
     } finally {
@@ -859,6 +1076,11 @@ element("account-logout").addEventListener("click", () => {
     try {
       await browser.runtime.sendMessage({ type: "account-logout" });
       await renderAccount();
+      taskRequests = {};
+      taskRequest.value = "";
+      await browser.storage.session.remove("taskRequests");
+      await refreshAgentSettings();
+      renderExecution();
     } catch (cause) {
       report(cause);
     }
@@ -890,11 +1112,84 @@ element("copy-request").addEventListener("click", () => {
 element("try-example").addEventListener("click", () => {
   void (async () => {
     await openSkill(EXAMPLE_ID);
-    await navigator.clipboard.writeText(
-      element<HTMLTextAreaElement>("agent-request").value,
-    );
     await browser.tabs.create({ url: EXAMPLE_START_URL });
   })().catch(report);
+});
+element("run-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  void startExtensionRun();
+});
+taskRequest.addEventListener("input", () => {
+  if (!containsSecret(taskRequest.value)) {
+    taskRequests[requestKey] = taskRequest.value;
+    void browser.storage.session.set({ taskRequests });
+  }
+  element("run-error").textContent = "";
+  renderExecution();
+});
+element("open-task-page").addEventListener("click", () => {
+  const url = element("open-task-page").dataset.url;
+  if (url && url !== "undefined")
+    void browser.tabs.create({ url }).catch(report);
+});
+element("agent-provider").addEventListener("change", () => {
+  agentSettingsDirty = true;
+  const provider = element<HTMLSelectElement>("agent-provider").value;
+  setValue(
+    element<HTMLInputElement>("agent-model"),
+    provider === "openai" || provider === "anthropic"
+      ? DEFAULT_AGENT_MODELS[provider]
+      : "",
+  );
+  element<HTMLInputElement>("agent-api-key").value = "";
+  element("agent-settings-notice").textContent =
+    "Save agent settings to apply this choice.";
+  renderAgentFields();
+  renderExecution();
+});
+for (const id of ["agent-api-key", "agent-model"])
+  element(id).addEventListener("input", () => {
+    agentSettingsDirty = true;
+    renderExecution();
+  });
+element("save-agent-settings").addEventListener("click", () => {
+  void (async () => {
+    try {
+      const apiKey = element<HTMLInputElement>("agent-api-key").value.trim();
+      await browser.runtime.sendMessage({
+        type: "agent-configure",
+        provider: element<HTMLSelectElement>("agent-provider").value,
+        model: element<HTMLInputElement>("agent-model").value,
+        ...(apiKey ? { apiKey } : {}),
+      });
+      element<HTMLInputElement>("agent-api-key").value = "";
+      await refreshAgentSettings();
+      element("agent-settings-notice").textContent = "✓ Agent settings saved.";
+    } catch (cause) {
+      element("agent-settings-notice").textContent =
+        cause instanceof Error
+          ? cause.message
+          : "Could not save agent settings.";
+    }
+  })();
+});
+element("forget-api-key").addEventListener("click", () => {
+  void browser.runtime
+    .sendMessage({ type: "agent-forget-key" })
+    .then(refreshAgentSettings)
+    .catch(report);
+});
+element("check-subscription").addEventListener("click", () => {
+  void checkSubscription();
+});
+element("subscription-copy-id").addEventListener("click", () => {
+  void navigator.clipboard
+    .writeText(browser.runtime.id)
+    .then(() => {
+      element("subscription-status").textContent =
+        "✓ Extension ID copied. Paste it into the subscription setup.";
+    })
+    .catch(report);
 });
 element("open-start-page").addEventListener("click", () => {
   const url = element("open-start-page").dataset.url;
@@ -919,6 +1214,10 @@ browser.storage.onChanged.addListener((changes, area) => {
     void refreshMcp().catch(report);
 });
 void (async () => {
+  taskRequests =
+    ((await browser.storage.session.get("taskRequests")).taskRequests as
+      | Record<string, string>
+      | undefined) ?? {};
   const saved = await browser.storage.local.get([
     "popupView",
     "skillDraft",
@@ -940,11 +1239,13 @@ void (async () => {
   view = saved.popupView === "record" ? "record" : "run";
   await render();
   await refreshMcp();
+  await refreshAgentSettings();
   try {
     await renderAccount();
   } catch (cause) {
     report(cause);
   }
   document.documentElement.dataset.ready = "true";
+  if (agentSettings.provider === "codex-local") void checkSubscription();
   void browser.runtime.sendMessage({ type: "get-run" }).catch(() => undefined);
 })().catch(report);

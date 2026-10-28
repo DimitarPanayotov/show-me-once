@@ -1,5 +1,17 @@
 # Manual verification
 
+## Extension-owned Run — 0.6.0
+
+The main popup now accepts an editable task request and starts the extension-owned automatic agent loop. External coding-agent integration is optional and collapsed. Agent settings support session-only personal OpenAI/Anthropic keys or a one-time Chrome native-messaging helper using a Codex subscription. New/edited owned skills are saved before Run and per-step backend history is tied to the saved version.
+
+Eighty-one automated tests pass on Windows: actual popup/background-worker tests, two inputs through both execution transports, automatic continuation after approval, Pause/Resume without chat, Stop during a model request, private credential boundaries, real native-host processes, framed-message validation and a Windows launcher path containing spaces/ampersands. API contracts exercise both personal-key providers without owner environment keys and reject anonymous or secret-containing requests before model calls. The twelve-step GitHub flow remains covered by controlled-document tests.
+
+The bundled subscription helper made two real Codex decisions for Foundation and Frankenstein and selected the moved Search topic control over a Newsletter control. This used an isolated native protocol process and the existing Codex sign-in, without browser automation. API providers have contract tests, not live credential tests.
+
+Workspace type checks and the Next.js production compile pass. The default local web build stopped at its migration step because the development PostgreSQL service at localhost:6543 was offline; there are no schema changes. Hosted deployment runs migrations against its configured database. Real Chrome/native-host discovery and full live GitHub acceptance remain pending under the no-browser-automation constraint.
+
+The production Vercel build and database migration check passed with no pending migrations. The neutral app address serves the new deployment; page/health checks returned 200, and a non-secret schema probe confirmed the new personal-key endpoint validation without making a provider call. The extracted 18-file kit passes four native-helper and four optional-MCP process/protocol checks plus isolated setup verification. It contains no credentials or separate HTML guide. Real provider-key tests and Chrome acceptance remain distinct pending checks.
+
 ## Inline onboarding and issue triage — 0.5.1
 
 The default example is now a twelve-step public GitHub issue-triage workflow: four inputs, protected submission, sort menu, first matching result, and issue-page checkpoint. First-use connection guidance is inside the popup; no START-HERE.html is required or packaged.

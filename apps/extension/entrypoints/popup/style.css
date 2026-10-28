@@ -19,6 +19,26 @@
   line-height: 1.55;
   background: #f7f9ff;
 }
+#task-request {
+  min-height: 100px;
+  font: inherit;
+  line-height: 1.55;
+}
+#run-form .button {
+  margin-top: 8px;
+}
+#execution-settings label {
+  margin-top: 12px;
+}
+#external-agent-details .card {
+  margin-top: 12px;
+  padding: 12px 0;
+  box-shadow: none;
+  border: 0;
+}
+#external-handoff {
+  margin-top: 12px;
+}
 .handoff-card {
   padding: 16px;
   border-radius: 12px;

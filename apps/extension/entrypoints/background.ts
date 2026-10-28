@@ -27,8 +27,10 @@ import {
   pairLocalAgent,
   localAgentStatus,
 } from "../lib/agent-client";
+import { checkNativeAgent } from "../lib/native-agent";
 import {
   containsSecret,
+  DEFAULT_AGENT_MODELS,
   type AgentObservation,
   type AgentProviderId,
   type AgentDecision,
@@ -321,6 +323,12 @@ async function performStep(
           const observation = (await browser.tabs.sendMessage(run.tabId, {
             type: "observe-agent-page",
             step,
+            navigationScope: [
+              step.url,
+              ...(runPlan.steps[run.nextStep + 1]?.kind === "navigation"
+                ? [runPlan.steps[run.nextStep + 1]!.url]
+                : []),
+            ],
           })) as AgentObservation;
           await saveRun({ ...run, thinking: true });
           agentAbort = new AbortController();
@@ -338,7 +346,12 @@ async function performStep(
               },
               API_BASE,
               (await readAccount())?.token,
-              AbortSignal.any([agentAbort.signal, AbortSignal.timeout(28000)]),
+              AbortSignal.any([
+                agentAbort.signal,
+                AbortSignal.timeout(
+                  session.provider === "codex-local" ? 60000 : 28000,
+                ),
+              ]),
             );
           } finally {
             agentAbort = undefined;
@@ -375,7 +388,7 @@ async function performStep(
             }
           : {}),
         executionKey: `${run.id}:${run.nextStep}`,
-        ...(run.engine === "external"
+        ...(run.engine === "external" || run.engine === "agent"
           ? {
               navigationScope: [
                 step.url,
@@ -474,7 +487,7 @@ async function automaticTick(): Promise<void> {
             | SkillPlan
             | undefined;
           if (plan?.steps[current.nextStep]) {
-            await saveRun({
+            const blocked = await saveRun({
               ...applyStepOutcome(
                 current,
                 plan,
@@ -483,6 +496,7 @@ async function automaticTick(): Promise<void> {
               ),
               thinking: false,
             });
+            await syncRunLogs(blocked).catch(() => undefined);
           } else await saveRun({ ...current, pauseReason: "blocked" });
         }
         await scheduleRun(null);
@@ -855,21 +869,64 @@ export default defineBackground(() => {
         throw new Error("Only extension pages may configure an agent.");
       if (request.type === "agent-status")
         return (async () => {
-          const localStatus = localAgentStatus();
-          const account = await readAccount();
-          const hosted = account
-            ? await api<{ id: string; label: string; available: boolean }[]>(
-                "agent/providers",
-                {},
-                account,
-              ).catch(() => [])
-            : [];
+          const config = (await browser.storage.local.get("agentConfig"))
+            .agentConfig as
+            | { provider?: AgentProviderId; model?: string }
+            | undefined;
+          const provider = config?.provider ?? "codex-local";
+          const credential = (await browser.storage.session.get("agentApiKey"))
+            .agentApiKey as { provider?: string; key?: string } | undefined;
           return {
-            hosted,
-            ...(await localStatus),
+            provider,
+            model:
+              config?.model ??
+              (provider === "codex-local"
+                ? ""
+                : DEFAULT_AGENT_MODELS[provider]),
+            hasKey: credential?.provider === provider && !!credential.key,
             extensionOrigin: browser.runtime.getURL("").replace(/\/$/, ""),
           };
         })();
+      if (request.type === "agent-check-native") return checkNativeAgent();
+      if (request.type === "agent-configure")
+        return serial(async () => {
+          if ((await readRun())?.active)
+            throw new Error("Stop the current run before changing its agent.");
+          const provider = request.provider as AgentProviderId;
+          if (!["codex-local", "openai", "anthropic"].includes(provider))
+            throw new Error("Choose an agent connection.");
+          const model =
+            typeof request.model === "string" ? request.model.trim() : "";
+          if (
+            provider !== "codex-local" &&
+            !/^[a-zA-Z0-9._:-]{1,128}$/.test(model)
+          )
+            throw new Error("Enter a valid model name.");
+          if (request.apiKey !== undefined) {
+            if (
+              typeof request.apiKey !== "string" ||
+            !/^[\x21-\x7e]{16,512}$/.test(request.apiKey)
+            )
+              throw new Error("Enter a valid API key.");
+            await browser.storage.session.set({
+              agentApiKey: { provider, key: request.apiKey },
+            });
+          } else {
+            const saved = (await browser.storage.session.get("agentApiKey"))
+              .agentApiKey as { provider?: string } | undefined;
+            if (saved?.provider !== provider)
+              await browser.storage.session.remove("agentApiKey");
+          }
+          await browser.storage.local.set({ agentConfig: { provider, model } });
+          return { ok: true };
+        });
+      if (request.type === "agent-forget-key")
+        return serial(async () => {
+          if ((await readRun())?.active)
+            throw new Error("Stop the run before removing its key.");
+          await browser.storage.session.remove("agentApiKey");
+          return { ok: true };
+        });
       if (request.type === "agent-pair")
         return serial(async () => {
           if (
@@ -920,7 +977,11 @@ export default defineBackground(() => {
           const account = await readAccount();
           if (account)
             await api("auth/logout", {}, account).catch(() => undefined);
-          await browser.storage.session.remove("account");
+          await browser.storage.session.remove([
+            "account",
+            "agentApiKey",
+            "taskRequests",
+          ]);
           return true;
         });
       if (request.type === "library-list")
@@ -1099,7 +1160,11 @@ export default defineBackground(() => {
           throw new Error("Choose a skill first.");
         const plan = parseSkillPlan(request.markdown);
         const engine = request.engine === "agent" ? "agent" : "recorded";
-        const provider = request.provider as AgentProviderId;
+        const config = (await browser.storage.local.get("agentConfig"))
+          .agentConfig as { provider?: AgentProviderId } | undefined;
+        const provider = (request.provider ??
+          config?.provider ??
+          "codex-local") as AgentProviderId;
         const taskRequest =
           typeof request.taskRequest === "string"
             ? request.taskRequest.trim()
@@ -1115,22 +1180,27 @@ export default defineBackground(() => {
             throw new Error(
               "Use a task request and skill without passwords or secrets.",
             );
-          if (
-            provider === "codex-local" &&
-            !(await browser.storage.session.get("localAgentToken"))
-              .localAgentToken
-          )
-            throw new Error("Connect your local agent first.");
-          if (provider !== "codex-local") {
-            const options = await api<{ id: string; available: boolean }[]>(
-              "agent/providers",
-              {},
-              await requiredAccount(),
+          if (provider === "codex-local" && !(await checkNativeAgent()).ready)
+            throw new Error(
+              "Sign into Codex with ChatGPT, then check the subscription helper.",
             );
-            if (!options.some((item) => item.id === provider && item.available))
-              throw new Error(
-                "This hosted provider is not configured. Connect a local agent or configure the server.",
+          if (provider !== "codex-local") {
+            const credential = (
+              await browser.storage.session.get("agentApiKey")
+            ).agentApiKey as { provider?: string; key?: string } | undefined;
+            if (credential?.provider !== provider || !credential.key) {
+              const options = await api<{ id: string; available: boolean }[]>(
+                "agent/providers",
+                {},
+                await requiredAccount(),
               );
+              if (
+                !options.some((item) => item.id === provider && item.available)
+              )
+                throw new Error(
+                  "Add your API key under Agent settings before running.",
+                );
+            }
           }
         }
         const provided =
@@ -1166,21 +1236,22 @@ export default defineBackground(() => {
         });
         if (tab?.id === undefined || !tab.url || !sanitizeUrl(tab.url))
           throw new Error("Open the task website before running.");
+        if (sanitizeUrl(tab.url) !== plan.steps[0]?.url)
+          throw new Error("Open this skill's starting page before running.");
         await ensureRecorder(tab.id);
         let remoteRunId: string | undefined;
         if (typeof request.remoteSkillId === "string") {
           const account = await requiredAccount();
-          const skill = await api<{ versions: { markdown: string }[] }>(
-            "skill/get",
-            { id: request.remoteSkillId },
-            account,
-          );
+          const skill = await api<{
+            currentVersion: number;
+            versions: { markdown: string }[];
+          }>("skill/get", { id: request.remoteSkillId }, account);
           if (skill.versions[0]?.markdown !== request.markdown)
             throw new Error("Save your changes before running this skill.");
           remoteRunId = (
             await api<{ id: string }>(
               "run/start",
-              { skillId: request.remoteSkillId },
+              { skillId: request.remoteSkillId, version: skill.currentVersion },
               account,
             )
           ).id;

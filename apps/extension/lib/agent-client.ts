@@ -6,6 +6,7 @@ import {
   type AgentProviderId,
 } from "@show-me-once/shared/agent";
 import { requestApi } from "./api";
+import { nativeAgentDecision } from "./native-agent";
 
 const LOCAL = "http://127.0.0.1:4319";
 async function checkLocalAgent(token: string) {
@@ -54,31 +55,26 @@ export async function chooseAgentAction(
 ): Promise<AgentDecision> {
   let result: { decision: unknown };
   if (provider === "codex-local") {
-    const token = (await browser.storage.session.get("localAgentToken"))
-      .localAgentToken as string | undefined;
-    if (!token) throw new Error("Connect your local agent first.");
-    const response = await fetch(`${LOCAL}/decide`, {
-      method: "POST",
-      credentials: "omit",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(input),
-      signal,
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok)
-      throw new Error(
-        payload?.error || "The local agent could not choose an action.",
-      );
-    result = payload;
+    return nativeAgentDecision(input, signal);
   } else {
     if (!bearer) throw new Error("Sign in to use a hosted agent.");
+    const config = (await browser.storage.local.get("agentConfig"))
+      .agentConfig as { provider?: string; model?: string } | undefined;
+    const credential = (await browser.storage.session.get("agentApiKey"))
+      .agentApiKey as { provider?: string; key?: string } | undefined;
     result = await requestApi(
       apiBase,
       "agent/decide",
-      { provider, input },
+      {
+        provider,
+        input,
+        ...(credential?.provider === provider
+          ? { apiKey: credential.key }
+          : {}),
+        ...(config?.provider === provider && config.model
+          ? { model: config.model }
+          : {}),
+      },
       bearer,
       fetch,
       { signal, timeoutMs: 28000 },

@@ -43,7 +43,7 @@ async function command(value: unknown, signal?: AbortSignal) {
 const id = z.string().regex(/^[a-zA-Z0-9-]{1,80}$/);
 serveStdio(() => {
   const server = new McpServer(
-    { name: "show-me-once", version: "0.5.1" },
+    { name: "show-me-once", version: "0.6.0" },
     {
       instructions:
         "Show Me Once runs demonstrated browser skills through the paired Chrome extension. Begin with list_skills, then get_skill and read its full Markdown. No filesystem skill installation is required. Supply that Markdown and the user's replacement parameters to start_skill. Have the user open the starting page. Observe and act only on the current step; approval and Resume happen only in the extension. Never replay uncertain actions. The example:github-issue-triage skill is available without an account.",

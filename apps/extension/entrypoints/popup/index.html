@@ -98,86 +98,6 @@
       </section>
 
       <section id="view-run" role="tabpanel" aria-labelledby="tab-run">
-        <section class="card" id="coding-agent-connection">
-          <div class="section-heading">
-            <h2 id="connection-heading">Connect your coding agent</h2>
-          </div>
-          <p
-            id="mcp-status"
-            class="agent-connection-status"
-            role="status"
-            aria-live="polite"
-          >
-            Checking connection…
-          </p>
-          <p id="mcp-connected-help" class="hint" hidden>
-            Ask your agent to use a skill. Actions and approvals appear here.
-          </p>
-          <details id="mcp-settings">
-            <summary id="mcp-settings-summary">
-              Connect your coding agent
-            </summary>
-            <p class="hint">
-              Connect once. Your agent starts the connection automatically; no
-              helper window is needed.
-            </p>
-            <div id="mcp-pair-form">
-              <ol class="connection-steps">
-                <li><strong>Copy the extension ID</strong> below.</li>
-                <li>
-                  In the download's <strong>connector</strong> folder, open
-                  <strong>Connect with Codex</strong> and paste that ID.
-                </li>
-                <li>
-                  Restart your agent, then paste the connection code from setup
-                  here.
-                </li>
-              </ol>
-              <p class="hint">
-                Extension ID:
-                <code id="mcp-extension-id"></code>
-                <button
-                  id="mcp-copy-id"
-                  type="button"
-                  class="button quiet small"
-                >
-                  Copy ID
-                </button>
-              </p>
-              <label for="mcp-code">Connection code from setup</label>
-              <input id="mcp-code" type="password" autocomplete="off" />
-              <button id="mcp-pair" type="button" class="button secondary full">
-                Connect coding agent
-              </button>
-              <details class="connection-help">
-                <summary>Need help connecting?</summary>
-                <p class="hint">
-                  You need a local coding agent and Node.js 24. On macOS/Linux,
-                  run <code>node setup.mjs</code> in the connector folder. For
-                  another MCP client, choose manual setup and use the command
-                  and path it prints. Setup is one-time; no helper window stays
-                  open.
-                </p>
-              </details>
-            </div>
-            <button
-              id="mcp-check"
-              type="button"
-              class="button secondary full"
-              hidden
-            >
-              Check connection
-            </button>
-            <button
-              id="mcp-disconnect"
-              type="button"
-              class="button quiet full"
-              hidden
-            >
-              Forget connection
-            </button>
-          </details>
-        </section>
         <div id="library-controls" class="library-picker">
           <div class="section-heading">
             <label for="library-skills">Your skills</label
@@ -204,21 +124,21 @@
         </div>
         <div id="run-empty" class="empty-state">
           <span class="empty-icon" aria-hidden="true">↗</span>
-          <h2>Triage GitHub issues</h2>
+          <h2>Teach a browser task once</h2>
           <p>
-            Filter issues by repository, topic, state and label. Sort by recent
-            activity, then open a matching issue.
+            Record a task, save its skill, then ask the agent to run it with new
+            inputs.
           </p>
-          <button id="try-example" type="button" class="button primary full">
-            Open GitHub & copy triage request
+          <button id="empty-record" type="button" class="button primary full">
+            Record a new task
+          </button>
+          <button id="try-example" type="button" class="button secondary full">
+            Try GitHub issue triage
           </button>
           <p class="hint">
-            12 steps · 4 reusable inputs · public issues only. Paste the copied
-            request into your agent.
+            Try an example with filters, sorting, and opening a public issue.
           </p>
-          <button id="empty-record" type="button" class="button secondary full">
-            Record a new task</button
-          ><button id="sign-in-prompt" type="button" class="button quiet full">
+          <button id="sign-in-prompt" type="button" class="button quiet full">
             Sign in for saving & sharing
           </button>
         </div>
@@ -230,32 +150,42 @@
           </div>
           <p id="run-summary" class="alert success" role="status" hidden></p>
           <div id="run-setup" class="handoff-card">
-            <h3>Use this skill with your agent</h3>
-            <p id="handoff-help" class="hint"></p>
-            <p id="starting-page" class="hint"></p>
-            <label for="agent-request">Request to paste into your agent</label>
-            <textarea id="agent-request" rows="3" readonly></textarea>
-            <button id="copy-request" type="button" class="button primary full">
-              Copy agent request
-            </button>
-            <button
-              id="open-start-page"
-              type="button"
-              class="button secondary full"
-              hidden
-            >
-              Open starting page ↗
-            </button>
-            <p
-              id="handoff-notice"
-              class="save-feedback"
-              role="status"
-              aria-live="polite"
-            ></p>
-            <p class="hint">
-              Your agent reads the skill directly. It will ask for new inputs
-              and run the steps here.
-            </p>
+            <form id="run-form">
+              <label for="task-request">What should this skill do?</label>
+              <textarea
+                id="task-request"
+                rows="3"
+                maxlength="2000"
+                placeholder="Describe the task with your new inputs…"
+                required
+              ></textarea>
+              <p id="run-starting-page" class="hint"></p>
+              <button
+                id="open-task-page"
+                type="button"
+                class="button secondary full"
+                hidden
+              >
+                Open starting page ↗
+              </button>
+              <p
+                id="execution-status"
+                class="hint"
+                role="status"
+                aria-live="polite"
+              >
+                Checking agent settings…
+              </p>
+              <button id="run-start" type="submit" class="button primary full">
+                Run
+              </button>
+              <p id="run-error" class="save-feedback error" role="alert"></p>
+              <p class="hint">
+                The agent runs automatically. Review protected actions here, or
+                stop at any time. Your skill is saved to the library before
+                running.
+              </p>
+            </form>
           </div>
           <div id="run-controls" class="run-card" hidden>
             <div class="section-heading">
@@ -333,6 +263,214 @@
             <div id="run-editor-slot"></div>
           </details>
         </section>
+        <details id="execution-settings" class="card">
+          <summary>Agent settings</summary>
+          <label for="agent-provider">Run using</label>
+          <select id="agent-provider">
+            <option value="codex-local">
+              Codex subscription on this computer
+            </option>
+            <option value="openai">My OpenAI API key</option>
+            <option value="anthropic">My Anthropic API key</option>
+          </select>
+          <div id="subscription-settings">
+            <p class="hint">
+              One-time setup: install the subscription helper from the download.
+              Chrome starts it automatically when you click Run. You need
+              Node.js 24 and Codex signed in with ChatGPT.
+            </p>
+            <ol class="connection-steps">
+              <li>
+                Copy this extension ID:
+                <code id="subscription-extension-id"></code>
+                <button
+                  id="subscription-copy-id"
+                  type="button"
+                  class="button quiet small"
+                >
+                  Copy ID
+                </button>
+              </li>
+              <li>
+                Open
+                <strong
+                  >subscription-helper/Install subscription helper.cmd</strong
+                >
+                and paste the ID.
+              </li>
+              <li>
+                Return here and choose <strong>Check subscription</strong>.
+                Close the setup window.
+              </li>
+            </ol>
+            <p class="hint">
+              On macOS/Linux run <code>node setup.mjs</code> in that folder.
+              This helper currently supports Codex subscriptions; other
+              providers use API keys.
+            </p>
+            <button
+              id="check-subscription"
+              type="button"
+              class="button secondary full"
+            >
+              Check subscription
+            </button>
+            <p id="subscription-status" role="status" class="save-feedback"></p>
+          </div>
+          <div id="api-settings" hidden>
+            <label for="agent-api-key">Your API key</label>
+            <input
+              id="agent-api-key"
+              type="password"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <label for="agent-model">Model</label>
+            <input
+              id="agent-model"
+              type="text"
+              maxlength="128"
+              spellcheck="false"
+            />
+            <p class="hint">
+              Your key stays in this Chrome session and is sent securely through
+              the app backend to your selected provider. It is never saved in
+              skills, run logs, or the database. Add it again after restarting
+              Chrome.
+            </p>
+            <button id="forget-api-key" type="button" class="button quiet full">
+              Remove saved session key
+            </button>
+          </div>
+          <button
+            id="save-agent-settings"
+            type="button"
+            class="button secondary full"
+          >
+            Save agent settings
+          </button>
+          <p id="agent-settings-notice" role="status" class="save-feedback"></p>
+        </details>
+        <details id="external-agent-details" class="card">
+          <summary>External coding agent (optional)</summary>
+          <p class="hint">
+            You can also let an existing coding-agent chat read your skills and
+            control this browser. The Run button above works independently of
+            this integration.
+          </p>
+          <section class="card" id="coding-agent-connection">
+            <div class="section-heading">
+              <h2 id="connection-heading">Connect your coding agent</h2>
+            </div>
+            <p
+              id="mcp-status"
+              class="agent-connection-status"
+              role="status"
+              aria-live="polite"
+            >
+              Checking connection…
+            </p>
+            <p id="mcp-connected-help" class="hint" hidden>
+              Ask your agent to use a skill. Actions and approvals appear here.
+            </p>
+            <details id="mcp-settings">
+              <summary id="mcp-settings-summary">
+                Connect your coding agent
+              </summary>
+              <p class="hint">
+                Connect once. Your agent starts the connection automatically; no
+                helper window is needed.
+              </p>
+              <div id="mcp-pair-form">
+                <ol class="connection-steps">
+                  <li><strong>Copy the extension ID</strong> below.</li>
+                  <li>
+                    In the download's <strong>connector</strong> folder, open
+                    <strong>Connect with Codex</strong> and paste that ID.
+                  </li>
+                  <li>
+                    Restart your agent, then paste the connection code from
+                    setup here.
+                  </li>
+                </ol>
+                <p class="hint">
+                  Extension ID:
+                  <code id="mcp-extension-id"></code>
+                  <button
+                    id="mcp-copy-id"
+                    type="button"
+                    class="button quiet small"
+                  >
+                    Copy ID
+                  </button>
+                </p>
+                <label for="mcp-code">Connection code from setup</label>
+                <input id="mcp-code" type="password" autocomplete="off" />
+                <button
+                  id="mcp-pair"
+                  type="button"
+                  class="button secondary full"
+                >
+                  Connect coding agent
+                </button>
+                <details class="connection-help">
+                  <summary>Need help connecting?</summary>
+                  <p class="hint">
+                    You need a local coding agent and Node.js 24. On
+                    macOS/Linux, run <code>node setup.mjs</code> in the
+                    connector folder. For another MCP client, choose manual
+                    setup and use the command and path it prints. Setup is
+                    one-time; no helper window stays open.
+                  </p>
+                </details>
+              </div>
+              <button
+                id="mcp-check"
+                type="button"
+                class="button secondary full"
+                hidden
+              >
+                Check connection
+              </button>
+              <button
+                id="mcp-disconnect"
+                type="button"
+                class="button quiet full"
+                hidden
+              >
+                Forget connection
+              </button>
+            </details>
+          </section>
+          <div id="external-handoff" class="handoff-card">
+            <h3>Use this skill with your agent</h3>
+            <p id="handoff-help" class="hint"></p>
+            <p id="starting-page" class="hint"></p>
+            <label for="agent-request">Request to paste into your agent</label>
+            <textarea id="agent-request" rows="3" readonly></textarea>
+            <button id="copy-request" type="button" class="button primary full">
+              Copy agent request
+            </button>
+            <button
+              id="open-start-page"
+              type="button"
+              class="button secondary full"
+              hidden
+            >
+              Open starting page ↗
+            </button>
+            <p
+              id="handoff-notice"
+              class="save-feedback"
+              role="status"
+              aria-live="polite"
+            ></p>
+            <p class="hint">
+              Your agent reads the skill directly. It will ask for new inputs
+              and run the steps here.
+            </p>
+          </div>
+        </details>
       </section>
 
       <section
@@ -411,7 +549,7 @@
             >
               Save to library</button
             ><button id="try-skill" type="button" class="button primary">
-              Use with agent
+              Run this skill
             </button>
           </div>
           <p

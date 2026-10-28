@@ -29,10 +29,10 @@ export type CatalogDraft = {
   dirty?: boolean;
 };
 export function localSkillId(draft: CatalogDraft) {
-  return draft.sourceRecordingId === EXAMPLE_ID
-    ? EXAMPLE_ID
-    : draft.remoteSkillId
-      ? `library:${draft.remoteSkillId}`
+  return draft.remoteSkillId
+    ? `library:${draft.remoteSkillId}`
+    : draft.sourceRecordingId === EXAMPLE_ID
+      ? EXAMPLE_ID
       : `local:${draft.sourceRecordingId}`;
 }
 export function keepLocalDraft(saved: CatalogDraft[], draft?: CatalogDraft) {

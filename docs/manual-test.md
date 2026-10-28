@@ -1,14 +1,15 @@
-# Current manual test — 0.5.1
+# Manual acceptance — 0.6.0
 
-Load the extension and follow its inline connection steps. No separate HTML guide is required. The full setup, two-input test, Stop test and recovery checks are in [the agent-led guide](mcp.md).
+1. Reload the existing extension and confirm 0.6.0. External coding agent must remain optional and collapsed. No separate HTML guide.
+2. Under Agent settings either save a personal OpenAI/Anthropic key (session only), or install subscription-helper/Install subscription helper.cmd once for the current extension ID and choose Check subscription. No terminal or external agent chat should remain necessary.
+3. Sign into the library. Choose Try GitHub issue triage. In the extension type: Find open issues in microsoft/vscode about terminal with label bug. Sort by recently updated and open the first matching issue. Click Run.
+4. Check all four fields. Before search, verify an action-specific Submit search preview identifying the Search button and consequence. Approve once. Remaining steps must continue automatically without a chat message or Next button.
+5. Verify Recently updated sorting, an actual matching issue in the requested repository, Completed all 12 steps, and generic Run activity. Missing results must stop. Inspect backend history in the web library; input values must be absent.
+6. Return to Advanced search; reuse the same skill with microsoft/TypeScript, inference, open and bug. Do not record again.
+7. Pause during a model decision, then Resume. Stop another run before approval. No later action may execute after Stop; an already-dispatched action may finish.
+8. Record a fresh task once, Stop & create skill, edit all fields continuously, and choose Run this skill. Save explicitly or let Run save it. Run twice with new inputs; local recordings and the built-in example are distinct tests.
+9. Save a new version; share through the web library with another registered account. Recipient can run/read but cannot edit the owner's skill. Check its own backend run history.
+10. Close/reopen the popup mid-run. Restart the worker with an uncertain outcome: pause safely. Restart Chrome: helper should still be installed, while API keys and run inputs require re-entry.
+11. Optional: expand External coding agent, reconnect the existing MCP integration and confirm its discovery/approval/Stop path still works. Main Run must work with that integration disconnected.
 
-1. Verify version 0.5.1 and connect your coding agent once. No library account or owner API key is needed for local tests.
-2. Try GitHub issue triage with microsoft/vscode + terminal + open + bug, then microsoft/TypeScript + inference + open + bug, using the same agent conversation and skill. Verify all four fields, search approval, Recently updated sorting, the opened issue's repository/topic, final status, and absence of manual Next buttons. The full workflow has 12 steps. A missing result must stop rather than silently selecting a navigation link.
-3. Record a fresh task, edit its name/description/instructions continuously, choose Use with agent and run with two different inputs. The agent must discover the skill directly, without an exported file installation.
-4. Check Pause/Resume, Stop before approval, popup closure, connector restart and worker recovery. No uncertain action may repeat automatically.
-5. Sign into the library, save a version, edit/save another version, and share with a second registered account. Check owner-only editing, recipient access and local activity. MCP activity is not yet automatically associated with backend library history.
-6. Sign out; cloud skills must disappear from agent discovery. Local skills and the example should remain usable.
-
-Save actual URLs, tool results and visible outcomes. Automated document tests use a simulated popup and automated controller tests simulate browser execution; neither replaces the real model/Chrome test. No browser-control tool was used for the current change at the user's request.
-
-The historical replay and extension-led model results remain in [verification](verification.md); they do not establish current MCP browser acceptance. The candidate must write their own personal reflection and record the demo video.
+Record actual URLs, tool results and visible outcomes. Automated tests cover controlled documents and simulated Chrome services; they do not establish live Chrome or model performance. No browser-control tool is used under the current user constraint. The candidate writes their own short report and records the demo video.

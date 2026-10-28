@@ -176,10 +176,18 @@ export function hostedProvider(
           },
           body: JSON.stringify(body),
         },
-      );
+      ).catch(() => {
+        throw new Error(
+          signal?.aborted
+            ? "Agent request cancelled."
+            : `${id} provider could not be reached. Check your connection and key.`,
+        );
+      });
       if (!response.ok)
         throw new Error(`${id} agent request failed (${response.status}).`);
-      const payload = (await response.json()) as {
+      const payload = (await response.json().catch(() => {
+        throw new Error(`${id} returned an invalid response format.`);
+      })) as {
         output?: { type: string; name?: string; arguments?: string }[];
         content?: { type: string; name?: string; input?: unknown }[];
       };

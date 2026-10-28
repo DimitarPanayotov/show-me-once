@@ -1,14 +1,23 @@
 {
   "name": "@show-me-once/agent",
-  "version": "0.3.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/providers.ts", "./codex": "./src/codex.ts" },
+  "exports": {
+    ".": "./src/providers.ts",
+    "./codex": "./src/codex.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test src/*.test.ts",
     "bridge": "node --experimental-strip-types src/bridge.ts"
   },
-  "dependencies": { "@show-me-once/shared": "workspace:*" },
-  "devDependencies": { "typescript": "5.9.3", "@types/node": "^24.0.0" }
+  "dependencies": {
+    "@show-me-once/shared": "workspace:*",
+    "cross-spawn": "7.0.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "5.9.3"
+  }
 }
