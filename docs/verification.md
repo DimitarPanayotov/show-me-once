@@ -1,5 +1,13 @@
 # Manual verification
 
+## MCP target-tab selection — extension 0.7.2
+
+A live retry reported START_PAGE_REQUIRED while the candidate had GitHub Advanced Search open. MCP start previously depended on the service worker's currentWindow lookup. It now uses lastFocusedWindow, the Chrome-documented service-worker pattern, and can find one exact public starting page for the built-in GitHub plan across normal Chrome windows. It does not infer a page from a matching origin/path depth or choose among duplicate starting pages.
+
+The optional Use this tab for the agent button binds the popup's tab explicitly. Only extension pages may set it, only normal non-incognito websites are accepted, and the choice cannot change during a run/recording. Each start revalidates the chosen tab; running actions keep their original tab binding. Diagnostics exclude unrelated origins and raw paths/query values.
+
+All 107 automated tests pass, including actual-worker starts with a different window focused, explicit tab binding, ambiguity/loading/closed-tab rejection, same-depth wrong-page rejection, privacy checks and the popup control. Workspace type checks and the extension/reviewer build pass. Live Chrome acceptance requires the candidate's retry. The MCP package remains 0.7.0 and needs no registration or backend change.
+
 ## MCP start diagnostics — extension 0.7.1
 
 The transport previously replaced every thrown start error with a generic rejection, hiding whether another task was active, an edited cloud draft needed saving, the starting page was wrong or Chrome denied page access. Known application errors now produce fixed, actionable messages in both MCP results and the extension. Unexpected exception text remains private. A persisted run whose start response fails returns its ID as an unknown outcome rather than encouraging a duplicate start.

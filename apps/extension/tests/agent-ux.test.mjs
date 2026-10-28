@@ -139,6 +139,7 @@ async function fixture({
   const browser = {
     storage,
     tabs: {
+      query: async () => [{ id: 17, url: 'https://github.com/search/advanced' }],
       create: async (value) => {
         tabs.push(value);
         return {};
@@ -153,6 +154,10 @@ async function fixture({
         if (message.type === "mcp-status")
           return structuredClone(mcpState);
         if (message.type === 'mcp-begin') return structuredClone(mcpState);
+        if (message.type === 'mcp-select-tab') {
+          assert.equal(message.tabId, 17); mcpState.targetHost = 'github.com';
+          return { targetHost: 'github.com' };
+        }
         if (message.type === 'mcp-approve') {
           assert.equal(message.pairingId, mcpState.pending.id);
           mcpState.connected = true; mcpState.paired = true; delete mcpState.pending;
@@ -370,6 +375,17 @@ test('MCP picker provides agent-specific setup and a code approval without expos
     assert.equal(f.element('mcp-approval').hidden, true);
     assert.equal(f.element('mcp-disconnect').hidden, false);
     assert.equal(f.messages.some(m => m.type === 'start-run' || m.type === 'agent-configure'), false);
+  } finally { await f.close(); }
+});
+
+test('MCP can explicitly bind the tab hosting the popup and shows its host without copying a URL', async () => {
+  const f = await fixture();
+  try {
+    assert.equal(f.element('mcp-target-controls').hidden, false);
+    f.element('mcp-use-tab').click();
+    await until(() => f.element('mcp-target-status').textContent.includes('github.com'));
+    const request = f.messages.find(m => m.type === 'mcp-select-tab');
+    assert.deepEqual(structuredClone(request), { type: 'mcp-select-tab', tabId: 17 });
   } finally { await f.close(); }
 });
 

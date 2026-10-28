@@ -1,4 +1,5 @@
 import type { ExternalResult } from '@show-me-once/shared/mcp';
+import { McpTargetError } from './mcp-target.ts';
 
 // Only known application messages may cross the MCP boundary. Browser/library
 // exceptions can contain URLs, page text or input values and stay private.
@@ -18,7 +19,9 @@ const reasons = new Map<string, [string, string]>([
   ['The skill header is invalid. Read the original skill again.', ['INVALID_SKILL', 'The skill header is invalid. Ask the agent to read the original skill again before starting.']],
 ]);
 
-export function externalCommandFailure(cause: unknown, operation: string): ExternalResult & { errorCode: string } {
+export function externalCommandFailure(cause: unknown, operation: string): ExternalResult & { errorCode: string; expectedCheckpoint?: string; actualCheckpoint?: string | null } {
+  if (cause instanceof McpTargetError)
+    return { status: 'blocked', errorCode: cause.errorCode, message: `Run not started: ${cause.message}`, expectedCheckpoint: cause.expected, actualCheckpoint: cause.actual ?? null };
   const message = cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string' ? cause.message : '';
   const known = reasons.get(message);
   const [errorCode, explanation] = known ?? ['COMMAND_FAILED', operation === 'start'

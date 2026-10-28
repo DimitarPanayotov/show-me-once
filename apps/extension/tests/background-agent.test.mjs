@@ -75,7 +75,7 @@ async function until(check) {
   assert.fail("Worker did not reach the expected state.");
 }
 
-async function fixture({ holdModel = false, provider = "openai", signedIn = true, mcp = false, initialTabUrl = 'https://example.com', draft, failMcpSession = false } = {}) {
+async function fixture({ holdModel = false, provider = "openai", signedIn = true, mcp = false, initialTabUrl = 'https://example.com', draft, failMcpSession = false, focusedUrl } = {}) {
   const mcpBridgeId = randomUUID(), mcpConnectionId = randomUUID(), mcpControllerId = randomUUID();
   const mcpReplies = new Map();
   let mcpSocket;
@@ -213,7 +213,9 @@ async function fixture({ holdModel = false, provider = "openai", signedIn = true
       },
     },
     tabs: {
-      query: async () => [{ id: 1, url: tabUrl }],
+      query: async (query) => query.windowType === 'normal'
+        ? [{ id: 1, url: tabUrl }, ...(focusedUrl ? [{ id: 2, url: focusedUrl }] : [])]
+        : [{ id: focusedUrl ? 2 : 1, url: focusedUrl ?? tabUrl }],
       get: async () => ({ id: 1, url: tabUrl, status: "complete" }),
       onUpdated: {
         addListener: (fn) => {
@@ -406,6 +408,23 @@ test('signed-out MCP can start the built-in GitHub task on its starting page wit
   } finally { await f.close(); }
 });
 
+test('MCP starts the exact GitHub example in another Chrome window and binds the chosen tab for the run', async () => {
+  for (const explicit of [false, true]) {
+  const f = await fixture({ signedIn: false, mcp: true, initialTabUrl: 'https://github.com/search/advanced', focusedUrl: 'https://github.com/owner/repo' });
+  try {
+    if (explicit) {
+      await f.post({ type: 'mcp-select-tab', tabId: 1 });
+      assert.equal(f.session.mcpTargetTab, 1);
+    }
+    const skill = await f.callMcp({ kind: 'get_skill', skillId: 'example:github-issue-triage' });
+    const result = await f.callMcp({ kind: 'start', markdown: skill.skill.markdown, parameters: { repository: 'microsoft/vscode', topic: 'terminal', state: 'open', label: 'bug' } });
+    assert.equal(result.status, 'ready'); assert.equal(f.local.runState.tabId, 1);
+    if (explicit) assert.equal((await f.post({ type: 'mcp-status' })).targetHost, 'github.com');
+    await assert.rejects(f.post({ type: 'mcp-select-tab', tabId: 2 }), /Stop the current/);
+  } finally { await f.close(); }
+  }
+});
+
 test('a session-write failure after persisting a run reports its real ID as uncertain without exposing exception text', async () => {
   const f = await fixture({ signedIn: false, mcp: true, initialTabUrl: 'https://github.com/search/advanced', failMcpSession: true });
   try {
@@ -543,7 +562,7 @@ test("Stop cancels a pending model decision and prevents browser dispatch", asyn
 test("web pages cannot change execution credentials, and keys survive only the trusted session", async () => {
   const f = await fixture();
   try {
-    for (const type of ['mcp-begin', 'mcp-approve', 'mcp-disconnect'])
+    for (const type of ['mcp-begin', 'mcp-approve', 'mcp-disconnect', 'mcp-select-tab'])
       assert.throws(() => f.untrusted({ type, pairingId: 'fake' }), /Only extension pages/);
     assert.throws(
       () =>

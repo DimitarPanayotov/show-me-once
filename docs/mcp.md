@@ -26,6 +26,14 @@ The install links and commands use a self-contained versioned package at the app
 
 **Not now** rejects the pending connection. **Forget connection** clears local trust and, when connected, revokes the remembered browser credential on the connector. Neither option changes the extension's primary Run settings. Connection approval expires after two minutes. It can only be granted in an extension page, not through an agent tool or website.
 
+## Choosing the task tab (extension 0.7.2)
+
+The extension uses the last-focused Chrome tab rather than the background worker's current-window context. For the built-in GitHub example, if that tab is different, it can locate a single exact GitHub Advanced Search page in another normal Chrome window. It does not substitute a repository page with the same URL depth or guess among multiple matching pages.
+
+You can explicitly bind a tab: select the task page, open the extension there, expand External coding agent and click **Use this tab for the agent**. The extension confirms its host. This binding is session-only and is revalidated for the skill's starting checkpoint before each new run. A closed tab or a tab on another page requires a new selection. Changing tabs during an active run/recording is rejected. Existing runs remain bound to their original tab.
+
+Recorded skills retain origin/path depth for privacy, so they do not automatically select another tab from that URL shape. Use the explicit button when window focus is ambiguous. Diagnostics expose only the expected checkpoint and, when on the same origin, the sanitized observed checkpoint; unrelated tab origins and raw URLs remain private.
+
 ## Everyday use
 
 Open a recorded/saved skill and copy its agent request, or ask the agent to discover a skill. It calls list_skills/get_skill, reads the instructions and starts a run with new non-secret parameters. The extension shows actions and meaningful protected-action approvals. Pause, Resume and Stop remain in the extension. Approval and reconnection never automatically repeat an uncertain action.

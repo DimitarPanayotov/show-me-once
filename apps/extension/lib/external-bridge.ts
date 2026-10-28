@@ -141,6 +141,7 @@ export class ExternalBridgeClient {
     }
     await this.browser.storage.local.remove('mcpEnabled');
     await this.browser.storage.session.remove('mcpLastError');
+    await this.browser.storage.session.remove('mcpTargetTab');
     this.pending = undefined;
     this.connectionError = undefined;
     await this.browser.storage.local.remove("mcpPair");

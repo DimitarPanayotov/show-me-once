@@ -503,10 +503,13 @@ async function renderAccount() {
 async function refreshMcp() {
   const status = (await browser.runtime.sendMessage({
     type: "mcp-status",
-  })) as { paired: boolean; connected: boolean; enabled?: boolean; pending?: { id: string; code: string }; error?: string; runError?: string };
+  })) as { paired: boolean; connected: boolean; enabled?: boolean; pending?: { id: string; code: string }; error?: string; runError?: string; targetHost?: string };
   mcpConnected = status.connected;
   mcpPendingId = status.pending?.id;
   element('mcp-run-error').textContent = status.runError ?? '';
+  element('mcp-target-controls').hidden = !status.connected;
+  element('mcp-target-status').textContent = status.targetHost ? `Agent tab selected: ${status.targetHost}` : 'Open this popup on the task page to choose its tab explicitly.';
+  element<HTMLButtonElement>('mcp-use-tab').disabled = !!activeRun?.active || !!currentRecording?.active;
   const feedback = element("mcp-status");
   feedback.dataset.state = status.connected
     ? "connected"
@@ -1075,6 +1078,13 @@ element("mcp-disconnect").addEventListener("click", () => {
 });
 element('mcp-reject').addEventListener('click', () => {
   void browser.runtime.sendMessage({ type: 'mcp-disconnect' }).then(refreshMcp).catch(report);
+});
+element('mcp-use-tab').addEventListener('click', () => {
+  void (async () => {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    await browser.runtime.sendMessage({ type: 'mcp-select-tab', tabId: tab?.id });
+    await refreshMcp();
+  })().catch(cause => { element('mcp-run-error').textContent = cause instanceof Error ? cause.message : 'Could not select this tab.'; });
 });
 element('mcp-agent').addEventListener('change', () => {
   renderMcpInstallation();

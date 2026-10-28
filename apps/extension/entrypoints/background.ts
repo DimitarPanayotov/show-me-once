@@ -12,10 +12,13 @@ import {
 import { requestApi } from "../lib/api";
 import { ExternalBridgeClient } from "../lib/external-bridge";
 import { externalCommandFailure } from '../lib/external-errors';
+import { chooseMcpStartTab } from '../lib/mcp-target';
 import {
   SkillCatalog,
   keepLocalDraft,
   type CatalogDraft,
+  exampleDraft,
+  EXAMPLE_START_URL,
 } from "../lib/skill-catalog";
 import type { ExternalResult } from "@show-me-once/shared/mcp";
 import {
@@ -590,18 +593,17 @@ export default defineBackground(() => {
       if ((await read())?.active || (await readRun())?.active)
         throw new Error("Stop the current recording or run first.");
       const plan = parseSkillPlan(markdown);
-      const [tab] = await browser.tabs.query({
+      const [focused] = await browser.tabs.query({
         active: true,
-        currentWindow: true,
+        lastFocusedWindow: true,
       });
-      if (
-        tab?.id === undefined ||
-        !tab.url ||
-        sanitizeUrl(tab.url) !== plan.steps[0]?.url
-      )
-        throw new Error(
-          "Open the skill starting page in the active Chrome tab.",
-        );
+      const targetId = (await browser.storage.session.get('mcpTargetTab')).mcpTargetTab as number | undefined;
+      const exactStart = JSON.stringify(plan) === JSON.stringify(parseSkillPlan(exampleDraft.markdown)) ? EXAMPLE_START_URL : undefined;
+      const tab = chooseMcpStartTab({ expected: plan.steps[0]!.url, exactStart, focused,
+        pinnedRequested: typeof targetId === 'number',
+        pinned: typeof targetId === 'number' ? await browser.tabs.get(targetId).catch(() => undefined) : undefined,
+        candidates: exactStart && targetId === undefined ? await browser.tabs.query({ windowType: 'normal', url: `${exactStart}*` }) : [],
+      });
       try { await ensureRecorder(tab.id); }
       catch { throw new Error('Could not connect to this page. Check its extension access.'); }
       const id = crypto.randomUUID();
@@ -837,8 +839,21 @@ export default defineBackground(() => {
         throw new Error("Only extension pages may pair an MCP bridge.");
       if (request.type === "mcp-status") {
         void mcp.connect().catch(() => {});
-        return mcp.status();
+        return (async () => {
+          const targetId = (await browser.storage.session.get('mcpTargetTab')).mcpTargetTab;
+          const target = typeof targetId === 'number' ? await browser.tabs.get(targetId).catch(() => undefined) : undefined;
+          return { ...await mcp.status(), ...(target?.url && sanitizeUrl(target.url) ? { targetHost: new URL(target.url).hostname } : {}) };
+        })();
       }
+      if (request.type === 'mcp-select-tab') return serial(async () => {
+        if ((await readRun())?.active || (await read())?.active) throw new Error('Stop the current run or recording before changing its tab.');
+        if (typeof request.tabId !== 'number' || !Number.isInteger(request.tabId)) throw new Error('Open this popup on the task website.');
+        const target = await browser.tabs.get(request.tabId);
+        if (!target.url || target.incognito || !sanitizeUrl(target.url)) throw new Error('Choose a normal website tab.');
+        await browser.storage.session.set({ mcpTargetTab: target.id });
+        await browser.storage.session.remove('mcpLastError');
+        return { targetHost: new URL(target.url).hostname };
+      });
       if (request.type === "mcp-skills") return catalog.list();
       if (request.type === "mcp-open-skill")
         return serial(async () => {
