@@ -1,15 +1,54 @@
-# Demo video outline (under 5 minutes)
+# Demo video (under 5 minutes)
 
-Use public inputs and a disposable account. Start and pair the local Codex helper before recording the video. State that this demo uses the existing Codex subscription through an extra local helper. Keep the result URL readable and hide passwords and pairing codes.
+Show one complete GitHub workflow: record it, save its skill, then let the extension's agent repeat it with new inputs. Aim for an edited length of 4:30–4:50.
 
-| Time | Show |
+## Before recording
+
+1. Reload extension 0.9.1, pin its icon and maximize Chrome.
+2. Sign in and check that the Codex subscription shows Ready under Agent settings. Install the helper beforehand. Explain its one-time setup in the introduction.
+3. Open GitHub Advanced search at https://github.com/search/advanced with empty fields. Open the web library in another tab.
+4. Have a second library account signed in in another browser window for the sharing check. Keep passwords, API keys and setup codes off camera.
+5. Rehearse the whole flow once. Check that both replacement inputs return issues. Human-verification challenges must be completed by the user.
+
+## Start the screen recording
+
+Use Windows Snipping Tool: press Win + Shift + R, select the Chrome area, enable the microphone and click Start. Include the address bar and the extension popup in the recording area. Make a ten-second test and play it back before the full take.
+
+Microsoft instructions: [screen recording](https://support.microsoft.com/en-gb/windows/apps/use-snipping-tool-to-capture-screenshots?nochrome=true), [microphone recording](https://www.microsoft.com/en-us/windows/learning-center/how-to-use-snipping-tool-on-windows-screenshots-shortcuts-and-screen-recordings).
+
+## What to show
+
+These are target timings for the edited video. Record complete actions first; trim idle loading or label any sped-up waiting afterward.
+
+| Time | Show and explain |
 | --- | --- |
-| 0:00–0:25 | The Run/Record workspace and web library. Explain teaching a browser task from one demonstration. |
-| 0:25–1:10 | Record a Wikipedia search. Stop & create skill, show the hidden values and parameterized instructions, then save with inline confirmation. |
-| 1:10–2:00 | Ask the connected AI agent to search for two different topics, leaving optional parameters empty. Show the provider label, decision progress, confirmation pause, and actual final articles. |
-| 2:00–3:00 | Show the GitHub agent runs for actions/docs and Python documentation results for asyncio/pathlib. Open Library is an additional pending example; show its blocked state honestly if mentioned. |
-| 3:00–4:00 | Edit a version, share with a second account, and load the shared skill. |
-| 4:00–4:35 | Stop a run while the agent is deciding, and inspect per-step history without parameter values. |
-| 4:35–4:55 | Show the architecture note and repository. |
+| 0:00–0:15 | Introduce the idea: teach a browser task once and reuse it with new inputs. Mention that this demonstration uses the installed helper and your Codex subscription; users can also supply an API key. |
+| 0:15–1:15 | Click Record → Start recording. In GitHub Advanced search, enter topic terminal, repository microsoft/vscode, state open and label bug. Search, sort by Recently updated and open the first issue. Return to the extension and click Stop & create skill. |
+| 1:15–1:40 | Name it github-issue-triage-demo and give it a clear description. Show the generated parameters, page checkpoints and executable plan briefly, then Save to library. Explain that typed values were omitted from the recording. |
+| 1:40–3:15 | Return to Advanced search. Select the skill, enter the first request below and click Run. Show automatic field filling, the exact search approval, automatic continuation and the final issue. Open the extension to show completion. |
+| 3:15–3:40 | Run that same skill with the second request below. Keep the new request, approval and completed result visible in the edited clip. Trim the waiting to fit this slot. |
+| 3:40–4:15 | In the web library, open the saved skill, save an edited description as a new version and share it with the second account. Switch to that account and open the shared skill. |
+| 4:15–4:35 | Start another run and press Stop before approving its search. Show the stopped status and the web library's step history for the extension-led runs. |
+| 4:35–4:50 | Show the live app, repository and architecture note. Remind reviewers where to download the extension and choose their model access. |
 
-Any personal reflection required for a submission should be written by the candidate in their own words.
+First replacement request:
+
+```text
+Find open issues in microsoft/vscode about debugger with label bug.
+Sort by recently updated and open the first matching issue.
+```
+
+Second replacement request:
+
+```text
+Find open issues in microsoft/TypeScript about inference with label bug.
+Sort by recently updated and open the first matching issue.
+```
+
+The newly recorded skill is the subject of this video. Use the built-in example separately if you want an additional demonstration. A brief MCP clip is optional if time remains.
+
+## Finish
+
+Stop the recording and save the video. Use Edit in Clipchamp if you need to trim waiting. Keep the approvals and actual outcomes understandable, and label sped-up sections. Play the exported video once to check readable text, microphone audio and a duration below five minutes. Test the final video link in a signed-out window before submitting it.
+
+Keep evidence for the three-site/two-input requirement separately; a short video does not replace those checks. Only show successful runs you have actually completed. The personal reflection remains the candidate's own writing.
