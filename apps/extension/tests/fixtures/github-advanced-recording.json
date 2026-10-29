@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "parameters": [
+    {
+      "name": "text_1",
+      "type": "string"
+    },
+    {
+      "name": "text_2",
+      "type": "string"
+    },
+    {
+      "name": "text_3",
+      "type": "string"
+    },
+    {
+      "name": "select_4",
+      "type": "string"
+    },
+    {
+      "name": "text_5",
+      "type": "string"
+    }
+  ],
+  "steps": [
+    {
+      "kind": "navigation",
+      "url": "https://github.com/…/…"
+    },
+    {
+      "kind": "click",
+      "url": "https://github.com/…/…",
+      "selector": "form:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > label:nth-of-type(1) > input:nth-of-type(1)"
+    },
+    {
+      "kind": "input",
+      "url": "https://github.com/…/…",
+      "selector": "form:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > label:nth-of-type(1) > input:nth-of-type(1)",
+      "inputKind": "text",
+      "parameter": "text_1"
+    },
+    {
+      "kind": "click",
+      "url": "https://github.com/…/…",
+      "selector": "main:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(2) > fieldset:nth-of-type(1) > dl:nth-of-type(1) > dd:nth-of-type(1) > input:nth-of-type(1)"
+    },
+    {
+      "kind": "input",
+      "url": "https://github.com/…/…",
+      "selector": "main:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(2) > fieldset:nth-of-type(1) > dl:nth-of-type(1) > dd:nth-of-type(1) > input:nth-of-type(1)",
+      "inputKind": "text",
+      "parameter": "text_2"
+    },
+    {
+      "kind": "click",
+      "url": "https://github.com/…/…",
+      "selector": "main:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(2) > fieldset:nth-of-type(1) > dl:nth-of-type(2) > dd:nth-of-type(1) > input:nth-of-type(1)"
+    },
+    {
+      "kind": "input",
+      "url": "https://github.com/…/…",
+      "selector": "main:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(2) > fieldset:nth-of-type(1) > dl:nth-of-type(2) > dd:nth-of-type(1) > input:nth-of-type(1)",
+      "inputKind": "text",
+      "parameter": "text_3"
+    },
+    {
+      "kind": "click",
+      "url": "https://github.com/…/…",
+      "selector": "main:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(2) > fieldset:nth-of-type(4) > dl:nth-of-type(1) > dd:nth-of-type(1) > select:nth-of-type(1)"
+    },
+    {
+      "kind": "input",
+      "url": "https://github.com/…/…",
+      "selector": "main:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(2) > fieldset:nth-of-type(4) > dl:nth-of-type(1) > dd:nth-of-type(1) > select:nth-of-type(1)",
+      "inputKind": "select",
+      "parameter": "select_4"
+    },
+    {
+      "kind": "click",
+      "url": "https://github.com/…/…",
+      "selector": "main:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(2) > fieldset:nth-of-type(4) > dl:nth-of-type(1) > dd:nth-of-type(1) > select:nth-of-type(1)"
+    },
+    {
+      "kind": "click",
+      "url": "https://github.com/…/…",
+      "selector": "main:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(2) > fieldset:nth-of-type(4) > dl:nth-of-type(4) > dd:nth-of-type(1) > input:nth-of-type(1)"
+    },
+    {
+      "kind": "input",
+      "url": "https://github.com/…/…",
+      "selector": "main:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(2) > fieldset:nth-of-type(4) > dl:nth-of-type(4) > dd:nth-of-type(1) > input:nth-of-type(1)",
+      "inputKind": "text",
+      "parameter": "text_5"
+    },
+    {
+      "kind": "click",
+      "url": "https://github.com/…/…",
+      "selector": "main:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1)"
+    },
+    {
+      "kind": "navigation",
+      "url": "https://github.com/…"
+    },
+    {
+      "kind": "click",
+      "url": "https://github.com/…",
+      "selector": "div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(2) > a:nth-of-type(1)"
+    },
+    {
+      "kind": "navigation",
+      "url": "https://github.com/…/…/…/…"
+    }
+  ]
+}

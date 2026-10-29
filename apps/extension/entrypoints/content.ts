@@ -172,9 +172,32 @@ export default defineContentScript({
       return true;
     }
 
+    function clearableSearchFilter(target: HTMLElement): boolean {
+      if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement) ||
+        target.required || (target instanceof HTMLInputElement && (target.readOnly || !['text', 'search'].includes(target.type)))) return false;
+      const form = formFor(target);
+      if (!form || form.method.toLowerCase() !== 'get') return false;
+      return form.getAttribute('role') === 'search' || /(?:^|\/)(?:search|find|filter)(?:\/|$)/i.test(new URL(form.action).pathname) ||
+        !!form.querySelector('input[type="search"],input[name="q"],input[name="query"],input[name="search"]');
+    }
+
+    function matchingParameters(target: HTMLElement, parameters: Record<string, string | boolean>): string[] {
+      if (!(target instanceof HTMLAnchorElement)) return [];
+      try {
+        const path = new URL(target.href).pathname.split('/').filter(Boolean).map(decodeURIComponent);
+        return Object.entries(parameters).slice(0, 30).filter(([, value]) => {
+          if (typeof value !== 'string' || !/^[a-zA-Z0-9_.~-]+(?:\/[a-zA-Z0-9_.~-]+){1,7}$/.test(value)) return false;
+          const parts = value.split('/');
+          return parts.every(part => part !== '.' && part !== '..') &&
+            path.slice(0, parts.length).join('/').toLowerCase() === value.toLowerCase();
+        }).map(([name]) => name);
+      } catch { return []; }
+    }
+
     function observeAgent(
       step: SkillStep,
       navigationScope?: string[],
+      parameters: Record<string, string | boolean> = {},
     ): AgentObservation {
       const observation: AgentObservation = {
         id: crypto.randomUUID(),
@@ -209,7 +232,9 @@ export default defineContentScript({
         )
         .sort((a, b) => {
           const rank = (el: HTMLElement) =>
-            hintMatches.includes(el)
+            matchingParameters(el, parameters).length && el.closest('h1,h2,h3,h4,h5,h6')
+              ? -1
+              : hintMatches.includes(el)
               ? 0
               : el.tagName.toLowerCase() === hintedTag
                 ? 1
@@ -241,11 +266,16 @@ export default defineContentScript({
               ? "select"
               : "input";
         const id = `c${observation.controls.length + 1}`;
+        const heading = role === 'link' ? target.closest('h1,h2,h3,h4,h5,h6') : null;
+        const matches = matchingParameters(target, parameters);
         observation.controls.push({
           id,
           role,
           label,
           selector: structuralSelector(target),
+          ...(clearableSearchFilter(target) ? { clearable: true } : {}),
+          ...(heading ? { headingLevel: Number(heading.tagName[1]) } : {}),
+          ...(matches.length ? { matchesParameters: matches } : {}),
           ...(target instanceof HTMLAnchorElement && sanitizeUrl(target.href)
             ? { destination: sanitizeUrl(target.href)! }
             : {}),
@@ -513,6 +543,7 @@ export default defineContentScript({
         return { status: target.checked === value ? "done" : "blocked" };
       }
       if (typeof value !== "string") return { status: "blocked" };
+      if (value === '' && !clearableSearchFilter(target)) return { status: 'blocked' };
       if (step.inputKind === "select") {
         if (
           !(target instanceof HTMLSelectElement) ||
@@ -595,8 +626,9 @@ export default defineContentScript({
           const request = message as {
             step: SkillStep;
             navigationScope?: string[];
+            parameters?: Record<string, string | boolean>;
           };
-          sendResponse(observeAgent(request.step, request.navigationScope));
+          sendResponse(observeAgent(request.step, request.navigationScope, request.parameters));
           return;
         }
         if ((message as { type?: string }).type === "check-run-page") {

@@ -62,6 +62,7 @@ async function fixture({
   provider = "openai",
   nativeReady = true,
   beforeSave = async () => {},
+  beforeDelete = async () => {},
   mcpState = { paired: connected, connected },
 } = {}) {
   const window = new Window({ url: "https://extension.example/popup.html" });
@@ -213,6 +214,16 @@ async function fixture({
           library.set(saved.id, { ...saved, title: message.name, description: message.description, ownerId: user.id,
             versions: [{ markdown: message.markdown }] });
           return saved;
+        }
+        if (message.type === 'library-delete') {
+          await beforeDelete();
+          assert.equal(message.confirm, true);
+          const row = library.get(message.id);
+          assert.equal(row.ownerId, user.id);
+          assert.equal(row.currentVersion, message.version);
+          library.delete(message.id);
+          await storage.local.set({ skillDraft: null, localSkills: (local.localSkills ?? []).filter(d => d.remoteSkillId !== message.id) });
+          return { id: message.id, deleted: true };
         }
         if (message.type === "start-run") {
           await storage.local.set({
@@ -565,6 +576,42 @@ test('an already-selected current preset is cleared on reopen and after an exter
       assert.equal(f.element('task-request').value, '');
       assert.equal(f.element('current-name').textContent, '');
     } finally { await f.close(); }
+  }
+});
+
+test('deleting an owned library skill requires confirmation and removes the selection after success', async () => {
+  const f = await fixture({ signedIn: true, draft: { ...exampleDraft, sourceRecordingId: 'recorded',
+    remoteSkillId: 'owned', ownerId: 'user-one', readOnly: false, savedVersion: 2, dirty: true } });
+  try {
+    assert.equal(f.element('delete-skill').hidden, false);
+    f.element('delete-skill').click();
+    assert.equal(f.element('delete-confirmation').hidden, false);
+    assert.match(f.element('delete-title').textContent, /github-issue-triage/);
+    f.element('delete-cancel').click();
+    assert.equal(f.element('delete-confirmation').hidden, true);
+    assert.equal(f.messages.filter(m => m.type === 'library-delete').length, 0);
+    f.element('delete-skill').click(); f.element('delete-confirm').click();
+    await until(() => f.element('library-skills').options.length === 0 && !f.local.skillDraft && !f.element('start').disabled);
+    assert.equal(f.messages.filter(m => m.type === 'library-delete').length, 1);
+    assert.match(f.element('library-feedback').textContent, /deleted from your library/);
+    assert.equal(f.element('run-panel').hidden, true);
+  } finally { await f.close(); }
+});
+
+test('delete failure preserves the skill and shared or unsaved skills have no delete action', async () => {
+  const draft = { ...exampleDraft, sourceRecordingId: 'recorded', remoteSkillId: 'owned',
+    ownerId: 'user-one', readOnly: false, savedVersion: 2, dirty: false };
+  const f = await fixture({ signedIn: true, draft, beforeDelete: async () => { throw new Error('This skill changed. Reopen it.'); } });
+  try {
+    f.element('delete-skill').click(); f.element('delete-confirm').click();
+    await until(() => !!f.element('save-error').textContent && !f.element('delete-confirm').disabled);
+    assert.equal(f.local.skillDraft.remoteSkillId, 'owned');
+    assert.equal(f.element('delete-confirm').disabled, false);
+  } finally { await f.close(); }
+  for (const value of [{ ...draft, ownerId: 'another', readOnly: true }, { ...draft, remoteSkillId: undefined }]) {
+    const other = await fixture({ signedIn: true, draft: value });
+    try { assert.equal(other.element('delete-skill').hidden, true); }
+    finally { await other.close(); }
   }
 });
 

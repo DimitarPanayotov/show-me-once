@@ -105,6 +105,17 @@ test("explicit parameters stay locally bound instead of accepting model replacem
     null,
   );
 });
+
+test('empty values clear only optional search controls explicitly marked clearable', () => {
+  const decision = { action: 'fill', targetId: 'c1', parameter: 'search_1', value: '' };
+  assert.throws(() => checkedDecision(decision, input), /Supply this parameter/);
+  const clearable = { ...input, observation: { ...input.observation,
+    controls: [{ ...input.observation.controls[0]!, clearable: true }] } };
+  assert.equal(checkedDecision(decision, clearable).value, '');
+  assert.throws(() => checkedDecision({ ...decision, value: 'invented' }, clearable), /Supply this parameter/);
+  assert.throws(() => checkedDecision(decision, { ...clearable, observation: { ...clearable.observation,
+    controls: [{ ...clearable.observation.controls[0]!, clearable: false }] } }), /Supply this parameter/);
+});
 test("observation labels remove obvious credentials, private contact data, and unsafe control characters", () => {
   assert.equal(
     safeAgentLabel("Email alice@example.com\n\u202e"),

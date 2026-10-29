@@ -2,7 +2,7 @@
 
 Record a browser task once, then type a new request and click Run inside the extension. Its agent executes the skill automatically while you watch, approve protected actions, pause or stop.
 
-[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.9.4](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.9.4-demo) · [Setup and demo](docs/agent.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
+[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.9.5](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.9.5-demo) · [Setup and demo](docs/agent.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
 
 ## Start here
 
@@ -24,7 +24,7 @@ The primary execution path stays inside the extension. Agent settings provide pe
 
 ## Library and privacy
 
-Recording and local editing work without an account. Sign in to save and run skills with PostgreSQL-backed immutable versions and per-step history, or share with another registered user. Recipients can read and run shared skills; owners control editing/sharing. Markdown/agent ZIP exports remain optional.
+Recording and local editing work without an account. Sign in to save and run skills with PostgreSQL-backed immutable versions and per-step history, or share with another registered user. Recipients can read and run shared skills; owners control editing/sharing. Owners can also delete a skill in the web library or extension after confirming removal of all its versions, sharing access and run history. Markdown/agent ZIP exports remain optional.
 
 A new account starts with an empty skill list and **Record a new task**. Local drafts belong to the account that created them; signing in to save a selected signed-out draft carries only that draft into the account. Old unchanged example copies from MCP runs are cleaned up automatically.
 

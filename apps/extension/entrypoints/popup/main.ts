@@ -46,6 +46,9 @@ const skillName = element<HTMLInputElement>("skill-name");
 const skillDescription = element<HTMLInputElement>("skill-description");
 const skillMarkdown = element<HTMLTextAreaElement>("skill-markdown");
 const saveLibrary = element<HTMLButtonElement>("save-library");
+const deleteSkill = element<HTMLButtonElement>('delete-skill');
+let deleting = false;
+let pendingDelete: SkillDraft | null = null;
 const runControls = element<HTMLElement>("run-controls");
 const runConfirm = element<HTMLButtonElement>("run-confirm");
 const runPause = element<HTMLButtonElement>("run-pause");
@@ -127,13 +130,13 @@ function renderExecution() {
           ? "Sign in to run"
           : "Run";
   button.disabled =
-    saving ||
+    saving || deleting ||
     runStarting ||
     !!activeRun?.active ||
     !currentDraft ||
     !planValid ||
     !taskRequest.value.trim();
-  taskRequest.disabled = runStarting || !!activeRun?.active;
+  taskRequest.disabled = saving || deleting || runStarting || !!activeRun?.active;
   if (runStarting) {
     for (const control of [
       start,
@@ -346,6 +349,7 @@ function renderRunSetup() {
 }
 
 function showDraft(draft: SkillDraft | null) {
+  if (pendingDelete && (pendingDelete.remoteSkillId !== draft?.remoteSkillId || pendingDelete.savedVersion !== draft?.savedVersion)) pendingDelete = null;
   currentDraft = draft;
   if (!draft) {
     planValid = false;
@@ -380,10 +384,17 @@ function showDraft(draft: SkillDraft | null) {
 }
 
 function renderSave() {
+  const busy = saving || deleting;
+  deleteSkill.hidden = !currentDraft?.remoteSkillId || currentDraft.ownerId !== signedInUser?.id || !!currentDraft.readOnly;
+  deleteSkill.disabled = busy || !!activeRun?.active || runStarting || !!currentRecording?.active;
+  element('delete-confirmation').hidden = !pendingDelete || deleteSkill.hidden;
+  element<HTMLButtonElement>('delete-confirm').disabled = deleting || deleteSkill.disabled;
+  element<HTMLButtonElement>('delete-cancel').disabled = deleting;
+  element('delete-confirm').textContent = deleting ? 'Deleting…' : 'Delete permanently';
   saveLibrary.hidden = builtin(currentDraft);
   const saved = !!currentDraft?.savedVersion && !currentDraft.dirty;
   saveLibrary.disabled =
-    saving ||
+    busy ||
     saved ||
     !!activeRun?.active ||
     !planValid ||
@@ -405,8 +416,8 @@ function renderSave() {
       ? "Unsaved changes. Save changes to update your library."
       : "";
   for (const control of [skillName, skillDescription, skillMarkdown])
-    control.disabled = saving || !!activeRun?.active || runStarting || !!currentDraft?.readOnly;
-  if (saving) {
+    control.disabled = busy || !!activeRun?.active || runStarting || !!currentDraft?.readOnly;
+  if (busy) {
     start.disabled = true;
     element<HTMLButtonElement>("run-start").disabled = true;
     libraryLoad.disabled = librarySkills.disabled = true;
@@ -691,7 +702,7 @@ async function render() {
     : element("record-start-slot");
   if (start.parentElement !== startSlot) startSlot.append(start);
   start.hidden = recording;
-  start.disabled = !!run?.active || runStarting || saving;
+  start.disabled = !!run?.active || runStarting || saving || deleting;
   start.textContent = review ? "Record another task" : "Start recording";
   start.className = `button ${review ? "quiet" : "primary"} full`;
   element("record-active").hidden = !recording;
@@ -760,7 +771,7 @@ async function render() {
 }
 
 function persistDraft(event: Event) {
-  if (!currentDraft || currentDraft.readOnly || saving) return;
+  if (!currentDraft || currentDraft.readOnly || saving || deleting) return;
   ++renderRevision;
   const input = event.currentTarget as HTMLInputElement | HTMLTextAreaElement;
   const field = input === skillName ? "name" : input === skillDescription ? "description" : "markdown";
@@ -806,7 +817,7 @@ async function saveDraft(copyExample = false): Promise<SkillDraft | undefined> {
     openAccount();
     return;
   }
-  if (saving || !currentDraft) return;
+  if (saving || deleting || !currentDraft) return;
   if (currentDraft.readOnly && !(copyExample && builtin(currentDraft))) return;
   saving = true;
   element("save-error").textContent = "";
@@ -922,6 +933,40 @@ for (const input of [skillName, skillDescription, skillMarkdown])
   input.addEventListener("input", persistDraft);
 saveLibrary.addEventListener("click", () => {
   void saveDraft();
+});
+deleteSkill.addEventListener('click', () => {
+  if (deleteSkill.disabled || deleteSkill.hidden || !currentDraft) return;
+  pendingDelete = { ...currentDraft };
+  element('delete-title').textContent = `Delete “${currentDraft.name}”?`;
+  renderSave();
+  element('delete-cancel').focus();
+});
+element('delete-cancel').addEventListener('click', () => {
+  pendingDelete = null; renderSave(); deleteSkill.focus();
+});
+element('delete-confirmation').addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !deleting) { pendingDelete = null; renderSave(); deleteSkill.focus(); }
+});
+element('delete-confirm').addEventListener('click', () => {
+  void (async () => {
+    const snapshot = pendingDelete;
+    if (!snapshot?.remoteSkillId || !snapshot.savedVersion || deleteSkill.disabled || deleting) return;
+    deleting = true;
+    element('save-error').textContent = '';
+    element('library-feedback').textContent = '';
+    renderSave();
+    try {
+      await browser.runtime.sendMessage({ type: 'library-delete', id: snapshot.remoteSkillId, version: snapshot.savedVersion, confirm: true });
+      pendingDelete = null;
+      currentDraft = null;
+      element('library-feedback').textContent = `“${snapshot.name}” deleted from your library.`;
+      await refreshLibrary();
+      await render();
+      element('library-feedback').scrollIntoView({ block: 'nearest' });
+    } catch (cause) {
+      element('save-error').textContent = cause instanceof Error ? cause.message : 'Could not delete the skill.';
+    } finally { deleting = false; await render(); }
+  })();
 });
 element("try-skill").addEventListener("click", goRun);
 async function runAction(type: string, confirm = false) {

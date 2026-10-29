@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Download, LogOut, Plus, Save, Share2 } from 'lucide-react';
+import { ArrowRight, Download, LogOut, Plus, Save, Share2, Trash2 } from 'lucide-react';
 import { editSkillDocument, readSkillMetadata, checkedSkillDocument, validateSkillMetadata } from '@show-me-once/shared';
 
 type User = { id: string; email: string; name: string | null };
@@ -28,6 +28,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState('');
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
@@ -141,6 +142,23 @@ export default function Home() {
     finally { setBusy(false); setSharing(false); }
   }
 
+  async function deleteSkill() {
+    if (!selected || selected.ownerId !== user?.id || busy) return;
+    const snapshot = selected;
+    if (!window.confirm(`Delete “${snapshot.title}”?\n\nThis permanently removes every version, sharing access, and run history for this skill, including other users’ runs. Unsaved edits will also be discarded. This cannot be undone.`)) return;
+    setBusy(true); setDeleting(true); setNotice('');
+    try {
+      await rpc('skill/delete', { id: snapshot.id, version: snapshot.currentVersion, confirm: true });
+      newSkill();
+      setSkills(current => current.filter(skill => skill.id !== snapshot.id));
+      setRuns([]);
+      setNotice(`“${snapshot.title}” deleted.`);
+      try { await refreshLibrary(); }
+      catch { setNotice(`“${snapshot.title}” deleted. Refresh the page to reload your remaining library and history.`); }
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not delete the skill.'); }
+    finally { setBusy(false); setDeleting(false); }
+  }
+
   function newSkill() {
     setSelected(null); setTitle(''); setDescription(''); setMarkdown(''); setNotice('');
   }
@@ -229,6 +247,7 @@ export default function Home() {
                 <div className="flex flex-wrap gap-2">
                   {(!selected || selected.ownerId === user.id) && <Button type="submit" disabled={busy || !!metadataError}><Save />{saving ? 'Saving…' : selected ? 'Save new version' : 'Save skill'}</Button>}
                   {selected && <Button type="button" variant="outline" disabled={!!metadataError} onClick={downloadSkill}><Download />Download SKILL.md</Button>}
+                  {selected?.ownerId === user.id && <Button type="button" variant="destructive" disabled={busy} onClick={() => void deleteSkill()}><Trash2 />{deleting ? 'Deleting…' : 'Delete skill'}</Button>}
                 </div>
               </form>
               {selected && <div className="mt-6 border-t border-slate-200 pt-5"><h3 className="font-semibold">Versions</h3><p className="mt-2 text-sm text-slate-600">{selected.versions.map(version => `v${version.number}`).join(' · ')}</p></div>}

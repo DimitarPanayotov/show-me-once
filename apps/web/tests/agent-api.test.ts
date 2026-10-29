@@ -85,6 +85,51 @@ const client = (signedIn: boolean) =>
     },
   });
 
+test('only the owner can confirm deletion of the version they reviewed; history is removed transactionally', async () => {
+  const globals = globalThis as typeof globalThis & { __skillMetadataDb?: unknown };
+  const calls: string[] = [];
+  let owned = true, version = 2, removed = 1;
+  globals.__skillMetadataDb = { $transaction: async (fn: (tx: unknown) => unknown) => {
+    calls.push('begin');
+    try {
+      const result = await fn({
+        skill: {
+          findFirst: async (args: any) => {
+            assert.deepEqual(args.where, { id: 'owned', ownerId: 'test-user' });
+            calls.push('authorize'); return owned ? { id: 'owned', currentVersion: version } : null;
+          },
+          deleteMany: async (args: any) => {
+            assert.deepEqual(args.where, { id: 'owned', ownerId: 'test-user', currentVersion: 2 });
+            calls.push('skill'); return { count: removed };
+          },
+        },
+        run: { deleteMany: async (args: any) => {
+          assert.deepEqual(args.where, { skillId: 'owned' }); calls.push('history'); return { count: 3 };
+        } },
+      });
+      calls.push('commit'); return result;
+    } catch (error) { calls.push('rollback'); throw error; }
+  } };
+  try {
+    const input = { id: 'owned', version: 2, confirm: true as const };
+    await assert.rejects(client(false).skill.delete(input), /Sign in/);
+    await assert.rejects(client(true).skill.delete({ ...input, confirm: false as never }));
+    assert.deepEqual(calls, []);
+    owned = false;
+    await assert.rejects(client(true).skill.delete(input), /Owned skill not found/);
+    assert.deepEqual(calls.splice(0), ['begin', 'authorize', 'rollback']);
+    owned = true; version = 3;
+    await assert.rejects(client(true).skill.delete(input), /changed/);
+    assert.deepEqual(calls.splice(0), ['begin', 'authorize', 'rollback']);
+    version = 2; removed = 0;
+    await assert.rejects(client(true).skill.delete(input), /changed/);
+    assert.deepEqual(calls.splice(0), ['begin', 'authorize', 'history', 'skill', 'rollback']);
+    removed = 1;
+    assert.deepEqual(await client(true).skill.delete(input), { id: 'owned', deleted: true });
+    assert.deepEqual(calls, ['begin', 'authorize', 'history', 'skill', 'commit']);
+  } finally { delete globals.__skillMetadataDb; }
+});
+
 test("personal keys work with authenticated API calls without owner-configured keys and never appear in results", async () => {
   const old = globalThis.fetch;
   try {

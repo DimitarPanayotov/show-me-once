@@ -1,5 +1,15 @@
 # Manual verification
 
+## Existing recording and library deletion — extension 0.9.5
+
+The unchanged sixteen-step recording included an owner filter as well as a repository. On the reported public search, results included other Microsoft repositories. The sanitized page description also hid the path information needed to distinguish issue links, so the model asked the user to identify the target. Optional GET search filters can now be cleared when not requested. The content script compares supplied path-like inputs to links locally and exposes only matching parameter names and heading levels. Recorded values and raw link paths remain excluded. Required fields and non-search controls cannot be cleared this way; approval and live-target guards still apply.
+
+The original executable plan is preserved as a regression fixture. Controlled documents run it end to end for TypeScript/inference and vscode/terminal, including search approval and a misleading issue from another repository. Real signed-in Codex decisions against public HTTP page snapshots also select an empty owner filter and the correct repository's first heading link for both inputs. These are model/content checks, not live Chrome acceptance. No replacement skill or new recording is needed.
+
+Owner-only deletion is available in both interfaces with an explicit confirmation naming the skill and removal of its versions, shares and all associated run history. The API checks ownership and the confirmed version before deleting in a transaction. Extension caches are cleared only after server success. Checks cover cancellation, stale versions, non-owner/anonymous calls, page-message rejection, server refusal, and preserving unrelated cached work. Type checking and both production builds pass. The connector's restart checks require normal Windows process access; restricted execution closes the connection, while all 24 checks pass with that access.
+
+All 147 automated checks pass across the shared library (26), model/helper (11), extension (82), MCP connector (24) and web API (4). The updated installed subscription helper passed the same four real Codex decision checks, preserving its registration and sign-in. The production deletion check created a disposable skill with two versions and a saved run/step log: anonymous, unconfirmed and stale-version deletion were refused; confirmed deletion removed the skill and history while preserving every pre-existing skill. The neutral live address serves the new deployment. Final Chrome acceptance remains a manual user check.
+
 ## Cached preset selection cleanup — extension 0.9.4
 
 Removing the preset button did not clear an already selected built-in skill. The popup now removes that idle cached selection, clears its heading/editor fields and no longer supplies a hardcoded GitHub request. A running external task still exposes progress, approval and Stop; after it ends, an unchanged built-in selection returns to the empty recording screen. Saved owned copies and edited local documents are preserved.

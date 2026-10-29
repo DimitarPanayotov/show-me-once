@@ -45,6 +45,7 @@
     </header>
     <main>
       <p id="error" class="alert error" role="alert"></p>
+      <p id="library-feedback" class="save-feedback" role="status" aria-live="polite"></p>
       <section id="account-section" class="card" hidden>
         <div class="section-heading">
           <h2>Your library account</h2>
@@ -519,6 +520,15 @@
             aria-live="polite"
           ></p>
           <p id="save-error" class="save-feedback error" role="alert"></p>
+          <button id="delete-skill" type="button" class="button danger" hidden>Delete skill</button>
+          <div id="delete-confirmation" class="confirmation-preview" role="alertdialog" aria-labelledby="delete-title" aria-describedby="delete-effect" hidden>
+            <h3 id="delete-title">Delete this skill?</h3>
+            <p id="delete-effect">This permanently removes every version, sharing access, and run history for this skill, including other users’ runs. Unsaved edits will also be discarded. This cannot be undone.</p>
+            <div class="inline-controls">
+              <button id="delete-cancel" type="button" class="button secondary">Cancel</button>
+              <button id="delete-confirm" type="button" class="button danger">Delete permanently</button>
+            </div>
+          </div>
         </div>
       </section>
     </main>

@@ -131,6 +131,22 @@ export const router = {
         return { id: skill.id, currentVersion: skill.currentVersion };
       });
     }),
+    delete: base.input(id.extend({ version: z.number().int().positive(), confirm: z.literal(true) }))
+      .handler(async ({ input, context }) => {
+        const user = requireUser(context.user);
+        return db().$transaction(async tx => {
+          const skill = await tx.skill.findFirst({ where: { id: input.id, ownerId: user.id } });
+          if (!skill) throw new ORPCError('NOT_FOUND', { message: 'Owned skill not found.' });
+          if (skill.currentVersion !== input.version)
+            throw new ORPCError('CONFLICT', { message: 'This skill changed. Reopen it and confirm deletion again.' });
+          // Runs reference individual versions; remove their logs before cascading versions and shares.
+          await tx.run.deleteMany({ where: { skillId: skill.id } });
+          const removed = await tx.skill.deleteMany({ where: { id: skill.id, ownerId: user.id, currentVersion: input.version } });
+          if (removed.count !== 1)
+            throw new ORPCError('CONFLICT', { message: 'This skill changed. Reopen it and confirm deletion again.' });
+          return { id: skill.id, deleted: true as const };
+        });
+      }),
     share: base.input(id.extend({ email: z.email().transform(value => value.toLowerCase()) }))
       .handler(async ({ input, context }) => {
         const user = requireUser(context.user);

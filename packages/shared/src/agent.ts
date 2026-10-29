@@ -12,6 +12,9 @@ export type AgentControl = {
   inputKind?: string;
   selector: string;
   destination?: string;
+  clearable?: boolean;
+  headingLevel?: number;
+  matchesParameters?: string[];
 };
 export type AgentObservation = {
   id: string;
@@ -118,6 +121,9 @@ export function checkedDecision(
         (item) => item.name === parameter,
       )!;
       if (definition.type === "string") {
+        if (d.value === '' && control.clearable === true && ['text', 'search', 'select'].includes(control.inputKind ?? '')) {
+          return { action: d.action as AgentDecision['action'], targetId: d.targetId, parameter, value: '' };
+        }
         if (
           typeof d.value !== "string" ||
           !d.value.trim() ||

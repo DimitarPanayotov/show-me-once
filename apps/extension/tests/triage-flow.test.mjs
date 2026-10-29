@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readFile } from 'node:fs/promises';
 import { rolldown } from "rolldown";
 import { Window } from "happy-dom";
 import { exampleDraft, EXAMPLE_START_URL } from "../lib/skill-catalog.ts";
@@ -11,7 +12,10 @@ import {
   sanitizedAction,
   parseSkillPlan,
   sanitizeUrl,
+  createSkillMarkdown,
 } from "@show-me-once/shared";
+import { checkedDecision } from '@show-me-once/shared/agent';
+import { checkedInput } from '../../../packages/agent/src/providers.ts';
 
 // Real content/execution code against controlled documents, without Chrome or a model.
 const bundle = await rolldown({
@@ -39,6 +43,104 @@ const compiled = await bundle.generate({
 await bundle.close();
 const code = compiled.output.find((item) => item.type === "chunk").code;
 const plan = parseSkillPlan(exampleDraft.markdown);
+
+test('the unchanged sixteen-step recording clears an unrequested search filter and opens a scoped issue for two inputs', async () => {
+  const recorded = JSON.parse(await readFile(new URL('./fixtures/github-advanced-recording.json', import.meta.url), 'utf8'));
+  const markdown = createSkillMarkdown({ id: 'recorded', active: false, tabId: 1, startedAt: '',
+    actions: recorded.steps.map((step, index) => ({ ...step, id: String(index), at: '' })) }, 'github-task-v1', 'Repeat this task on github.com with new inputs.');
+  assert.deepEqual(parseSkillPlan(markdown), recorded);
+  for (const values of [
+    { topic: 'inference', repository: 'microsoft/TypeScript', state: 'open', label: 'bug' },
+    { topic: 'terminal', repository: 'microsoft/vscode', state: 'open', label: 'bug' },
+  ]) {
+    const windows = [];
+    let current, handler, submitted, opened, wrongClicks = 0, confirmations = 0;
+    const parameters = {};
+    const request = `Find ${values.state} issues in ${values.repository} about ${values.topic} with label ${values.label}. Open the first matching issue.`;
+    function page(kind) {
+      current = new Window({ url: kind === 'advanced' ? 'https://github.com/search/advanced' : kind === 'results'
+        ? 'https://github.com/search?q=fixture' : `https://github.com/${values.repository}/issues/42` });
+      windows.push(current);
+      current.document.write(kind === 'advanced' ? '<main><form method="get" action="/search">' +
+        '<label for="topic">Search terms</label><input id="topic" name="q">' +
+        '<label for="owner">From these owners</label><input id="owner" value="previous-owner">' +
+        '<label for="repo">In these repositories</label><input id="repo">' +
+        '<label for="state">In the state</label><select id="state"><option value="">Any</option><option value="open">Open</option><option value="closed">Closed</option></select>' +
+        '<label for="label">With the labels</label><input id="label"><button type="submit">Search</button></form></main>' : kind === 'results'
+        ? `<main><h3><a id="wrong" href="/another/project/issues/1">Other issue</a></h3><h3><a id="matching" href="/${values.repository}/issues/42">Matching issue</a></h3></main>`
+        : '<main><h1>Issue details</h1></main>');
+      current.HTMLElement.prototype.getClientRects = function () { return this.closest('[hidden]') ? [] : [{ width: 100, height: 30 }]; };
+      current.HTMLElement.prototype.scrollIntoView = () => {};
+      current.__smoBrowser = { storage: { onChanged: { addListener() {} } }, runtime: {
+        onMessage: { addListener(fn) { handler = fn; } }, sendMessage: async () => ({ active: false }),
+      } };
+      current.defineContentScript = config => { const owner = current; config.main({ isValid: true,
+        setTimeout: (...args) => owner.setTimeout(...args), setInterval: () => 0,
+        addEventListener: (target, ...args) => target.addEventListener(...args),
+      }); return config; };
+      current.eval(code);
+      if (kind === 'advanced') current.document.querySelector('form').addEventListener('submit', event => {
+        event.preventDefault();
+        submitted = Object.fromEntries(['topic', 'owner', 'repo', 'state', 'label'].map(id => [id, current.document.getElementById(id).value]));
+        assert.equal(submitted.owner, '');
+        page('results');
+      });
+      if (kind === 'results') {
+        current.document.getElementById('wrong').addEventListener('click', event => { event.preventDefault(); wrongClicks++; });
+        current.document.getElementById('matching').addEventListener('click', event => { event.preventDefault(); opened = values.repository; page('issue'); });
+      }
+    }
+    const call = message => { let result; handler(message, {}, value => { result = value; }); return result; };
+    page('advanced');
+    try {
+      const ownerStep = recorded.steps[4], ownerScope = [ownerStep.url];
+      const before = call({ type: 'observe-agent-page', step: ownerStep, navigationScope: ownerScope });
+      const owner = before.controls.find(control => control.label === 'From these owners');
+      assert.equal(owner.clearable, true);
+      assert.equal(JSON.stringify(before).includes('previous-owner'), false);
+      current.document.getElementById('owner').required = true;
+      assert.equal(call({ type: 'execute-agent-action', step: ownerStep, navigationScope: ownerScope,
+        observationId: before.id, targetId: owner.id, value: '', executionKey: 'required-check' }).status, 'blocked');
+      assert.equal(current.document.getElementById('owner').value, 'previous-owner');
+      current.document.getElementById('owner').required = false;
+      const names = { 1: 'Search terms', 2: 'Search terms', 3: 'From these owners', 4: 'From these owners',
+        5: 'In these repositories', 6: 'In these repositories', 7: 'In the state', 8: 'In the state',
+        9: 'In the state', 10: 'With the labels', 11: 'With the labels', 12: 'Search' };
+      const replacements = { text_1: values.topic, text_2: '', text_3: values.repository, select_4: values.state, text_5: values.label };
+      for (let index = 0; index < recorded.steps.length; index++) {
+        const step = recorded.steps[index];
+        if (step.kind === 'navigation') { assert.equal(sanitizeUrl(current.location.href), step.url); continue; }
+        const navigationScope = [step.url, ...(recorded.steps[index + 1]?.kind === 'navigation' ? [recorded.steps[index + 1].url] : [])];
+        const observation = call({ type: 'observe-agent-page', step, navigationScope, parameters });
+        const input = checkedInput({ markdown, plan: recorded, stepIndex: index, observation, request, supplied: Object.keys(parameters) });
+        const target = index === 14 ? observation.controls.find(control => control.headingLevel === 3 && control.matchesParameters?.includes('text_3'))
+          : observation.controls.find(control => control.label === names[index]);
+        assert(target, `No intended control at step ${index + 1}`);
+        if (index === 14) {
+          assert.equal(observation.controls[0].id, target.id);
+          assert.equal(JSON.stringify(observation).includes(values.repository), false);
+        }
+        const decision = checkedDecision({ action: step.kind === 'input' ? 'fill' : 'click', targetId: target.id,
+          parameter: step.kind === 'input' ? step.parameter : null, value: step.kind === 'input' ? replacements[step.parameter] : null }, input);
+        if (decision.parameter && decision.value !== null) parameters[decision.parameter] = decision.value;
+        const action = { type: 'execute-agent-action', step, observationId: observation.id, targetId: target.id, navigationScope,
+          ...(step.kind === 'input' ? { value: parameters[step.parameter] } : {}), executionKey: `recorded-run:${index}` };
+        let outcome = call(action);
+        if (outcome.status === 'confirmation-required') {
+          assert.equal(submitted, undefined);
+          confirmations++;
+          outcome = call({ ...action, confirmed: true, approvalToken: outcome.confirmation.token });
+        }
+        assert.equal(outcome.status, 'done', `Step ${index + 1} failed`);
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      assert.deepEqual(submitted, { topic: values.topic, owner: '', repo: values.repository, state: values.state, label: values.label });
+      assert.equal(confirmations, 1);
+      assert.equal(wrongClicks, 0);
+      assert.equal(opened, values.repository);
+    } finally { for (const window of windows) await window.happyDOM.abort(); }
+  }
+});
 
 test("SPA navigation preserves a new observation and rejects an observation from the previous query", async () => {
   const window = new Window({ url: "https://github.com/search?q=before" });

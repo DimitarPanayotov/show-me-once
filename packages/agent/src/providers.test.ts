@@ -98,6 +98,16 @@ test("link destinations crossing the model boundary contain only sanitized origi
       /Unsafe/,
     );
 });
+
+test('control context carries only clearability, heading level and known parameter names', () => {
+  const clearable = checkedInput({ ...input, observation: { ...input.observation,
+    controls: [{ ...input.observation.controls[0], clearable: true }] } });
+  assert.equal(clearable.observation.controls[0]?.clearable, true);
+  const link = { ...input.observation.controls[0], role: 'link', headingLevel: 3, matchesParameters: ['search_1'] };
+  assert.deepEqual(checkedInput({ ...input, observation: { ...input.observation, controls: [link] } }).observation.controls[0]?.matchesParameters, ['search_1']);
+  for (const extra of [{ clearable: 'true' }, { headingLevel: 9 }, { matchesParameters: ['private/path'] }, { matchesParameters: ['search_1', 'search_1'] }])
+    assert.throws(() => checkedInput({ ...input, observation: { ...input.observation, controls: [{ ...link, ...extra }] } }), /Unsafe/);
+});
 for (const id of ["openai", "anthropic"] as const) {
   test(`${id} adapter normalizes its tool call into the same guarded action`, async () => {
     let payload: Record<string, unknown> = {};

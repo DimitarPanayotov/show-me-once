@@ -36,6 +36,7 @@ import {
   localAgentStatus,
 } from "../lib/agent-client";
 import { checkNativeAgent } from "../lib/native-agent";
+import { agentFailure } from '../lib/agent-failure';
 import {
   containsSecret,
   DEFAULT_AGENT_MODELS,
@@ -331,6 +332,7 @@ async function performStep(
           const observation = (await browser.tabs.sendMessage(run.tabId, {
             type: "observe-agent-page",
             step,
+            parameters: runParameters,
             navigationScope: [
               step.url,
               ...(runPlan.steps[run.nextStep + 1]?.kind === "navigation"
@@ -481,14 +483,12 @@ async function automaticTick(): Promise<void> {
         }
         const current = await readRun();
         if (current?.active) {
+          const detail = agentFailure(error);
           if (current.engine === "agent")
             await browser.storage.session.set({
               agentError: {
                 runId: current.id,
-                message:
-                  error instanceof Error
-                    ? error.message
-                    : "The agent could not choose a safe action.",
+                message: detail,
               },
             });
           const plan = (await browser.storage.local.get("runPlan")).runPlan as
@@ -500,7 +500,7 @@ async function automaticTick(): Promise<void> {
                 current,
                 plan,
                 "blocked",
-                "Could not continue safely. Check the page and agent connection, then retry or stop.",
+                detail,
               ),
               thinking: false,
             });
@@ -688,6 +688,7 @@ export default defineBackground(() => {
         : ((await browser.tabs.sendMessage(run.tabId, {
             type: "observe-agent-page",
             step,
+            parameters: ((await browser.storage.session.get('runParameters')).runParameters as Record<string, string | boolean> | undefined) ?? {},
             navigationScope: [
               step.url,
               ...(plan.steps[run.nextStep + 1]?.kind === "navigation"
@@ -1138,6 +1139,29 @@ export default defineBackground(() => {
             } catch { /* The server save already succeeded; retain the recovery copy. */ }
           }
           return saved;
+        });
+      if (request.type === 'library-delete')
+        return serial(async () => {
+          if ((await readRun())?.active || (await read())?.active)
+            throw new Error('Stop the current recording or run before deleting a skill.');
+          if (typeof request.id !== 'string' || !request.id || typeof request.version !== 'number' || !Number.isInteger(request.version) || request.version < 1 || request.confirm !== true)
+            throw new Error('Open the skill and confirm its deletion.');
+          const account = await requiredAccount();
+          const deleted = await api<{ id: string; deleted: true }>('skill/delete', { id: request.id, version: request.version, confirm: true }, account);
+          const stored = await browser.storage.local.get(['skillDraft', 'localSkills', 'runState']);
+          const draft = stored.skillDraft as CatalogDraft | undefined;
+          const run = stored.runState as RunState | undefined;
+          await browser.storage.local.set({
+            ...(draft?.remoteSkillId === request.id ? { skillDraft: null } : {}),
+            localSkills: ((stored.localSkills as CatalogDraft[] | undefined) ?? []).filter(value => value.remoteSkillId !== request.id),
+          });
+          if (run?.skillKey === request.id || run?.skillKey === `library:${request.id}`)
+            await browser.storage.local.remove(['runState', 'runPlan']);
+          const taskRequests = ((await browser.storage.session.get('taskRequests')).taskRequests ?? {}) as Record<string, string>;
+          delete taskRequests[request.id]; delete taskRequests[`library:${request.id}`];
+          await browser.storage.session.set({ taskRequests });
+          issuedSkills.clear();
+          return deleted;
         });
     }
     if (request.type === "get-recording") return read();

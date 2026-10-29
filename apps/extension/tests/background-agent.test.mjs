@@ -75,7 +75,7 @@ async function until(check) {
   assert.fail("Worker did not reach the expected state.");
 }
 
-async function fixture({ holdModel = false, provider = "openai", signedIn = true, mcp = false, initialTabUrl = 'https://example.com', draft, failMcpSession = false, focusedUrl, noWindow = false, holdStart = false, library } = {}) {
+async function fixture({ holdModel = false, provider = "openai", signedIn = true, mcp = false, initialTabUrl = 'https://example.com', draft, failMcpSession = false, focusedUrl, noWindow = false, holdStart = false, library, deleteStatus = 200 } = {}) {
   const mcpBridgeId = randomUUID(), mcpConnectionId = randomUUID(), mcpControllerId = randomUUID();
   const mcpReplies = new Map();
   let mcpSocket;
@@ -293,6 +293,7 @@ async function fixture({ holdModel = false, provider = "openai", signedIn = true
       },
     },
   };
+  const deletions = [];
   const fetcher = async (url, options) => {
     if (url === 'http://127.0.0.1:4320/pair') return Response.json({ bridgeId: mcpBridgeId });
     const path = new URL(url).pathname.replace("/api/rpc/", "");
@@ -303,6 +304,10 @@ async function fixture({ holdModel = false, provider = "openai", signedIn = true
     } });
     if (path === 'auth/logout') return envelope({ ok: true });
     if (path === 'skill/list') return envelope(library ? [library] : []);
+    if (path === 'skill/delete') {
+      deletions.push(input);
+      return Response.json({ json: deleteStatus === 200 ? { id: input.id, deleted: true } : { message: 'Owned skill not found.' } }, { status: deleteStatus });
+    }
     if (path === "skill/get")
       return envelope(library ?? { currentVersion: 1, versions: [{ markdown }] });
     if (path === "run/start") {
@@ -384,6 +389,7 @@ async function fixture({ holdModel = false, provider = "openai", signedIn = true
     dispatches,
     decisions,
     createdTabs,
+    deletions,
     finishStart: () => { startComplete = true; },
     post,
     async callMcp(command) {
@@ -412,6 +418,40 @@ async function fixture({ holdModel = false, provider = "openai", signedIn = true
     },
   };
 }
+
+test('library deletion cleans only confirmed remote caches after server success and rejects page messages', async () => {
+  const draft = { sourceRecordingId: 'recorded', remoteSkillId: 'owned', ownerId: 'owner', name: 'search-example', description: 'Search', markdown, savedVersion: 1, dirty: true };
+  const f = await fixture({ draft });
+  try {
+    f.local.localSkills = [draft, { ...draft, remoteSkillId: 'keep' }];
+    f.local.runState = { id: 'old-run', active: false, skillKey: 'owned' };
+    f.local.runPlan = { old: true };
+    f.session.taskRequests = { owned: 'private request', 'library:owned': 'private request', keep: 'keep this' };
+    const input = { type: 'library-delete', id: 'owned', version: 1, confirm: true };
+    assert.throws(() => f.untrusted(input), /Only extension pages/);
+    await assert.rejects(f.post({ ...input, confirm: false }), /confirm/);
+    assert.equal(f.deletions.length, 0);
+    const result = await f.post(input);
+    assert.equal(result.deleted, true);
+    assert.equal(f.local.skillDraft, null);
+    assert.deepEqual(Array.from(f.local.localSkills, value => value.remoteSkillId), ['keep']);
+    assert.equal(f.local.runState, undefined); assert.equal(f.local.runPlan, undefined);
+    assert.deepEqual(Object.keys(f.session.taskRequests), ['keep']);
+  } finally { await f.close(); }
+});
+
+test('library deletion never discards local work on server refusal or during a recording', async () => {
+  const draft = { sourceRecordingId: 'recorded', remoteSkillId: 'shared', ownerId: 'another', name: 'search-example', description: 'Search', markdown, savedVersion: 1 };
+  const f = await fixture({ draft, deleteStatus: 404 });
+  try {
+    const input = { type: 'library-delete', id: 'shared', version: 1, confirm: true };
+    await assert.rejects(f.post(input), /Owned skill not found/);
+    assert.equal(f.local.skillDraft.remoteSkillId, 'shared');
+    f.local.recording = { active: true };
+    await assert.rejects(f.post(input), /Stop the current recording/);
+    assert.equal(f.deletions.length, 1);
+  } finally { await f.close(); }
+});
 
 test('signed-out MCP opens the built-in task automatically without model or backend access', async () => {
   const f = await fixture({ signedIn: false, mcp: true, initialTabUrl: 'https://github.com/search/advanced' });
