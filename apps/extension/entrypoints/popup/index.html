@@ -439,6 +439,11 @@
         aria-labelledby="tab-record"
         hidden
       >
+        <div id="record-blocked" class="confirmation-preview" hidden>
+          <h2>A task is still open</h2>
+          <p>Stop the current run before recording another task. No further actions will run after it stops.</p>
+          <button id="record-stop-run" type="button" class="button danger full">Stop run to record</button>
+        </div>
         <div id="record-intro" class="record-intro">
           <span class="eyebrow">Teach a new skill</span>
           <h2 id="record-heading">Show us once.</h2>

@@ -324,6 +324,9 @@ test("first use starts with recording a task and then an editable request and Ru
     assert.equal(f.element('try-example'), null);
     assert.equal(f.element('library-skills').options.length, 0);
     f.element('empty-record').click();
+    await until(() => !f.element('view-record').hidden);
+    assert.equal(f.element('record-intro').hidden, false);
+    assert.equal(f.element('start').disabled, false);
     f.element('start').click();
     await until(() => f.local.recording?.active === true);
     f.element('stop').click();
@@ -346,6 +349,48 @@ test("first use starts with recording a task and then an editable request and Ru
   } finally {
     await f.close();
   }
+});
+
+test('Record stays accessible during a paused run and exposes a clear way to stop it', async () => {
+  const run = { id: 'paused-run', active: true, engine: 'agent', mode: 'automatic', skillKey: 'old-recording',
+    nextStep: 2, totalSteps: 12, pauseReason: 'blocked', logs: [] };
+  const f = await fixture({ run });
+  try {
+    assert.equal(f.element('run-panel').hidden, false, 'An orphaned run still needs visible Stop controls.');
+    assert.equal(f.element('run-empty').hidden, true);
+    f.element('tab-record').click();
+    await until(() => !f.element('view-record').hidden);
+    assert.equal(f.element('record-blocked').hidden, false);
+    assert.equal(f.element('record-intro').hidden, true);
+    await f.storage.local.set({ runState: { ...run, nextStep: 3 } });
+    await until(() => f.element('run-step-count').textContent === '3 / 12');
+    assert.equal(f.element('view-record').hidden, false, 'Progress updates must not override the selected tab.');
+    f.element('record-stop-run').click();
+    await until(() => !f.local.runState.active && !f.element('record-intro').hidden);
+    assert.equal(f.element('view-record').hidden, false);
+    assert.equal(f.element('start').disabled, false);
+    f.element('start').click();
+    await until(() => f.local.recording?.active);
+    assert.equal(f.messages.filter(message => message.type === 'stop-run').length, 1);
+    assert.equal(f.messages.filter(message => message.type === 'start-recording').length, 1);
+  } finally { await f.close(); }
+});
+
+test('Record remains selected for a run with a selected skill, and a new run still opens activity', async () => {
+  const run = { id: 'selected-run', active: true, engine: 'agent', mode: 'automatic', skillKey: EXAMPLE_ID,
+    nextStep: 1, totalSteps: 12, logs: [] };
+  const f = await fixture({ draft: exampleDraft, run });
+  try {
+    f.element('tab-record').click();
+    await until(() => !f.element('view-record').hidden);
+    assert.equal(f.element('record-blocked').hidden, false);
+    await f.storage.local.set({ runState: { ...run, nextStep: 2 } });
+    await until(() => f.element('run-step-count').textContent === '2 / 12');
+    assert.equal(f.element('view-record').hidden, false);
+    await f.storage.local.set({ runState: { ...run, id: 'new-run', nextStep: 3 } });
+    await until(() => f.element('view-record').hidden);
+    assert.equal(f.element('view-run').hidden, false);
+  } finally { await f.close(); }
 });
 
 test("first launch works without external pairing and keeps its integration collapsed", async () => {

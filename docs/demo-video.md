@@ -4,7 +4,7 @@ Show one complete GitHub workflow: record it, save its skill, then let the exten
 
 ## Before recording
 
-1. Reload extension 0.9.5, pin its icon and maximize Chrome.
+1. Reload extension 0.9.6, pin its icon and maximize Chrome.
 2. Sign in and check that the Codex subscription shows Ready under Agent settings. Install the helper beforehand. Explain its one-time setup in the introduction.
 3. Open GitHub Advanced search at https://github.com/search/advanced with empty fields. Open the web library in another tab.
 4. Have a second library account signed in in another browser window for the sharing check. Keep passwords, API keys and setup codes off camera.

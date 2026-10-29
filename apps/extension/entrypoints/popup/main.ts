@@ -88,6 +88,7 @@ let mcpPendingId: string | undefined;
 let catalogSize = 0;
 let visibleSkillIds = new Set<string>();
 let runStarting = false;
+let stoppingForRecording = false;
 let runAfterSignIn = false;
 let requestKey = "";
 let taskRequests: Record<string, string> = {};
@@ -531,6 +532,7 @@ function renderRun(
   pending?: PendingConfirmation,
 ) {
   activeRun = run;
+  if (run?.active && !currentDraft) element('current-name').textContent = 'Task in progress';
   if (run?.active && run.engine === "external")
     element("current-meta").textContent = "Running with your coding agent";
   else if (run?.active)
@@ -546,8 +548,8 @@ function renderRun(
     (!!run &&
       run.skillKey ===
         (currentDraft?.remoteSkillId ?? currentDraft?.sourceRecordingId));
-  element("run-panel").hidden = !currentDraft;
-  element("run-empty").hidden = !!currentDraft;
+  element("run-panel").hidden = !currentDraft && !active;
+  element("run-empty").hidden = !!currentDraft || active;
   element("run-setup").hidden = active;
   runControls.hidden = !active;
   element("run-editor-details").hidden = active;
@@ -679,7 +681,7 @@ async function render() {
   if (currentRecording && !currentRecording.active && currentRecording.id !== currentDraft?.sourceRecordingId)
     currentRecording = null;
   if (currentRecording?.active) view = "record";
-  else if (run?.active) view = "run";
+  else if (run?.active && (!activeRun?.active || activeRun.id !== run.id)) view = "run";
   element("view-run").hidden = view !== "run";
   element("view-record").hidden = view !== "record";
   element("tab-run").setAttribute("aria-selected", String(view === "run"));
@@ -692,9 +694,13 @@ async function render() {
   const recording = !!currentRecording?.active;
   const review =
     !recording &&
+    !run?.active &&
     !!currentRecording &&
     currentDraft?.sourceRecordingId === currentRecording.id;
-  element("record-intro").hidden = recording || review;
+  element('record-blocked').hidden = !run?.active;
+  element('record-stop-run').textContent = stoppingForRecording ? 'Stopping…' : 'Stop run to record';
+  element<HTMLButtonElement>('record-stop-run').disabled = stoppingForRecording;
+  element("record-intro").hidden = recording || review || !!run?.active;
   element("record-footer").hidden = !review;
   element("privacy-note").hidden = review;
   const startSlot = review
@@ -1007,6 +1013,25 @@ runStop.addEventListener("click", () => {
   void runAction("stop-run").finally(() => {
     runStop.disabled = false;
   });
+});
+element('record-stop-run').addEventListener('click', () => {
+  if (stoppingForRecording) return;
+  stoppingForRecording = true;
+  const button = element<HTMLButtonElement>('record-stop-run');
+  button.disabled = true;
+  button.textContent = 'Stopping…';
+  void (async () => {
+    try {
+      await browser.runtime.sendMessage({ type: 'stop-run' });
+      view = 'record';
+      await browser.storage.local.set({ popupView: view });
+      await render();
+    } catch (cause) { report(cause); }
+    finally {
+      stoppingForRecording = false;
+      await render();
+    }
+  })();
 });
 element("download").addEventListener("click", () => {
   const url = URL.createObjectURL(

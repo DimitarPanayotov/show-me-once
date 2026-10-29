@@ -1,5 +1,11 @@
 # Manual verification
 
+## Recording tab recovery — extension 0.9.6
+
+An unfinished run previously forced the popup back to Skills & activity on every render. If the selected skill was missing, that same state showed the empty-library screen and hid the run's Stop controls. Both Record buttons appeared to do nothing. The popup now preserves the user's selected tab during an existing run, shows active-run controls even without a selected skill, and offers Stop run to record on the Record tab. Only a newly started run switches to activity automatically. Stopping does not start a recording until the user clicks Start recording.
+
+The regression check failed against the old code and passes after the fix. It exercises a blocked run with no selected skill, navigation to Record, progress updates, stopping and starting a fresh recording. A second case covers a selected skill and automatic activity navigation for a new run. The first-use test now waits for the Record screen to be visible before pressing Start. All 84 extension tests, extension type checking and the production extension build pass. No helper or MCP changes are required; real Chrome acceptance remains manual.
+
 ## Existing recording and library deletion — extension 0.9.5
 
 The unchanged sixteen-step recording included an owner filter as well as a repository. On the reported public search, results included other Microsoft repositories. The sanitized page description also hid the path information needed to distinguish issue links, so the model asked the user to identify the target. Optional GET search filters can now be cleared when not requested. The content script compares supplied path-like inputs to links locally and exposes only matching parameter names and heading levels. Recorded values and raw link paths remain excluded. Required fields and non-search controls cannot be cleared this way; approval and live-target guards still apply.
