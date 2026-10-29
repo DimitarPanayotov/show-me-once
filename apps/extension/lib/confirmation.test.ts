@@ -64,6 +64,24 @@ test("Enter and external form destinations are explained without leaking URL pat
   assert.match(copy.continuation, /You choose/);
 });
 
+test('a result-link title mentioning removal describes opening a link without bypassing approval', () => {
+  const action = { label: 'Uninstall All can remove a remote dependent but fail to uninstall its local dependency',
+    destination: 'https://github.com/microsoft/vscode/issues/343168', submits: false, search: false, enter: false, navigationLink: true };
+  assert.equal(confirmationIntent(action), 'open-link');
+  const preview = { ...details, intent: 'open-link' as const, targetTag: 'link' as const, targetLabel: 'Uninstall All can remove a remote dependent' };
+  const copy = confirmationCopy(preview, true);
+  assert.equal(copy.title, 'Open link on www.wikipedia.org');
+  assert.equal(copy.button, 'Open link & continue');
+  assert.match(copy.effect, /link title/i);
+  assert.doesNotMatch(copy.effect, /permanently delete|may remove data/);
+  assert.equal(isPendingConfirmation({ runId: 'one', step: 2, details: preview }, 'one', 2), true);
+  assert.equal(confirmationIntent({ ...action, navigationLink: false }), 'remove');
+  assert.equal(confirmationIntent({ ...action, destination: 'https://github.com/items/delete-all' }), 'delete');
+  assert.equal(confirmationIntent({ ...action, label: 'Delete all', navigationLink: false }), 'delete');
+  assert.equal(confirmationIntent({ ...action, submits: true }), 'remove');
+  assert.equal(confirmationIntent({ ...action, enter: true }), 'remove');
+});
+
 test("previews are bound to the pending run and step and accept only bounded plain labels and origins", () => {
   const pending = { runId: "run-1", step: 3, details };
   assert.equal(isPendingConfirmation(pending, "run-1", 3), true);

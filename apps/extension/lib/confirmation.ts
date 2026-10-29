@@ -1,4 +1,5 @@
 export type ConfirmationIntent =
+  | "open-link"
   | "search"
   | "submit"
   | "enter"
@@ -34,20 +35,32 @@ export function controlLabel(value: string): string {
     .slice(0, 80);
 }
 
+function sensitiveIntent(text: string): ConfirmationIntent | null {
+  if (/\bdelete\b/i.test(text)) return "delete";
+  if (/\bremove\b/i.test(text)) return "remove";
+  if (/\btransfer\b/i.test(text)) return "transfer";
+  if (/\b(pay|payment)\b/i.test(text)) return "payment";
+  if (/\b(purchase|buy|checkout|place order)\b/i.test(text)) return "purchase";
+  return null;
+}
+
 export function confirmationIntent(action: {
   label: string;
   destination: string;
   submits: boolean;
   search: boolean;
   enter: boolean;
+  navigationLink?: boolean;
 }): ConfirmationIntent | null {
   const text = `${action.label} ${action.destination}`;
   // Risky wording takes precedence even when a control sits in a search form.
-  if (/\bdelete\b/i.test(text)) return "delete";
-  if (/\bremove\b/i.test(text)) return "remove";
-  if (/\btransfer\b/i.test(text)) return "transfer";
-  if (/\b(pay|payment)\b/i.test(text)) return "payment";
-  if (/\b(purchase|buy|checkout|place order)\b/i.test(text)) return "purchase";
+  const sensitive = sensitiveIntent(text);
+  if (sensitive) {
+    // A heading link can describe an article or issue about an action. Keep approval,
+    // but describe navigation when only its title contains the sensitive wording.
+    return action.navigationLink && !action.submits && !action.enter && !sensitiveIntent(action.destination)
+      ? "open-link" : sensitive;
+  }
   if (action.submits || action.enter || /\bsubmit\b/i.test(text)) {
     if (action.search) return "search";
     return action.submits ? "submit" : "enter";
@@ -80,6 +93,7 @@ export function isPendingConfirmation(
     typeof details.token === "string" &&
     /^[0-9a-f-]{36}$/i.test(details.token) &&
     [
+      "open-link",
       "search",
       "submit",
       "enter",
@@ -104,6 +118,7 @@ export function confirmationCopy(
   automatic: boolean,
 ) {
   const names: Record<ConfirmationIntent, string> = {
+    "open-link": "Open link",
     search: "Submit search",
     submit: "Submit form",
     enter: "Press Enter",
@@ -114,6 +129,7 @@ export function confirmationCopy(
     transfer: "Authorize transfer",
   };
   const effects: Record<ConfirmationIntent, string> = {
+    "open-link": "The link title mentions a potentially sensitive action. Check that this is the page you intend to open before continuing.",
     search: "This submits the search fields currently filled on the page.",
     submit: "This submits the form and may change data on the website.",
     enter: "This may submit the current field or apply a filter.",

@@ -228,6 +228,49 @@ test("SPA navigation preserves a new observation and rejects an observation from
   }
 });
 
+test('issue title keywords retain a bound link approval; action endpoints and action-like controls stay protected', async () => {
+  for (const scenario of [
+    { html: '<h3><a href="/microsoft/vscode/issues/343168">Uninstall All can remove a remote dependent but fail to uninstall its local dependency</a></h3>', intent: 'open-link' },
+    { html: '<h3><a href="/microsoft/vscode/issues/delete-all">Remove all</a></h3>', intent: 'delete' },
+    { html: '<h3><a role="button" href="/microsoft/vscode/issues/343168">Remove all</a></h3>', intent: 'remove' },
+    { html: '<h3><a onclick="return false" href="/microsoft/vscode/issues/343168">Remove all</a></h3>', intent: 'remove' },
+    { html: '<h3><a data-method="delete" href="/microsoft/vscode/issues/343168">Remove all</a></h3>', intent: 'remove' },
+    { html: '<a href="/microsoft/vscode/issues/343168">Remove all</a>', intent: 'remove' },
+  ]) {
+    const window = new Window({ url: 'https://github.com/search?q=fixture' });
+    window.document.write('<main>' + scenario.html + '</main>');
+    window.HTMLElement.prototype.getClientRects = () => [{ width: 100, height: 30 }];
+    window.HTMLElement.prototype.scrollIntoView = () => {};
+    let handler, clicks = 0;
+    window.document.querySelector('a').click = () => { clicks++; };
+    window.__smoBrowser = { storage: { onChanged: { addListener() {} } }, runtime: {
+      onMessage: { addListener(fn) { handler = fn; } }, sendMessage: async () => ({ active: false }),
+    } };
+    window.defineContentScript = config => { config.main({ isValid: true,
+      setTimeout: (...args) => window.setTimeout(...args), setInterval: () => 0,
+      addEventListener: (target, ...args) => target.addEventListener(...args),
+    }); return config; };
+    try {
+      window.eval(code);
+      const call = message => { let response; handler(message, {}, value => { response = value; }); return response; };
+      const step = { kind: 'click', url: 'https://github.com/…', selector: 'a:nth-of-type(1)' };
+      const navigationScope = [step.url, 'https://github.com/…/…/…/…'];
+      const observed = call({ type: 'observe-agent-page', step, navigationScope });
+      const action = { type: 'execute-agent-action', step, navigationScope, observationId: observed.id,
+        targetId: observed.controls[0].id, executionKey: 'run:open-result' };
+      const pending = call(action);
+      assert.equal(pending.status, 'confirmation-required');
+      assert.equal(pending.confirmation.intent, scenario.intent);
+      assert.equal(clicks, 0);
+      const forged = call({ ...action, confirmed: true, approvalToken: 'wrong-token' });
+      assert.equal(forged.status, 'confirmation-required'); assert.equal(clicks, 0);
+      assert.equal(call({ ...action, confirmed: true, approvalToken: pending.confirmation.token }).status, 'done');
+      await new Promise(resolve => setTimeout(resolve, 5));
+      assert.equal(clicks, 1);
+    } finally { await window.happyDOM.abort(); }
+  }
+});
+
 test("the recorder captures accessible menu-item clicks without capturing their labels or values", async () => {
   const window = new Window({
     url: "https://github.com/search?q=private-value",

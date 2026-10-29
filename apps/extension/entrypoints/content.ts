@@ -413,6 +413,10 @@ export default defineContentScript({
           submits,
           search,
           enter: step.kind === "key",
+          navigationLink: step.kind === 'click' && target instanceof HTMLAnchorElement &&
+            ['http:', 'https:'].includes(target.protocol) && !!target.closest('h1,h2,h3,h4,h5,h6') &&
+            !form && [null, 'link'].includes(target.getAttribute('role')) &&
+            !['onclick', 'download', 'data-method', 'data-turbo-method', 'formaction'].some(attribute => target.hasAttribute(attribute)),
         });
         if (intent) {
           const inputLabel =
