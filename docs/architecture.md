@@ -1,56 +1,41 @@
 # Architecture
 
-Show Me Once turns one browser demonstration into a reusable skill. The user gives new inputs, and an agent follows the skill in Chrome.
+Show Me Once turns a browser demonstration into a reusable skill, then uses an agent to run it with new inputs.
 
-**Record → generate SKILL.md → save → enter a request → Run.**
+## Components
 
-## What runs where
-
-| Part | Job |
+| Component | Responsibility |
 | --- | --- |
-| **Popup** | The interface for recording, editing, saving and running skills. Shows progress and approval, Pause and Stop controls. |
-| **Content script** | Runs inside the webpage. Records actions, describes available controls and performs clicks and inputs. |
-| **Service worker** | Coordinates the task in the background: saves progress, asks the model for the next action, checks it and updates history. |
-| **Backend** | Next.js and oRPC on Vercel. Handles login, skill access, versions, sharing and run history. |
-| **Database** | PostgreSQL through Prisma. Stores users, sessions, skills, versions, shares, runs and step logs. |
+| Popup | Recording, skill editing, model settings, progress, approvals and Stop. |
+| Content script | Captures safe actions, describes live controls and performs validated interactions. |
+| Service worker | Coordinates recording and execution, persists progress and requests model decisions. |
+| Backend | Next.js/oRPC API for accounts, skills, versions, sharing, deletion and run history. For API-key execution, forwards model requests to the selected provider. |
+| Database | PostgreSQL/Prisma stores users, sessions, skills, versions, shares, runs and step logs. |
 
-The extension uses TypeScript, WXT and Chrome Manifest V3. The web interface uses shadcn/ui.
+The extension uses WXT, TypeScript and Chrome Manifest V3. The web interface uses shadcn/ui and deploys to Vercel.
 
-## The skill file
+## Skill format
 
-The recorder stores actions without typed values or passwords. Recorded URLs hide path text and query values. Local code turns the recording into a skill; generation does not need a model.
+Generation runs locally without a model. SKILL.md contains name/description frontmatter, readable instructions, parameters, checkpoints and a JSON executable plan.
 
-**SKILL.md** contains a `name` and `description` at the top, readable instructions, parameters, page checkpoints, safety rules and a JSON block of executable steps.
+Typed values become parameters such as `{{text_1}}`. Recorded URLs hide path text and query values. Markdown supports reading and editing; the JSON plan gives the runner a structure it can validate.
 
-For example, a search field becomes `{{text_1}}`, which accepts a different search each run. Markdown makes the skill easy to read, edit and share. JSON gives the extension a clear structure to check and execute. Both describe the same task.
+## Execution
 
-## Running the skill
+For each step, the content script describes available controls. The model selects an action using the skill and the new request. The extension checks the selection, executes it and evaluates the next checkpoint. Recorded selectors are hints; live controls must still match.
 
-The user selects a skill, types a new request and clicks **Run**. New or edited owned skills are saved first, so history refers to a specific version.
-
-For each step, the content script describes the current controls. The model chooses an action using the skill and request. The extension checks the choice, performs it and checks the next page or step. Recorded selectors are hints, helping the agent handle small page changes.
-
-Safe steps continue automatically. Unclear targets pause the run. Protected actions show exactly what needs approval; approval covers that action only. **Stop** cancels further work, although an action already sent may finish.
-
-Progress is saved in Chrome storage. Closing the popup does not stop the run. An interrupted action with an uncertain outcome pauses for review.
+Progress is persisted in Chrome storage across popup closure and service-worker suspension. Ambiguous targets and uncertain in-flight outcomes pause execution. Protected actions require a fresh approval for that specific action. Stop cancels remaining work; a dispatched action may finish.
 
 ## Model access
 
-Users supply either:
+- **Personal API key:** held in extension session storage and forwarded transiently through the backend to OpenAI or Anthropic.
+- **Codex subscription:** Chrome starts an installed native-messaging helper that asks the signed-in Codex CLI for decisions.
+- **Optional MCP:** an existing coding agent supplies decisions through the same guarded browser controls.
 
-- **An OpenAI or Anthropic API key.** Kept for the Chrome session and passed through the backend to the provider when needed. The backend does not save it.
-- **A Codex subscription.** A helper installed once lets Chrome ask the signed-in Codex CLI for decisions. Chrome starts it automatically; the extension performs the browser actions. Requires Node.js 24 and Codex sign-in.
+## Data and limits
 
-Loading the extension and logging in alone does not provide model access.
+Recordings exclude passwords and typed values. The model receives the new request and filtered control descriptions, without raw HTML or screenshots. Persistent logs exclude requests, parameter values and page labels.
 
-Optional **MCP integration** lets an existing coding agent run skills instead. After one-time setup and pairing, it opens the task page automatically. Supported clients also show approvals inside the coding agent.
+Owners can edit, share and delete skills; recipients can read and run them. Edits create versions. Confirmed deletion removes the skill's versions, sharing access and associated run history together.
 
-## Privacy and limits
-
-The model receives the new request, skill and filtered control descriptions. It does not receive recorded input values, raw HTML or screenshots. Saved logs leave out requests, parameter values and page labels.
-
-Owners control editing, sharing and deletion; recipients can read and run. Edits create new saved versions. Deletion requires confirmation and removes the skill's versions, shares and run history together. Local drafts are kept separate when accounts change.
-
-Human-verification checks need the user. Page checkpoints cannot prove the correct issue or article opened. MCP run history currently stays local; runs started inside the extension save history to the backend.
-
-See [verification notes](verification.md) for test results.
+Human-verification challenges require user input. Navigation checkpoints do not prove that a page contains the intended result. MCP activity stays local; extension-led runs save history to the backend.

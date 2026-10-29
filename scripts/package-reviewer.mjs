@@ -18,7 +18,7 @@ if (
   )
 )
   throw new Error(
-    "Build the reviewer extension with WXT_API_BASE_URL=https://show-me-once-dimitar.vercel.app first.",
+    "Build the extension with WXT_API_BASE_URL=https://show-me-once-dimitar.vercel.app first.",
   );
 const files = {};
 async function collect(folder, prefix) {
@@ -52,10 +52,10 @@ for (const name of [
     await readFile(`dist/mcp/${name}`),
   );
 files["README.txt"] = strToU8(
-  `Show Me Once ${version}\n\nLoad the extension folder at chrome://extensions, then open Show Me Once and sign into the library.\nRecord -> review SKILL.md -> save -> type a new request -> Run inside the extension. Safe steps continue automatically; approve protected actions or Stop at any time.\n\nUnder Agent settings, choose your own OpenAI/Anthropic API key or a Codex subscription on this computer. Keys stay only in the Chrome session and are forwarded transiently through the app backend.\nFor a subscription, you need Node.js 24 and Codex signed in with ChatGPT. Open subscription-helper/Install subscription helper.cmd once, paste the extension ID, then Check subscription in the extension. Chrome starts the helper automatically; close the installer. No bridge terminal or external chat is required during normal use. See subscription-helper/SETUP.md.\n\nStart with Record a new task. For the demo, record GitHub Advanced Search yourself, then save the generated skill and run it with new inputs. Saving, versions, sharing and extension-led run history use the web library.\nFor External coding agent (optional), choose your tool in the extension and use its install link or one-time registration command. Compare the six-digit codes and Allow connection. No extension ID, pairing secret or helper terminal is needed for MCP. The connector folder is an offline fallback. It is independent of Run. After pairing, ask your agent to run a skill: Chrome and a dedicated task tab open automatically. No manual tab selection. Unsaved edits to another library skill are kept on this device and do not block the MCP example. Reopen the skill in its original account to continue editing. Extension and connector 0.9.0 support action approval in your coding agent through a native MCP form. If the client cannot display forms, approve in the extension. Update older MCP registrations to connector 0.9.0 once, then close/reopen coding agents so their old connector exits. Existing pairing is retained.\nReal Chrome acceptance is still required before claiming the demo is verified.\n`,
+  `Show Me Once ${version}\n\nRecord a browser task once, then run it with new inputs.\n\n1. Open chrome://extensions, enable Developer mode and Load unpacked. Choose this bundle's extension folder.\n2. Open Show Me Once and sign into the library.\n3. Under Agent settings, add your own OpenAI/Anthropic API key or set up a Codex subscription.\n4. Record a task, save its skill, enter a new request and click Run. Approve protected actions when prompted; Pause and Stop are always available.\n\nCodex subscription setup requires Node.js 24 and Codex signed in with ChatGPT. Open subscription-helper/Install subscription helper.cmd once on Windows, or run node setup.mjs in that folder. Chrome starts the helper automatically afterwards. See subscription-helper/SETUP.md.\n\nOptional MCP integration connects an existing coding agent. Choose your client in the extension, use the supplied setup link/command and approve matching connection codes. The connector folder provides offline setup; see connector/SETUP.md.\n\nApp: https://show-me-once-dimitar.vercel.app\nSource: https://github.com/DimitarPanayotov/show-me-once\n`,
 );
 const path = `dist/show-me-once-reviewer-kit-${version}.zip`;
 await writeFile(path, zipSync(files));
 console.log(
-  `Reviewer kit: ${path} (${Object.keys(files).length} files; no credentials included)`,
+  `Release bundle: ${path} (${Object.keys(files).length} files; no credentials included)`,
 );

@@ -1,49 +1,36 @@
 # Show Me Once
 
-Record a browser task once, then type a new request and click Run inside the extension. Its agent executes the skill automatically while you watch, approve protected actions, pause or stop.
+Turn a browser task into a reusable skill from one demonstration.
 
-[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.9.6](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.9.6-demo) · [Setup and demo](docs/agent.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
+Record the task, save the generated SKILL.md, then describe what to do with new inputs and click **Run**. The agent follows the skill, shows its progress, and pauses for protected actions. You can pause or stop it at any time.
 
-## Start here
+[Live app](https://show-me-once-dimitar.vercel.app) · [Download](https://github.com/DimitarPanayotov/show-me-once/releases/latest) · [Setup](docs/setup.md) · [Architecture](docs/architecture.md)
 
-Load the extension from the reviewer kit and sign into the library. Under **Agent settings**, either add your own OpenAI/Anthropic API key or install the one-time subscription helper for a signed-in Codex installation. The helper is started automatically by Chrome; no bridge terminal or coding-agent chat is needed during normal use.
+## Features
 
-**Record → review SKILL.md → save to library → type a new request → Run.** The extension advances safe steps automatically, shows each step, pauses for clear action-specific approval, and offers Pause/Resume/Stop. New or edited owned skills are saved before Run so backend history belongs to a saved version.
+- Record clicks, inputs and navigation without storing typed values.
+- Generate editable skills with parameters and page checkpoints.
+- Save, version, share and delete skills in the web library.
+- Run tasks inside the extension using your own OpenAI/Anthropic API key or Codex subscription.
+- Connect an existing coding agent through optional [MCP integration](docs/mcp.md).
 
-For the demo, record GitHub Advanced Search yourself: fill the topic, repository, state and label, search, sort by Recently updated and open the first issue. Save the generated skill as github-issue-triage-demo, then run it with a different topic or repository. [Recording and video plan](docs/demo-video.md).
+## Getting started
 
-Personal API keys remain session-only in the extension and are forwarded transiently through the backend to the chosen provider. No owner model credentials are needed. The subscription helper supports Codex; it uses Codex's own sign-in without extracting credentials. [Full setup and manual test](docs/agent.md).
+1. Download and extract the bundle. Load its `extension` folder through **chrome://extensions → Developer mode → Load unpacked**.
+2. Open Show Me Once and sign in.
+3. Choose model access under **Agent settings**. API keys are session-only; Codex subscriptions require a one-time helper installation.
+4. Open a task's starting page, record it, then save the generated skill. Enter a new request and click **Run**.
 
-**External coding agent (optional)** retains MCP skill discovery and guarded browser tools for existing agent chats. It is separate from the main Run flow. [Optional setup](docs/mcp.md).
+See [setup](docs/setup.md) for model configuration.
 
-## Teach a task
+## Privacy and limits
 
-Open its starting page, choose **Record → Start recording**, do the task, then **Stop & create skill**. Review the generated parameters and checkpoints, save it to the library, then choose **Run this skill**. Return to its starting page, type the new inputs in the request box and click **Run**.
+The recorder excludes passwords and typed values. Skills contain parameter names and sanitized page checkpoints. The model receives your new request and filtered control descriptions; saved run logs exclude parameter values and page text.
 
-The primary execution path stays inside the extension. Agent settings provide personal API keys or the automatically started subscription helper. External coding-agent integration is collapsed and optional; manual stepping and recorded replay are absent from the main interface.
+Protected actions require explicit approval. Ambiguous targets and uncertain outcomes pause the run. Human-verification challenges require user input. An action already dispatched may finish after Stop.
 
-## Library and privacy
+## Development
 
-Recording and local editing work without an account. Sign in to save and run skills with PostgreSQL-backed immutable versions and per-step history, or share with another registered user. Recipients can read and run shared skills; owners control editing/sharing. Owners can also delete a skill in the web library or extension after confirming removal of all its versions, sharing access and run history. Markdown/agent ZIP exports remain optional.
+TypeScript monorepo with WXT/Chrome MV3, Next.js/shadcn/ui, oRPC and PostgreSQL/Prisma. The web app deploys to Vercel.
 
-A new account starts with an empty skill list and **Record a new task**. Local drafts belong to the account that created them; signing in to save a selected signed-out draft carries only that draft into the account. Old unchanged example copies from MCP runs are cleaned up automatically.
-
-Recording excludes typed values and sensitive controls. Skills contain parameters, bounded structural hints and sanitized navigation checkpoints. The extension validates fresh live targets and asks for action-specific approval before protected actions. Unknown outcomes pause instead of replaying actions. Cloud access is rechecked for the current account. Imported MCP run activity is currently local; automatic association with backend skill-version history remains a limitation.
-
-## Implementation
-
-WXT / Chrome MV3 / TypeScript; Next.js and shadcn/ui; oRPC; PostgreSQL and Prisma; Vercel. Skill generation is deterministic and local. The extension owns execution; a backend provider adapter or a Chrome-launched Codex helper supplies guarded model decisions.
-
-The recorder and guarded executor persist state across worker suspension. An optional stdio MCP server exposes eight tools for skill discovery, execution and action review, starts/reuses a loopback connector automatically, and closes it when idle. Credentials stay outside the repository.
-
-## Build and checks
-
-Use Node.js 24 and pnpm 10. For local web development, copy apps/web/.env.example to apps/web/.env.local, start PostgreSQL with docker compose up -d, apply Prisma migrations, and run pnpm dev:web.
-
-Run pnpm test and pnpm typecheck. Set WXT_API_BASE_URL=https://show-me-once-dimitar.vercel.app, then run pnpm reviewer:package to build the deploy-targeted extension, bundled connector and reviewer kit. The packaging script refuses a kit pointed at localhost. No credentials are packaged.
-
-Configure the Vercel project with root apps/web, workspace sources enabled, Node.js 24, and DATABASE_URL. The web build applies Prisma migrations before Next.js. Browser tests for older execution modes are historical fixtures; current popup tests run in an in-memory document without controlling Chrome.
-
-For optional local MCP use, connect once, then ask the agent to run a discovered skill. It opens Chrome and a dedicated task tab automatically; no manual tab selection or helper terminal. See [MCP setup and upgrades](docs/mcp.md).
-
-In MCP clients that support native confirmation forms, approve a pending action directly in your coding agent. The action/site/consequence are shown before consent; approval is limited to that one pending action. The extension remains an approval option.
+See [local development](docs/development.md) for setup, build and test commands, and [example skills](examples/README.md) for saved workflows.
