@@ -12,13 +12,6 @@
   font-synthesis: none;
   font-size: 13px;
 }
-#agent-request {
-  min-height: 88px;
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 1.55;
-  background: #f7f9ff;
-}
 #task-request {
   min-height: 100px;
   font: inherit;
@@ -35,9 +28,6 @@
   padding: 12px 0;
   box-shadow: none;
   border: 0;
-}
-#external-handoff {
-  margin-top: 12px;
 }
 .handoff-card {
   padding: 16px;

@@ -2,7 +2,7 @@
 
 Record a browser task once, then type a new request and click Run inside the extension. Its agent executes the skill automatically while you watch, approve protected actions, pause or stop.
 
-[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.9.0](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.9.0-demo) · [Setup and demo](docs/agent.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
+[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.9.1](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.9.1-demo) · [Setup and demo](docs/agent.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
 
 ## Start here
 
@@ -32,7 +32,7 @@ Recording excludes typed values and sensitive controls. Skills contain parameter
 
 WXT / Chrome MV3 / TypeScript; Next.js and shadcn/ui; oRPC; PostgreSQL and Prisma; Vercel. Skill generation is deterministic and local. The extension owns execution; a backend provider adapter or a Chrome-launched Codex helper supplies guarded model decisions.
 
-The recorder and guarded executor persist state across worker suspension. An optional stdio MCP server exposes discovery plus five execution tools, starts/reuses a loopback connector automatically, and closes it when idle. Credentials stay outside the repository.
+The recorder and guarded executor persist state across worker suspension. An optional stdio MCP server exposes eight tools for skill discovery, execution and action review, starts/reuses a loopback connector automatically, and closes it when idle. Credentials stay outside the repository.
 
 ## Build and checks
 

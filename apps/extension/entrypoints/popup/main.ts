@@ -31,7 +31,6 @@ import {
   EXAMPLE_ID,
   exampleDraft,
   EXAMPLE_START_URL,
-  EXAMPLE_REQUEST,
   EXAMPLE_STEP_LABELS,
   type CatalogDraft,
 } from "../../lib/skill-catalog";
@@ -82,7 +81,6 @@ let renderRevision = 0;
 let activeRun: RunState | null = null;
 let approvalToken: string | undefined;
 let approving = false;
-let mcpConnected = false;
 let mcpPendingId: string | undefined;
 let catalogSize = 0;
 let runStarting = false;
@@ -320,7 +318,7 @@ function showParameters(markdown: string) {
   element<HTMLButtonElement>("download").disabled = !planValid;
   element<HTMLButtonElement>("download-mcp").disabled = !planValid;
 }
-function renderHandoff() {
+function renderRunSetup() {
   const nextKey = currentDraft?.sourceRecordingId ?? "";
   if (requestKey !== nextKey) {
     requestKey = nextKey;
@@ -330,43 +328,23 @@ function renderHandoff() {
         ? "Find open issues in microsoft/vscode about terminal with label bug. Sort by recently updated and open the first matching issue."
         : "");
   }
-  const request = currentDraft
-    ? builtin(currentDraft)
-      ? EXAMPLE_REQUEST
-      : "Use Show Me Once to run skill " +
-        localSkillId(currentDraft) +
-        " (" +
-        JSON.stringify(currentDraft.name) +
-        "). Ask me for the new inputs you need."
-    : "";
-  setValue(element<HTMLTextAreaElement>("agent-request"), request);
-  element("copy-request").textContent = "Copy agent request";
-  element<HTMLButtonElement>("copy-request").disabled =
-    !currentDraft ||
-    !mcpConnected ||
-    !!activeRun?.active ||
-    runStarting ||
-    !planValid;
   element<HTMLButtonElement>("try-example").disabled =
     saving || runStarting || !!activeRun?.active || !!currentRecording?.active;
-  element("handoff-help").textContent = mcpConnected
-    ? "Paste this request into your coding agent. It reads the skill and opens the task page automatically."
-    : "Connect your coding agent above first. Your skill stays here.";
   let url: string | undefined;
+  let startingPage = "";
   try {
     const start = currentDraft
       ? parseSkillPlan(currentDraft.markdown).steps[0]?.url
       : undefined;
     if (currentDraft?.sourceRecordingId === EXAMPLE_ID) url = EXAMPLE_START_URL;
     else if (start && !start.includes("…")) url = start;
-    element("starting-page").textContent = start
+    startingPage = start
       ? "Starting page: " + (url ?? start)
       : "";
   } catch {
     /* Invalid Markdown stays editable. */
   }
-  element("run-starting-page").textContent =
-    element("starting-page").textContent;
+  element("run-starting-page").textContent = startingPage;
   element<HTMLButtonElement>("open-task-page").hidden = !url;
   element("open-task-page").dataset.url = url;
   renderExecution();
@@ -500,7 +478,6 @@ async function refreshMcp() {
   const status = (await browser.runtime.sendMessage({
     type: "mcp-status",
   })) as { paired: boolean; connected: boolean; enabled?: boolean; pending?: { id: string; code: string }; error?: string; runError?: string };
-  mcpConnected = status.connected;
   mcpPendingId = status.pending?.id;
   element('mcp-run-error').textContent = status.runError ?? '';
   const feedback = element("mcp-status");
@@ -531,7 +508,6 @@ async function refreshMcp() {
   element("connection-heading").textContent = status.paired
     ? "Your coding agent"
     : "Connect your coding agent";
-  renderHandoff();
 }
 
 function renderMcpInstallation() {
@@ -572,7 +548,6 @@ function renderRun(
   element("run-setup").hidden = active;
   runControls.hidden = !active;
   element("run-editor-details").hidden = active;
-  element("external-handoff").hidden = !currentDraft || active;
   element("external-agent-details").hidden = active;
   element("execution-settings").hidden = active;
   skillName.disabled =
@@ -672,7 +647,7 @@ function renderRun(
       list.append(item);
     }
   renderSave();
-  renderHandoff();
+  renderRunSetup();
 }
 
 async function render() {
@@ -1166,15 +1141,6 @@ async function openSkill(skillId: string) {
 }
 libraryLoad.addEventListener("click", () => {
   void openSkill(librarySkills.value).catch(report);
-});
-element("copy-request").addEventListener("click", () => {
-  void navigator.clipboard
-    .writeText(element<HTMLTextAreaElement>("agent-request").value)
-    .then(() => {
-      element("handoff-notice").textContent =
-        "✓ Request copied. Paste it into your coding agent.";
-    })
-    .catch(report);
 });
 element("try-example").addEventListener("click", () => {
   void (async () => {

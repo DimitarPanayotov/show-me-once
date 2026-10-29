@@ -382,10 +382,11 @@ test('MCP connection explains automatic page opening without a tab-selection con
     assert.equal(f.window.document.getElementById('mcp-use-tab'), null);
     assert.equal(f.messages.some(m => m.type === 'mcp-select-tab'), false);
     assert.equal(f.element('open-start-page'), null);
-    f.element('copy-request').click();
-    await until(() => f.clipboard().includes('Show Me Once'));
+    for (const id of ['external-handoff', 'agent-request', 'copy-request'])
+      assert.equal(f.element(id), null);
+    assert.equal(f.clipboard(), '');
     assert.equal(f.tabs.length, 0);
-    assert.match(f.element('handoff-help').textContent, /opens the task page automatically/);
+    assert.equal(f.element('run-starting-page').textContent, 'Starting page: https://github.com/search/advanced');
   } finally { await f.close(); }
 });
 
@@ -501,7 +502,7 @@ test("a clean cached Wikipedia starter upgrades to issue triage without archivin
   try {
     assert.equal(f.local.skillDraft.sourceRecordingId, EXAMPLE_ID);
     assert.deepEqual(f.local.localSkills, []);
-    assert.match(f.element("agent-request").value, /microsoft\/vscode/);
+    assert.match(f.element("task-request").value, /microsoft\/vscode/);
     assert.equal(f.element("open-start-page"), null);
   } finally {
     await f.close();
@@ -527,10 +528,9 @@ test("a recorded skill is usable without an account and continuous edits keep fo
     await until(() => f.local.skillDraft.name === "My custom task");
     f.element("try-skill").click();
     await until(() => f.element("view-run").hidden === false);
-    f.element("copy-request").click();
-    await until(() => f.clipboard().includes("local:recorded"));
-    assert.match(f.clipboard(), /My custom task/);
-    assert.ok((await f.catalog.get("local:recorded")).skill.markdown);
+    const recorded = (await f.catalog.get("local:recorded")).skill;
+    assert.equal(recorded.name, "My custom task");
+    assert.ok(recorded.markdown);
     assert.equal(
       f.messages.some((m) => m.type === "account-login"),
       false,

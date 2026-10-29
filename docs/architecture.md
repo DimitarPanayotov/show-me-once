@@ -1,4 +1,4 @@
-# Architecture — 0.6.0
+# Architecture
 
 Show Me Once turns one browser demonstration into a reusable parameterized skill. The primary flow stays inside the Chrome extension: Record → review SKILL.md → backend library → enter a request → Run. The extension owns the automatic decision loop. External coding-agent control is an optional additional integration.
 
