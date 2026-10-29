@@ -408,7 +408,7 @@ test('MCP picker provides agent-specific setup and a code approval without expos
 });
 
 test('MCP connection explains automatic page opening without a tab-selection control', async () => {
-  const f = await fixture({ draft: exampleDraft });
+  const f = await fixture();
   try {
     assert.match(f.element('mcp-connected-help').textContent, /opens the task page automatically/);
     assert.equal(f.window.document.getElementById('mcp-use-tab'), null);
@@ -418,7 +418,7 @@ test('MCP connection explains automatic page opening without a tab-selection con
       assert.equal(f.element(id), null);
     assert.equal(f.clipboard(), '');
     assert.equal(f.tabs.length, 0);
-    assert.equal(f.element('run-starting-page').textContent, 'Starting page: https://github.com/search/advanced');
+    assert.equal(f.element('run-starting-page').textContent, '');
   } finally { await f.close(); }
 });
 
@@ -437,7 +437,7 @@ test('MCP run rejection is visible separately from its successful connection and
 
 test("Run saves the skill and starts an automatic extension agent without a connected external chat", async () => {
   const f = await fixture({
-    draft: exampleDraft,
+    draft: { ...exampleDraft, sourceRecordingId: 'recorded', ownerId: 'user-one', readOnly: false, dirty: true },
     connected: false,
     signedIn: true,
   });
@@ -472,8 +472,9 @@ test("Run saves the skill and starts an automatic extension agent without a conn
 });
 
 test("API keys are entered under settings, cleared from the field and kept outside persistent popup state", async () => {
-  const f = await fixture({ draft: exampleDraft, signedIn: true });
+  const f = await fixture({ draft: { ...exampleDraft, sourceRecordingId: 'recorded', ownerId: 'user-one', readOnly: false, dirty: true }, signedIn: true });
   try {
+    f.element('task-request').value = 'Find open issues about terminal.';
     f.element("agent-api-key").value = "test-only-replacement-key";
     f.element("agent-api-key").dispatchEvent(
       new f.window.Event("input", { bubbles: true }),
@@ -505,7 +506,7 @@ test("API keys are entered under settings, cleared from the field and kept outsi
 });
 
 test("a secret in a task request cannot start or save a run", async () => {
-  const f = await fixture({ draft: exampleDraft, signedIn: true });
+  const f = await fixture({ draft: { ...exampleDraft, sourceRecordingId: 'recorded', ownerId: 'user-one', readOnly: false, dirty: true }, signedIn: true });
   try {
     f.element("task-request").value = "password=do-not-submit-this";
     f.element("run-form").dispatchEvent(
@@ -542,6 +543,50 @@ test("a retired cached starter is cleared without loading another preset", async
   } finally {
     await f.close();
   }
+});
+
+test('an already-selected current preset is cleared on reopen and after an external run finishes', async () => {
+  for (const signedIn of [false, true]) {
+    const f = await fixture({ draft: exampleDraft, signedIn });
+    try {
+      assert.equal(f.local.skillDraft, undefined);
+      assert.equal(f.element('run-empty').hidden, false);
+      assert.equal(f.element('run-panel').hidden, true);
+      assert.equal(f.element('task-request').value, '');
+      assert.equal(f.element('current-name').textContent, '');
+      assert.equal(f.element('skill-markdown').value, '');
+      assert.equal(f.element('library-skills').options.length, 0);
+      const running = { id: 'external-run', active: true, engine: 'external', mode: 'automatic',
+        skillKey: EXAMPLE_ID, nextStep: 0, totalSteps: 12, logs: [] };
+      await f.storage.local.set({ skillDraft: exampleDraft, runState: running, runPlan: parseSkillPlan(exampleDraft.markdown) });
+      await until(() => f.element('run-controls').hidden === false);
+      await f.storage.local.set({ runState: { ...running, active: false, nextStep: 12 } });
+      await until(() => f.element('run-panel').hidden && !f.local.skillDraft);
+      assert.equal(f.element('task-request').value, '');
+      assert.equal(f.element('current-name').textContent, '');
+    } finally { await f.close(); }
+  }
+});
+
+test('a saved owned skill is retained even when its recording identity came from an old example', async () => {
+  const f = await fixture({ signedIn: true, draft: { ...exampleDraft, remoteSkillId: 'owned-copy', ownerId: 'user-one',
+    readOnly: false, savedVersion: 1, dirty: false } });
+  try {
+    assert.equal(f.local.skillDraft.remoteSkillId, 'owned-copy');
+    assert.equal(f.element('run-panel').hidden, false);
+    assert.equal(f.element('current-meta').textContent, 'Saved skill');
+    assert.equal(f.element('task-request').value, '');
+  } finally { await f.close(); }
+});
+
+test('an edited local document is retained even when its recording identity came from an old example', async () => {
+  const f = await fixture({ signedIn: true, draft: { ...exampleDraft, ownerId: 'user-one', readOnly: false,
+    dirty: true, markdown: exampleDraft.markdown + '\nMy own edits.' } });
+  try {
+    assert.match(f.local.skillDraft.markdown, /My own edits/);
+    assert.equal(f.element('run-panel').hidden, false);
+    assert.equal(f.element('current-meta').textContent, 'New skill · not saved yet');
+  } finally { await f.close(); }
 });
 test("a recorded skill is usable without an account and continuous edits keep focus", async () => {
   const f = await fixture();

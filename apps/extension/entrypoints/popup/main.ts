@@ -29,7 +29,6 @@ import {
   keepLocalDraft,
   localSkillId,
   EXAMPLE_ID,
-  exampleDraft,
   EXAMPLE_START_URL,
   EXAMPLE_STEP_LABELS,
   type CatalogDraft,
@@ -98,7 +97,7 @@ let subscriptionReady = false;
 let agentSettingsDirty = false;
 const taskRequest = element<HTMLTextAreaElement>("task-request");
 function builtin(draft: SkillDraft | null) {
-  return draft?.sourceRecordingId === EXAMPLE_ID && !draft.remoteSkillId;
+  return draft?.sourceRecordingId === EXAMPLE_ID && !draft.remoteSkillId && draft.readOnly === true && !draft.dirty;
 }
 
 function renderExecution() {
@@ -324,11 +323,7 @@ function renderRunSetup() {
   const nextKey = currentDraft?.sourceRecordingId ?? "";
   if (requestKey !== nextKey) {
     requestKey = nextKey;
-    taskRequest.value =
-      taskRequests[nextKey] ??
-      (currentDraft?.sourceRecordingId === EXAMPLE_ID
-        ? "Find open issues in microsoft/vscode about terminal with label bug. Sort by recently updated and open the first matching issue."
-        : "");
+    taskRequest.value = taskRequests[nextKey] ?? "";
   }
   let url: string | undefined;
   let startingPage = "";
@@ -354,6 +349,9 @@ function showDraft(draft: SkillDraft | null) {
   currentDraft = draft;
   if (!draft) {
     planValid = false;
+    for (const id of ['current-name', 'current-description', 'current-meta', 'draft-label'])
+      element(id).textContent = '';
+    for (const input of [skillName, skillDescription, skillMarkdown]) setValue(input, '');
     return;
   }
   setValue(skillName, draft.name);
@@ -361,18 +359,14 @@ function showDraft(draft: SkillDraft | null) {
   setValue(skillMarkdown, draft.markdown);
   element("current-name").textContent = draft.name;
   element("current-description").textContent = draft.description;
-  element("current-meta").textContent = builtin(draft)
-    ? "Example skill"
-    : draft.readOnly
+  element("current-meta").textContent = draft.readOnly
       ? "Shared skill"
       : draft.remoteSkillId
         ? draft.dirty
           ? "Draft · unsaved changes"
           : "Saved skill"
         : "New skill · not saved yet";
-  element("draft-label").textContent = builtin(draft)
-    ? "Example"
-    : draft.readOnly
+  element("draft-label").textContent = draft.readOnly
       ? "Read only"
       : draft.remoteSkillId && !draft.dirty
         ? "Saved"
@@ -665,7 +659,9 @@ async function render() {
   element('kept-draft-notice').hidden = !signedInUser || !((stored.localSkills as CatalogDraft[] | undefined) ?? []).some(d => d.remoteSkillId && d.dirty && d.ownerId === signedInUser?.id);
   const run = (stored.runState as RunState | undefined) ?? null;
   const draft = stored.skillDraft as SkillDraft | undefined;
-  const visible = draft && (builtin(draft) || (draft.remoteSkillId
+  const preset = !!draft && builtin(draft);
+  if (preset && !run?.active) await browser.storage.local.remove('skillDraft');
+  const visible = draft && (preset ? !!run?.active : (draft.remoteSkillId
     ? visibleSkillIds.has(localSkillId(draft))
     : localDraftVisible(draft, signedInUser?.id)));
   showDraft(visible ? draft : null);
@@ -1270,7 +1266,7 @@ void (async () => {
   renderMcpInstallation();
   const previous = saved.skillDraft as SkillDraft | undefined;
   if (
-    previous && (previous.sourceRecordingId === "example:wikipedia-search" || (previous.sourceRecordingId === EXAMPLE_ID && previous.markdown !== exampleDraft.markdown)) &&
+    previous && !previous.remoteSkillId && previous.sourceRecordingId.startsWith('example:') &&
     previous.readOnly &&
     !previous.dirty &&
     !(saved.runState as RunState | undefined)?.active &&

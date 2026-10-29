@@ -1,5 +1,11 @@
 # Manual verification
 
+## Cached preset selection cleanup — extension 0.9.4
+
+Removing the preset button did not clear an already selected built-in skill. The popup now removes that idle cached selection, clears its heading/editor fields and no longer supplies a hardcoded GitHub request. A running external task still exposes progress, approval and Stop; after it ends, an unchanged built-in selection returns to the empty recording screen. Saved owned copies and edited local documents are preserved.
+
+Popup regression checks reproduce the already-selected current preset both signed in and signed out, the transition from an active external run to completion, and retention of saved/edited work. These checks execute the real popup code in a controlled document. Chrome acceptance remains manual; the optional MCP example is still available through explicit agent use.
+
 ## Recording-first interface — extension 0.9.3
 
 The ready-made GitHub example button has been removed from the extension interface. New accounts start with Record a new task. The demo instructions now record GitHub Advanced Search, save the generated skill and run that same recording with new inputs. Existing popup checks exercise this recording-to-request flow and confirm there is no preset button or automatically opened task tab. All 17 popup checks pass. The optional MCP example and connector protocol are unchanged.
