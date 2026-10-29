@@ -304,25 +304,29 @@ async function fixture({
   };
 }
 
-test("the main example opens an editable request and Run; the external coding agent is optional", async () => {
+test("first use starts with recording a task and then an editable request and Run", async () => {
   const f = await fixture();
   try {
     for (const id of ["run-engine", "run-mode", "run-next", "agent-pair"])
       assert.equal(f.element(id), null);
     assert.match(f.element("mcp-status").textContent, /Connected/);
-    f.element("try-example").click();
-    await until(() => f.tabs.length === 1);
-    assert.equal(f.tabs[0].url, "https://github.com/search/advanced");
+    assert.equal(f.element('try-example'), null);
+    assert.equal(f.element('library-skills').options.length, 0);
+    f.element('empty-record').click();
+    f.element('start').click();
+    await until(() => f.local.recording?.active === true);
+    f.element('stop').click();
+    await until(() => f.local.skillDraft?.sourceRecordingId === 'recorded');
+    f.element('try-skill').click();
+    await until(() => f.element('view-run').hidden === false);
+    assert.equal(f.tabs.length, 0);
     assert.equal(f.clipboard(), "");
-    assert.match(
-      f.element("task-request").value,
-      /microsoft\/vscode.*terminal/,
-    );
+    assert.equal(f.element('task-request').value, '');
     assert.equal(f.element("task-request").readOnly, false);
     assert.equal(f.element("external-agent-details").open, false);
     assert.equal(f.element("run-start").textContent, "Sign in to run");
-    assert.equal(f.local.skillDraft.sourceRecordingId, EXAMPLE_ID);
-    assert.equal(f.element("current-meta").textContent, "Example skill");
+    assert.equal(f.local.skillDraft.sourceRecordingId, 'recorded');
+    assert.equal(f.element("current-meta").textContent, "New skill · not saved yet");
     assert.equal(f.element("error").textContent, "");
     assert.equal(
       f.messages.some((m) => m.type === "start-run"),
@@ -347,7 +351,7 @@ test("first launch works without external pairing and keeps its integration coll
       3,
     );
     assert.equal(f.element("mcp-guide"), null);
-    assert.equal(f.element("try-example").disabled, false);
+    assert.equal(f.element("try-example"), null);
     assert.equal(f.element("external-agent-details").open, false);
     assert.equal(f.element("start").disabled, false);
     assert.equal(f.tabs.length, 0);
@@ -369,7 +373,7 @@ test('a new account has an empty skill picker despite old guest drafts, other-ac
       assert.equal(f.element('run-empty').hidden, false);
       assert.equal(f.element('run-panel').hidden, true);
       assert.equal(f.element('kept-draft-notice').hidden, true);
-      assert.equal(f.element('try-example').disabled, false);
+      assert.equal(f.element('try-example'), null);
     } finally { await f.close(); }
   }
 });
@@ -519,7 +523,7 @@ test("a secret in a task request cannot start or save a run", async () => {
   }
 });
 
-test("a retired cached starter is cleared and examples require an explicit choice", async () => {
+test("a retired cached starter is cleared without loading another preset", async () => {
   const f = await fixture({
     draft: {
       ...exampleDraft,
@@ -532,7 +536,7 @@ test("a retired cached starter is cleared and examples require an explicit choic
     assert.deepEqual(f.local.localSkills ?? [], []);
     assert.equal(f.element('library-controls').hidden, true);
     assert.equal(f.element('run-empty').hidden, false);
-    assert.equal(f.element('try-example').disabled, false);
+    assert.equal(f.element('try-example'), null);
     assert.equal(f.element("task-request").value, '');
     assert.equal(f.element("open-start-page"), null);
   } finally {
@@ -603,7 +607,7 @@ test("a pending save locks editing and task switching until the exact submitted 
   try {
     f.element('save-library').click();
     await until(() => f.messages.some(m => m.type === 'library-save'));
-    for (const id of ['skill-name', 'skill-description', 'skill-markdown', 'start', 'try-example', 'run-start', 'generate', 'library-load'])
+    for (const id of ['skill-name', 'skill-description', 'skill-markdown', 'start', 'run-start', 'generate', 'library-load'])
       assert.equal(f.element(id).disabled, true, id + ' must be locked while saving');
     complete();
     await until(() => f.local.skillDraft.dirty === false && !f.element('skill-name').disabled);
@@ -801,12 +805,15 @@ test("the actual content executor exposes a search redirect button, requires app
   }
 });
 
-test('switching to the example keeps another account’s unfinished edits without showing its recovery notice', async () => {
+test('recording a new task keeps another account’s unfinished edits without showing its recovery notice', async () => {
   const pending = { ...exampleDraft, sourceRecordingId: 'private-edit', remoteSkillId: 'cloud', ownerId: 'owner', readOnly: false, dirty: true, markdown: '---\nname: "unfinished' };
   const f = await fixture({ draft: pending });
   try {
-    f.element('try-example').click();
-    await until(() => f.local.skillDraft?.sourceRecordingId === EXAMPLE_ID);
+    f.element('empty-record').click();
+    f.element('start').click();
+    await until(() => f.local.recording?.active === true);
+    f.element('stop').click();
+    await until(() => f.local.skillDraft?.sourceRecordingId === 'recorded');
     assert.deepEqual(f.local.localSkills, [pending]);
     assert.equal(f.element('kept-draft-notice').hidden, true);
     assert.equal(f.messages.some(m => m.type === 'account-login' || m.type === 'library-save'), false);

@@ -1,4 +1,4 @@
-# Run a skill inside the extension — 0.9.2
+# Run a skill inside the extension — 0.9.3
 
 Record once, review the generated skill, save it to the library, then select it, type a new request and click **Run**. The extension owns the automatic observe → model decision → guarded action → checkpoint loop. Approvals, Pause, Resume and Stop stay in the popup. No coding-agent chat is required.
 
@@ -37,11 +37,11 @@ The key is stored only in trusted extension session storage. It is cleared from 
 5. Review each protected action's verb, target and consequence. Approve it in the extension, Pause/Resume, or Stop. Closing the popup does not stop a run.
 6. Inspect completion and Run activity. Saved-skill runs write generic per-step history to the backend against the saved version.
 
-## GitHub issue-triage example
+## Record GitHub issue triage yourself
 
-Choose **Try GitHub issue triage**. It opens Advanced search and an editable sample request inside the extension. First input: microsoft/vscode, terminal, open, bug. After completion, return to Advanced search and run the same skill with microsoft/TypeScript, inference, open, bug.
+Open https://github.com/search/advanced, then choose **Record → Start recording**. Enter microsoft/vscode, topic terminal, state open and label bug. Search, sort by Recently updated and open the first matching issue. Return to the extension and choose **Stop & create skill**. Review the generated instructions and save it as **github-issue-triage-demo**.
 
-Twelve steps cover four form inputs, protected search submission, Recently updated sorting, result selection and an issue-page checkpoint. Verify the actual repository/topic manually: sanitized origin/path-depth checkpoints do not prove page meaning. Missing controls or results should stop the run. This example makes no repository changes and reads no issue body.
+Return to Advanced search and run your saved skill with topic debugger. Reuse it again with microsoft/TypeScript, inference, open and bug. The step count comes from your recording. Check the resulting repository and issue manually: page checkpoints do not prove page meaning. See [the video plan](demo-video.md) for the full sequence.
 
 ## Safety and limits
 

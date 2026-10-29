@@ -4,7 +4,7 @@ Show one complete GitHub workflow: record it, save its skill, then let the exten
 
 ## Before recording
 
-1. Reload extension 0.9.2, pin its icon and maximize Chrome.
+1. Reload extension 0.9.3, pin its icon and maximize Chrome.
 2. Sign in and check that the Codex subscription shows Ready under Agent settings. Install the helper beforehand. Explain its one-time setup in the introduction.
 3. Open GitHub Advanced search at https://github.com/search/advanced with empty fields. Open the web library in another tab.
 4. Have a second library account signed in in another browser window for the sharing check. Keep passwords, API keys and setup codes off camera.
@@ -45,7 +45,7 @@ Find open issues in microsoft/TypeScript about inference with label bug.
 Sort by recently updated and open the first matching issue.
 ```
 
-The newly recorded skill is the subject of this video. Use the built-in example separately if you want an additional demonstration. A brief MCP clip is optional if time remains.
+The newly recorded skill is the subject of this video. A brief MCP clip is optional if time remains. Name your saved skill in the request so the coding agent uses your recording, for example: “Use my github-issue-triage-demo skill to find open terminal bugs in microsoft/vscode and open the most recently updated issue.”
 
 ## Finish
 

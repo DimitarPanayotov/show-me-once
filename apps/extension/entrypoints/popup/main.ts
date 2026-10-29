@@ -330,8 +330,6 @@ function renderRunSetup() {
         ? "Find open issues in microsoft/vscode about terminal with label bug. Sort by recently updated and open the first matching issue."
         : "");
   }
-  element<HTMLButtonElement>("try-example").disabled =
-    saving || runStarting || !!activeRun?.active || !!currentRecording?.active;
   let url: string | undefined;
   let startingPage = "";
   try {
@@ -417,7 +415,6 @@ function renderSave() {
   if (saving) {
     start.disabled = true;
     element<HTMLButtonElement>("run-start").disabled = true;
-    element<HTMLButtonElement>("try-example").disabled = true;
     libraryLoad.disabled = librarySkills.disabled = true;
     element<HTMLButtonElement>("generate").disabled = true;
   }
@@ -1160,12 +1157,6 @@ async function openSkill(skillId: string) {
 }
 libraryLoad.addEventListener("click", () => {
   void openSkill(librarySkills.value).catch(report);
-});
-element("try-example").addEventListener("click", () => {
-  void (async () => {
-    await openSkill(EXAMPLE_ID);
-    await browser.tabs.create({ url: EXAMPLE_START_URL });
-  })().catch(report);
 });
 element("run-form").addEventListener("submit", (event) => {
   event.preventDefault();

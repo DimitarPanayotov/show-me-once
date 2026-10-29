@@ -2,7 +2,7 @@
 
 Record a browser task once, then type a new request and click Run inside the extension. Its agent executes the skill automatically while you watch, approve protected actions, pause or stop.
 
-[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.9.2](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.9.2-demo) · [Setup and demo](docs/agent.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
+[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.9.3](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.9.3-demo) · [Setup and demo](docs/agent.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
 
 ## Start here
 
@@ -10,7 +10,7 @@ Load the extension from the reviewer kit and sign into the library. Under **Agen
 
 **Record → review SKILL.md → save to library → type a new request → Run.** The extension advances safe steps automatically, shows each step, pauses for clear action-specific approval, and offers Pause/Resume/Stop. New or edited owned skills are saved before Run so backend history belongs to a saved version.
 
-Choose **Try GitHub issue triage** for a twelve-step example: four form inputs, protected search, Recently updated sort, first matching issue and final checkpoint. Run first with microsoft/vscode + terminal + open + bug, then microsoft/TypeScript + inference + open + bug. The example request is editable inside the extension.
+For the demo, record GitHub Advanced Search yourself: fill the topic, repository, state and label, search, sort by Recently updated and open the first issue. Save the generated skill as github-issue-triage-demo, then run it with a different topic or repository. [Recording and video plan](docs/demo-video.md).
 
 Personal API keys remain session-only in the extension and are forwarded transiently through the backend to the chosen provider. No owner model credentials are needed. The subscription helper supports Codex; it uses Codex's own sign-in without extracting credentials. [Full setup and manual test](docs/agent.md).
 
@@ -26,7 +26,7 @@ The primary execution path stays inside the extension. Agent settings provide pe
 
 Recording and local editing work without an account. Sign in to save and run skills with PostgreSQL-backed immutable versions and per-step history, or share with another registered user. Recipients can read and run shared skills; owners control editing/sharing. Markdown/agent ZIP exports remain optional.
 
-A new account starts with an empty skill list. The built-in task is available through **Try GitHub issue triage**, separately from your skills. Local drafts belong to the account that created them; signing in to save a selected signed-out draft carries only that draft into the account. Old unchanged example copies from MCP runs are cleaned up automatically.
+A new account starts with an empty skill list and **Record a new task**. Local drafts belong to the account that created them; signing in to save a selected signed-out draft carries only that draft into the account. Old unchanged example copies from MCP runs are cleaned up automatically.
 
 Recording excludes typed values and sensitive controls. Skills contain parameters, bounded structural hints and sanitized navigation checkpoints. The extension validates fresh live targets and asks for action-specific approval before protected actions. Unknown outcomes pause instead of replaying actions. Cloud access is rechecked for the current account. Imported MCP run activity is currently local; automatic association with backend skill-version history remains a limitation.
 

@@ -1,5 +1,9 @@
 # Manual verification
 
+## Recording-first interface — extension 0.9.3
+
+The ready-made GitHub example button has been removed from the extension interface. New accounts start with Record a new task. The demo instructions now record GitHub Advanced Search, save the generated skill and run that same recording with new inputs. Existing popup checks exercise this recording-to-request flow and confirm there is no preset button or automatically opened task tab. All 17 popup checks pass. The optional MCP example and connector protocol are unchanged.
+
 ## Skill-list and account cleanup — extension 0.9.2
 
 The popup previously mixed the built-in example and browser-local drafts into “Your skills.” External MCP runs could also import the unchanged example as a new dirty draft on each run, leaving duplicate local entries. Those runs now reuse the built-in identity. The example remains discoverable through MCP and the explicit Try GitHub issue triage button, but does not appear as an owned skill in the picker.
