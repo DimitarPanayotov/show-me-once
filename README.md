@@ -4,7 +4,7 @@ Turn a browser task into a reusable skill from one demonstration.
 
 Record the task, save the generated SKILL.md, then describe what to do with new inputs and click **Run**. The agent follows the skill, shows its progress, and pauses for protected actions. You can pause or stop it at any time.
 
-[Live app](https://show-me-once-dimitar.vercel.app) · [Download](https://github.com/DimitarPanayotov/show-me-once/releases/latest) · [Setup](docs/setup.md) · [Architecture](docs/architecture.md)
+[Live app](https://show-me-once-dimitar.vercel.app) · [Demo](https://drive.google.com/drive/folders/1G-dQTsi6W9gPskKOihy5F-TK0WyOhbFq?usp=sharing) · [Download](https://github.com/DimitarPanayotov/show-me-once/releases/latest) · [Setup](docs/setup.md) · [Architecture](docs/architecture.md)
 
 ## Features
 
