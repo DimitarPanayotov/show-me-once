@@ -16,7 +16,7 @@ import {
   type ExternalIdentity,
   type ExternalResult,
 } from "@show-me-once/shared/mcp";
-import { keepLocalDraft, type CatalogDraft } from "./skill-catalog.ts";
+import { keepLocalDraft, isExampleRunCopy, exampleDraft, EXAMPLE_ID, type CatalogDraft } from "./skill-catalog.ts";
 import { confirmationCopy, isPendingConfirmation, type PendingConfirmation } from './confirmation.ts';
 import type { ConnectorResult } from '@show-me-once/shared/approval';
 
@@ -26,6 +26,7 @@ export function prepareExternalDraft(
   markdown: string,
   runId: string,
 ) {
+  skills = keepLocalDraft(skills);
   try {
     return { ...externalDraft(previous, markdown, runId), skills };
   } catch (error) {
@@ -39,7 +40,7 @@ export function prepareExternalDraft(
 
 /** Preserve an existing edited draft when it represents the same exported skill. */
 export function externalDraft(
-  previous: Record<string, unknown> | undefined,
+  previous: CatalogDraft | undefined,
   markdown: string,
   runId: string,
 ) {
@@ -51,7 +52,7 @@ export function externalDraft(
     typeof previous.sourceRecordingId === "string" &&
     base(previous.markdown) === base(markdown)
   )
-    return {
+    return isExampleRunCopy(previous) ? { draft: { ...exampleDraft }, skillKey: EXAMPLE_ID } : {
       draft: previous,
       skillKey:
         typeof previous.remoteSkillId === "string"
@@ -62,6 +63,8 @@ export function externalDraft(
     throw new Error(
       "Save your current draft before starting a different external skill.",
     );
+  if (base(markdown) === base(exampleDraft.markdown))
+    return { draft: { ...exampleDraft }, skillKey: EXAMPLE_ID };
   let metadata;
   try { metadata = readSkillMetadata(markdown); }
   catch { throw new Error('The skill header is invalid. Read the original skill again.'); }

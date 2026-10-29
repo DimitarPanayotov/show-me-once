@@ -21,6 +21,8 @@ import {
   withoutSavedDraft,
   type CatalogDraft,
   exampleDraft,
+  isExampleRunCopy,
+  localDraftVisible,
 } from "../lib/skill-catalog";
 import type { ExternalResult } from "@show-me-once/shared/mcp";
 import {
@@ -565,9 +567,17 @@ export default defineBackground(() => {
         "skillDraft",
         "localSkills",
       ]);
+      const skills = (stored.localSkills as CatalogDraft[] | undefined) ?? [];
+      const cleaned = skills.filter(draft => !isExampleRunCopy(draft));
+      if (cleaned.length !== skills.length)
+        await browser.storage.local.set({ localSkills: cleaned });
+      if (stored.skillDraft && isExampleRunCopy(stored.skillDraft as CatalogDraft) && !(await readRun())?.active) {
+        await browser.storage.local.remove('skillDraft');
+        stored.skillDraft = undefined;
+      }
       return {
         draft: stored.skillDraft as CatalogDraft | undefined,
-        skills: stored.localSkills as CatalogDraft[] | undefined,
+        skills: cleaned,
       };
     },
     listLibrary: async () => {
@@ -601,12 +611,20 @@ export default defineBackground(() => {
         "skillDraft",
         "localSkills",
       ]);
+      const account = await readAccount();
+      const previous = storedDrafts.skillDraft as CatalogDraft | undefined;
+      const accessible = previous && (previous.remoteSkillId
+        ? previous.ownerId === account?.user.id && !!account
+        : previous.sourceRecordingId === exampleDraft.sourceRecordingId || localDraftVisible(previous, account?.user.id));
+      const cached = (storedDrafts.localSkills as CatalogDraft[] | undefined) ?? [];
       const selection = prepareExternalDraft(
-        storedDrafts.skillDraft as CatalogDraft | undefined,
-        (storedDrafts.localSkills as CatalogDraft[] | undefined) ?? [],
+        accessible ? previous : undefined,
+        accessible ? cached : keepLocalDraft(cached, previous),
         markdown,
         id,
       );
+      if (!selection.draft.remoteSkillId && typeof selection.draft.sourceRecordingId === 'string' && selection.draft.sourceRecordingId.startsWith('mcp:'))
+        selection.draft = { ...selection.draft, ownerId: account?.user.id };
       const url = resolveStartPage(markdown, startUrl);
       const windows = await browser.windows.getAll({ windowTypes: ['normal'] });
       const window = windows.find(w => w.focused) ?? windows[0];
@@ -708,6 +726,21 @@ export default defineBackground(() => {
       });
     },
   });
+  async function switchAccountWorkspace(previousId: string | undefined, nextId: string | undefined, carryDraft = false) {
+    if (previousId === nextId) return;
+    const stored = await browser.storage.local.get(['skillDraft', 'localSkills']);
+    const draft = stored.skillDraft as CatalogDraft | undefined;
+    const carry = carryDraft && !previousId && !!nextId && draft &&
+      !draft.remoteSkillId && !draft.ownerId && draft.sourceRecordingId !== exampleDraft.sourceRecordingId && !isExampleRunCopy(draft);
+    const skills = keepLocalDraft((stored.localSkills as CatalogDraft[] | undefined) ?? [], draft);
+    await browser.storage.local.set({
+      skillDraft: carry ? { ...draft, ownerId: nextId } : null,
+      localSkills: carry ? skills.filter(value => localSkillId(value) !== localSkillId(draft)) : skills,
+    });
+    await browser.storage.local.remove(['recording', 'runState', 'runPlan']);
+    if (!carry) await browser.storage.session.remove('taskRequests');
+    issuedSkills.clear();
+  }
   const pauseExternal = (controllerId?: string) => {
     if (
       controllerId &&
@@ -1011,22 +1044,28 @@ export default defineBackground(() => {
         return readAccount().then((account) => account?.user ?? null);
       if (request.type === "account-login")
         return serial(async () => {
+          if ((await readRun())?.active || (await read())?.active)
+            throw new Error('Stop the current recording or run before switching accounts.');
           if (
             typeof request.email !== "string" ||
             typeof request.password !== "string"
           )
             throw new Error("Enter email and password.");
+          const previous = await readAccount();
           const account = await api<Account>("auth/login", {
             email: request.email,
             password: request.password,
           });
+          await switchAccountWorkspace(previous?.user.id, account.user.id, request.preserveDraft === true);
+          if (previous && previous.user.id !== account.user.id)
+            await browser.storage.session.remove('agentApiKey');
           await browser.storage.session.set({ account });
           return account.user;
         });
       if (request.type === "account-logout")
         return serial(async () => {
-          if ((await readRun())?.active)
-            throw new Error("Stop the current run before signing out.");
+          if ((await readRun())?.active || (await read())?.active)
+            throw new Error("Stop the current recording or run before signing out.");
           const account = await readAccount();
           if (account)
             await api("auth/logout", {}, account).catch(() => undefined);
@@ -1035,6 +1074,7 @@ export default defineBackground(() => {
             "agentApiKey",
             "taskRequests",
           ]);
+          await switchAccountWorkspace(account?.user.id, undefined);
           return true;
         });
       if (request.type === "library-list")

@@ -1,6 +1,6 @@
-# Manual acceptance — 0.9.0
+# Manual acceptance — 0.9.2
 
-1. Reload the existing extension and confirm 0.9.0. External coding agent must remain optional and collapsed. No separate HTML guide.
+1. Reload the existing extension and confirm 0.9.2. A new empty account must show no skills in its picker. Try GitHub issue triage is a separate explicit choice. Run that example twice through MCP and confirm it creates no local skill copies. Sign into another account: prior drafts, selection, requests and activity must not appear. Sign back into the original account and check its drafts remain available. External coding agent must remain optional and collapsed. No separate HTML guide.
 2. Under Agent settings either save a personal OpenAI/Anthropic key (session only), or install subscription-helper/Install subscription helper.cmd once for the current extension ID and choose Check subscription. No terminal or external agent chat should remain necessary.
 3. Sign into the library. Choose Try GitHub issue triage. In the extension type: Find open issues in microsoft/vscode about terminal with label bug. Sort by recently updated and open the first matching issue. Click Run.
 4. Check all four fields. Before search, verify an action-specific Submit search preview identifying the Search button and consequence. Approve once. Remaining steps must continue automatically without a chat message or Next button.

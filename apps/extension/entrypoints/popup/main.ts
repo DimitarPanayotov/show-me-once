@@ -33,6 +33,7 @@ import {
   EXAMPLE_START_URL,
   EXAMPLE_STEP_LABELS,
   type CatalogDraft,
+  localDraftVisible,
 } from "../../lib/skill-catalog";
 
 const element = <T extends HTMLElement>(id: string) =>
@@ -83,6 +84,7 @@ let approvalToken: string | undefined;
 let approving = false;
 let mcpPendingId: string | undefined;
 let catalogSize = 0;
+let visibleSkillIds = new Set<string>();
 let runStarting = false;
 let runAfterSignIn = false;
 let requestKey = "";
@@ -432,26 +434,25 @@ async function refreshLibrary() {
     skills: { id: string; name: string; source: string; hasLocalEdits?: boolean }[];
     message?: string;
   };
-  catalogSize = result.skills.length;
+  const skills = result.skills.filter(skill => skill.source !== 'example');
+  visibleSkillIds = new Set(skills.map(skill => skill.id));
+  catalogSize = skills.length;
   element("library-controls").hidden =
-    !!activeRun?.active || (!currentDraft && catalogSize <= 1);
+    !!activeRun?.active || catalogSize === 0;
   librarySkills.replaceChildren();
-  for (const skill of result.skills) {
+  for (const skill of skills) {
     const option = document.createElement("option");
     option.value = skill.id;
     option.textContent =
       skill.name +
-      (skill.source === "example"
-        ? " · example"
-        : skill.source === "library"
-          ? " · library"
-          : " · local") + (skill.hasLocalEdits ? " · unsaved edits" : "");
+      (skill.source === "library" ? " · library" : " · draft on this browser") +
+      (skill.hasLocalEdits ? " · unsaved edits" : "");
     librarySkills.append(option);
   }
-  if (result.skills.some((s) => s.id === selected))
+  if (skills.some((s) => s.id === selected))
     librarySkills.value = selected;
   libraryLoad.disabled =
-    !!activeRun?.active || runStarting || result.skills.length === 0;
+    !!activeRun?.active || runStarting || skills.length === 0;
   librarySkills.disabled = libraryLoad.disabled;
   element("library-empty").textContent = result.message ?? "";
   element("library-empty").hidden = !result.message;
@@ -467,7 +468,7 @@ async function renderAccount() {
   accountForm.hidden = !!signedInUser;
   element("account-logout").hidden = !signedInUser;
   element("library-controls").hidden =
-    !!activeRun?.active || (!currentDraft && catalogSize <= 1);
+    !!activeRun?.active || catalogSize === 0;
   element("sign-in-prompt").hidden = !!signedInUser;
   await refreshLibrary();
   renderSave();
@@ -536,7 +537,7 @@ function renderRun(
   element("run-confirmation").hidden = true;
   const active = !!run?.active;
   element("library-controls").hidden =
-    active || (!currentDraft && catalogSize <= 1);
+    active || catalogSize === 0;
   element("current-description").hidden = active;
   const relevant =
     active ||
@@ -664,9 +665,15 @@ async function render() {
   ]);
   if (revision !== renderRevision) return;
   currentRecording = (stored.recording as Recording | undefined) ?? null;
-  element('kept-draft-notice').hidden = !((stored.localSkills as CatalogDraft[] | undefined) ?? []).some(d => d.remoteSkillId && d.dirty);
+  element('kept-draft-notice').hidden = !signedInUser || !((stored.localSkills as CatalogDraft[] | undefined) ?? []).some(d => d.remoteSkillId && d.dirty && d.ownerId === signedInUser?.id);
   const run = (stored.runState as RunState | undefined) ?? null;
-  showDraft((stored.skillDraft as SkillDraft | undefined) ?? null);
+  const draft = stored.skillDraft as SkillDraft | undefined;
+  const visible = draft && (builtin(draft) || (draft.remoteSkillId
+    ? visibleSkillIds.has(localSkillId(draft))
+    : localDraftVisible(draft, signedInUser?.id)));
+  showDraft(visible ? draft : null);
+  if (currentRecording && !currentRecording.active && currentRecording.id !== currentDraft?.sourceRecordingId)
+    currentRecording = null;
   if (currentRecording?.active) view = "record";
   else if (run?.active) view = "run";
   element("view-run").hidden = view !== "run";
@@ -783,6 +790,7 @@ async function createDraft(recording: Recording) {
   const description = `Repeat this task on ${hostname} with new inputs.`;
   const draft: SkillDraft = {
     sourceRecordingId: recording.id,
+    ownerId: signedInUser?.id,
     name,
     description,
     markdown: createSkillMarkdown(recording, name, description),
@@ -900,6 +908,7 @@ element("generate").addEventListener("click", () => {
       if (!currentRecording) throw new Error("Record a task first.");
       const draft: SkillDraft = {
         sourceRecordingId: currentRecording.id,
+        ownerId: signedInUser?.id,
         name: skillName.value.trim(),
         description: skillDescription.value.trim(),
         markdown: createSkillMarkdown(
@@ -1076,13 +1085,21 @@ accountForm.addEventListener("submit", (event) => {
     button.dataset.busy = "true";
     error.textContent = "";
     try {
+      const preserveDraft = saveAfterSignIn || runAfterSignIn;
       await browser.runtime.sendMessage({
         type: "account-login",
         email: accountEmail.value,
         password: accountPassword.value,
+        preserveDraft,
       });
       accountPassword.value = "";
+      if (!preserveDraft) {
+        taskRequests = {};
+        requestKey = '';
+        taskRequest.value = '';
+      }
       await renderAccount();
+      await render();
       openAccount(false);
       if (saveAfterSignIn) {
         saveAfterSignIn = false;
@@ -1108,6 +1125,7 @@ element("account-logout").addEventListener("click", () => {
       taskRequests = {};
       taskRequest.value = "";
       await browser.storage.session.remove("taskRequests");
+      await render();
       await refreshAgentSettings();
       renderExecution();
     } catch (cause) {
@@ -1122,6 +1140,7 @@ async function repairSavedMetadata() {
   const stored = await browser.storage.local.get(["skillDraft", "runState"]);
   const draft = stored.skillDraft as SkillDraft | undefined;
   if (!draft || draft.readOnly || (stored.runState as RunState | undefined)?.active) return;
+  if (draft.remoteSkillId ? !visibleSkillIds.has(localSkillId(draft)) : !localDraftVisible(draft, signedInUser?.id)) return;
   try {
     // Existing versions stay immutable. Repair only the editable local copy.
     readSkillMetadata(draft.markdown);
@@ -1225,6 +1244,15 @@ element("subscription-copy-id").addEventListener("click", () => {
     .catch(report);
 });
 browser.storage.onChanged.addListener((changes, area) => {
+  if (area === 'session' && changes.account) {
+    void (async () => {
+      taskRequests = ((await browser.storage.session.get('taskRequests')).taskRequests as Record<string, string> | undefined) ?? {};
+      requestKey = '';
+      await renderAccount();
+      await render();
+      await refreshAgentSettings();
+    })().catch(report);
+  }
   if (
     area === "local" &&
     (changes.recording || changes.skillDraft || changes.runState || changes.localSkills)
@@ -1257,20 +1285,13 @@ void (async () => {
     !(saved.runState as RunState | undefined)?.active &&
     !(saved.recording as Recording | undefined)?.active
   )
-    await browser.runtime.sendMessage({
-      type: "mcp-open-skill",
-      skillId: EXAMPLE_ID,
-    });
+    await browser.storage.local.remove('skillDraft');
   view = saved.popupView === "record" ? "record" : "run";
+  await renderAccount();
   await repairSavedMetadata();
   await render();
   await refreshMcp();
   await refreshAgentSettings();
-  try {
-    await renderAccount();
-  } catch (cause) {
-    report(cause);
-  }
   document.documentElement.dataset.ready = "true";
   if (agentSettings.provider === "codex-local") void checkSubscription();
   void browser.runtime.sendMessage({ type: "get-run" }).catch(() => undefined);

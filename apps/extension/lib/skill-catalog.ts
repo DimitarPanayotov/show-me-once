@@ -11,7 +11,7 @@ export {
   exampleDraft,
 } from "./example-skill.ts";
 import { safeAgentLabel } from "@show-me-once/shared/agent";
-import { resolveStartPage } from './mcp-start.ts';
+import { resolveStartPage, skillBody } from './mcp-start.ts';
 import {
   withMcpInstructions,
   type ExternalResult,
@@ -35,9 +35,26 @@ export function localSkillId(draft: CatalogDraft) {
       ? EXAMPLE_ID
       : `local:${draft.sourceRecordingId}`;
 }
+/** Earlier MCP runs imported the unchanged built-in example as a new local draft. */
+export function isExampleRunCopy(draft: CatalogDraft) {
+  const body = skillBody(draft.markdown).replace(
+    'Wait for human approval in the extension.',
+    'Wait for explicit human approval through the coding client or extension.',
+  );
+  return !draft.remoteSkillId && draft.sourceRecordingId.startsWith('mcp:') &&
+    draft.name === exampleDraft.name && draft.description === exampleDraft.description &&
+    body === skillBody(exampleDraft.markdown);
+}
+
+export function localDraftVisible(draft: CatalogDraft, userId: string | undefined) {
+  return !draft.remoteSkillId && !isExampleRunCopy(draft) && draft.ownerId === userId;
+}
+
 export function keepLocalDraft(saved: CatalogDraft[], draft?: CatalogDraft) {
+  saved = saved.filter(value => !isExampleRunCopy(value));
   if (
     !draft ||
+    isExampleRunCopy(draft) ||
     (draft.remoteSkillId && !draft.dirty) ||
     (draft.sourceRecordingId.startsWith("example:") &&
       draft.readOnly &&
@@ -83,6 +100,7 @@ export class SkillCatalog {
   }
   async list(): Promise<ExternalResult> {
     const { draft, skills = [] } = await this.ports.readLocal();
+    const userId = await this.ports.userId();
     const entries = new Map<
       string,
       NonNullable<ExternalResult["skills"]>[number]
@@ -95,6 +113,7 @@ export class SkillCatalog {
       )
         continue;
       if (value.remoteSkillId) continue; // Cloud access must be checked for the current account.
+      if (value !== exampleDraft && !localDraftVisible(value, userId)) continue;
       try {
         withMcpInstructions(value.markdown);
         const id = localSkillId(value);
@@ -115,7 +134,6 @@ export class SkillCatalog {
     }
     let message: string | undefined;
     try {
-      const userId = await this.ports.userId();
       for (const value of (await this.ports.listLibrary()).slice(0, 100)) {
         const id = `library:${value.id}`;
         // Keep a selected edited version visible instead of silently replacing it.
@@ -157,14 +175,15 @@ export class SkillCatalog {
   }
   async load(skillId: string, options: { forEditing?: boolean } = {}): Promise<CatalogDraft> {
     const { draft, skills = [] } = await this.ports.readLocal();
+    const userId = await this.ports.userId();
     if (skillId === EXAMPLE_ID && (!draft || localSkillId(draft) !== skillId || (draft.readOnly && !draft.dirty))) return { ...exampleDraft };
-    if (draft && !draft.remoteSkillId && localSkillId(draft) === skillId) {
+    if (draft && localDraftVisible(draft, userId) && localSkillId(draft) === skillId) {
       if (!options.forEditing) withMcpInstructions(draft.markdown);
       return draft;
     }
     if (skillId === EXAMPLE_ID) return { ...exampleDraft };
     const local = skills.find(
-      (d) => !d.remoteSkillId && localSkillId(d) === skillId,
+      (d) => localDraftVisible(d, userId) && localSkillId(d) === skillId,
     );
     if (local) {
       if (!options.forEditing) withMcpInstructions(local.markdown);
@@ -173,7 +192,6 @@ export class SkillCatalog {
     if (!skillId.startsWith("library:"))
       throw new Error("Skill not found. Refresh the skills list.");
     const remote = await this.ports.getLibrary(skillId.slice(8));
-    const userId = await this.ports.userId();
     const pending = ownedLibraryDraft(remote.id, remote.ownerId, userId, [draft, ...skills]);
     if (pending) {
       if (!options.forEditing) withMcpInstructions(pending.markdown);

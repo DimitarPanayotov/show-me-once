@@ -49,7 +49,7 @@ Optional **MCP integration** lets an existing coding agent run skills instead. A
 
 The model receives the new request, skill and filtered control descriptions. It does not receive recorded input values, raw HTML or screenshots. Saved logs leave out requests, parameter values and page labels.
 
-Owners control editing and sharing; recipients can read and run. Edits create new saved versions.
+Owners control editing and sharing; recipients can read and run. Edits create new saved versions. Local drafts are kept separate when accounts change.
 
 Human-verification checks need the user. Page checkpoints cannot prove the correct issue or article opened. MCP run history currently stays local; runs started inside the extension save history to the backend.
 

@@ -1,5 +1,13 @@
 # Manual verification
 
+## Skill-list and account cleanup — extension 0.9.2
+
+The popup previously mixed the built-in example and browser-local drafts into “Your skills.” External MCP runs could also import the unchanged example as a new dirty draft on each run, leaving duplicate local entries. Those runs now reuse the built-in identity. The example remains discoverable through MCP and the explicit Try GitHub issue triage button, but does not appear as an owned skill in the picker.
+
+On reload, unchanged local MCP copies of the current example and its previous approval wording are removed. The check requires the MCP-generated identity, original name/description and matching document; recorded skills, cloud copies and edited documents are retained. Local drafts are visible and loadable only in their creating account, or in the signed-out workspace for unassigned older drafts. Account changes clear selection, requests and local activity while retaining drafts for their original owner. Signing in specifically to save/run a selected guest draft transfers only that draft. Active recordings/runs block account changes.
+
+All 135 automated checks pass (25 shared, 10 helper/model, 73 extension, 24 MCP, 3 web). New checks cover old-copy cleanup without losing edits, repeated example runs, empty-account UI, local-skill access after switching accounts, recovering the original owner's work, explicit guest-draft transfer and credential clearing. These use controlled documents and the actual worker with simulated browser services; live acceptance of the new cleanup remains manual. Connector 0.9.0 and its published download remain unchanged; reloading the existing unpacked extension applies the cleanup without re-pairing.
+
 ## Delivery package — extension 0.9.1
 
 The extension no longer shows the redundant external-agent request box or its copy button. The main editable request/Run flow and optional MCP connection setup remain available. All 16 existing popup checks, the extension type check and production extension build passed for this UI change. The reviewer kit is repackaged as 0.9.1; connector 0.9.0 and its published download bytes are unchanged.

@@ -42,6 +42,19 @@ import {
 import { type RunState, type SkillPlan } from "@show-me-once/shared";
 import { withMcpInstructions } from "@show-me-once/shared/mcp";
 
+test('repeated MCP example runs reuse the built-in identity and never create local draft copies', () => {
+  const first = prepareExternalDraft(undefined, [], withMcpInstructions(exampleDraft.markdown), 'first');
+  assert.equal(first.draft.sourceRecordingId, exampleDraft.sourceRecordingId);
+  assert.equal(first.draft.dirty, false);
+  const second = prepareExternalDraft(first.draft, [], withMcpInstructions(exampleDraft.markdown), 'second');
+  assert.equal(second.skillKey, exampleDraft.sourceRecordingId);
+  assert.equal(second.draft.dirty, false);
+  const legacy = { ...exampleDraft, sourceRecordingId: 'mcp:legacy', readOnly: false, dirty: true };
+  const restored = prepareExternalDraft(legacy, [legacy], withMcpInstructions(exampleDraft.markdown), 'third');
+  assert.equal(restored.draft.sourceRecordingId, exampleDraft.sourceRecordingId);
+  assert.deepEqual(restored.skills, []);
+});
+
 test("external runs preserve matching edited drafts and reject replacing unrelated unsaved work", () => {
   const f = fixture();
   const previous = {

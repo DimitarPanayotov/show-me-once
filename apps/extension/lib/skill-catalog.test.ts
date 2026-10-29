@@ -8,6 +8,7 @@ import {
   withoutSavedDraft,
   localSkillId,
   type CatalogDraft,
+  isExampleRunCopy,
 } from "./skill-catalog.ts";
 import { parseSkillPlan } from "@show-me-once/shared";
 
@@ -68,6 +69,39 @@ test("a new reviewer can discover and read a valid parameterized example without
     result.skill!.markdown,
     /microsoft\/vscode|terminal|microsoft\/TypeScript/,
   );
+});
+
+test('local drafts are visible only to their creating account or to the signed-out workspace', async () => {
+  let user: string | undefined = 'new-account';
+  const owned = { ...exampleDraft, sourceRecordingId: 'recorded', ownerId: 'original-account', name: 'Private draft', readOnly: false, dirty: true };
+  const guest = { ...owned, sourceRecordingId: 'guest', ownerId: undefined };
+  const catalog = new SkillCatalog({ readLocal: async () => ({ draft: owned, skills: [owned, guest] }),
+    listLibrary: async () => [], getLibrary: async () => { throw new Error('No access'); }, userId: async () => user });
+  assert.deepEqual((await catalog.list()).skills?.map(skill => skill.id), [EXAMPLE_ID]);
+  await assert.rejects(catalog.load('local:recorded'), /not found/);
+  await assert.rejects(catalog.load('local:guest'), /not found/);
+  user = 'original-account';
+  assert.deepEqual((await catalog.list()).skills?.map(skill => skill.id), [EXAMPLE_ID, 'local:recorded']);
+  assert.equal((await catalog.load('local:recorded')).ownerId, user);
+  user = undefined;
+  assert.deepEqual((await catalog.list()).skills?.map(skill => skill.id), [EXAMPLE_ID, 'local:guest']);
+  await assert.rejects(catalog.load('local:recorded'), /not found/);
+});
+
+test('unchanged MCP example copies are removed without deleting recordings, cloud skills or edited copies', async () => {
+  const copy = { ...exampleDraft, sourceRecordingId: 'mcp:old-run', readOnly: false, dirty: true };
+  const recorded = { ...copy, sourceRecordingId: 'recorded-by-user' };
+  const cloud = { ...copy, remoteSkillId: 'saved-example' };
+  const edited = { ...copy, sourceRecordingId: 'mcp:edited', markdown: copy.markdown + '\nMy custom instructions' };
+  const renamed = { ...copy, sourceRecordingId: 'mcp:renamed', name: 'My copy' };
+  assert.equal(isExampleRunCopy(copy), true);
+  assert.equal(isExampleRunCopy({ ...copy, markdown: copy.markdown.replace('Wait for explicit human approval through the coding client or extension.', 'Wait for human approval in the extension.') }), true);
+  assert.deepEqual(keepLocalDraft([copy, recorded, cloud, edited, renamed]), [recorded, cloud, edited, renamed]);
+  assert.deepEqual(keepLocalDraft([], copy), []);
+  const f = fixture();
+  f.setSkills([copy, { ...copy, sourceRecordingId: 'mcp:another-run' }]);
+  assert.deepEqual((await f.catalog.list()).skills?.map(skill => skill.id), [EXAMPLE_ID]);
+  await assert.rejects(f.catalog.load('local:mcp:old-run'), /not found/);
 });
 test("recorded drafts are immediately discoverable, and switching tasks preserves local edits", async () => {
   const f = fixture();

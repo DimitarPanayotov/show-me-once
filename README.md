@@ -2,7 +2,7 @@
 
 Record a browser task once, then type a new request and click Run inside the extension. Its agent executes the skill automatically while you watch, approve protected actions, pause or stop.
 
-[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.9.1](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.9.1-demo) · [Setup and demo](docs/agent.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
+[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.9.2](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.9.2-demo) · [Setup and demo](docs/agent.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
 
 ## Start here
 
@@ -25,6 +25,8 @@ The primary execution path stays inside the extension. Agent settings provide pe
 ## Library and privacy
 
 Recording and local editing work without an account. Sign in to save and run skills with PostgreSQL-backed immutable versions and per-step history, or share with another registered user. Recipients can read and run shared skills; owners control editing/sharing. Markdown/agent ZIP exports remain optional.
+
+A new account starts with an empty skill list. The built-in task is available through **Try GitHub issue triage**, separately from your skills. Local drafts belong to the account that created them; signing in to save a selected signed-out draft carries only that draft into the account. Old unchanged example copies from MCP runs are cleaned up automatically.
 
 Recording excludes typed values and sensitive controls. Skills contain parameters, bounded structural hints and sanitized navigation checkpoints. The extension validates fresh live targets and asks for action-specific approval before protected actions. Unknown outcomes pause instead of replaying actions. Cloud access is rechecked for the current account. Imported MCP run activity is currently local; automatic association with backend skill-version history remains a limitation.
 

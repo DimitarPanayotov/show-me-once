@@ -130,12 +130,19 @@ async function fixture({
       draft: local.skillDraft,
       skills: local.localSkills,
     }),
-    listLibrary: async () => [],
-    getLibrary: async () => {
-      throw new Error("Not signed in");
+    listLibrary: async () => user ? [...library.values()].filter(row => row.ownerId === user.id || row.shared) : [],
+    getLibrary: async id => {
+      const row = library.get(id);
+      if (!user || !row || (row.ownerId !== user.id && !row.shared)) throw new Error('Not signed in');
+      return row;
     },
     userId: async () => user?.id,
   });
+  const library = new Map();
+  if (draft?.remoteSkillId && user && (!draft.ownerId || draft.ownerId === user.id || draft.readOnly))
+    library.set(draft.remoteSkillId, { id: draft.remoteSkillId, title: draft.name, description: draft.description,
+      ownerId: draft.ownerId ?? user.id, currentVersion: draft.savedVersion ?? 1,
+      versions: [{ markdown: draft.markdown }], shared: !!draft.readOnly });
   const browser = {
     storage,
     tabs: {
@@ -202,7 +209,10 @@ async function fixture({
         }
         if (message.type === "library-save") {
           await beforeSave();
-          return { id: "saved-skill", currentVersion: message.remoteSkillId ? (local.skillDraft?.savedVersion ?? 0) + 1 : 1 };
+          const saved = { id: message.remoteSkillId ?? 'saved-skill', currentVersion: message.remoteSkillId ? (local.skillDraft?.savedVersion ?? 0) + 1 : 1 };
+          library.set(saved.id, { ...saved, title: message.name, description: message.description, ownerId: user.id,
+            versions: [{ markdown: message.markdown }] });
+          return saved;
         }
         if (message.type === "start-run") {
           await storage.local.set({
@@ -343,6 +353,24 @@ test("first launch works without external pairing and keeps its integration coll
     assert.equal(f.tabs.length, 0);
   } finally {
     await f.close();
+  }
+});
+
+test('a new account has an empty skill picker despite old guest drafts, other-account edits and the built-in example', async () => {
+  for (const draft of [
+    { ...exampleDraft, sourceRecordingId: 'mcp:old-example', readOnly: false, dirty: true },
+    { ...exampleDraft, sourceRecordingId: 'other-user-recording', ownerId: 'other-user', readOnly: false, dirty: true },
+    { ...exampleDraft, sourceRecordingId: 'library:private', remoteSkillId: 'private', ownerId: 'other-user', readOnly: false, dirty: true },
+  ]) {
+    const f = await fixture({ signedIn: true, draft });
+    try {
+      assert.equal(f.element('library-skills').options.length, 0);
+      assert.equal(f.element('library-controls').hidden, true);
+      assert.equal(f.element('run-empty').hidden, false);
+      assert.equal(f.element('run-panel').hidden, true);
+      assert.equal(f.element('kept-draft-notice').hidden, true);
+      assert.equal(f.element('try-example').disabled, false);
+    } finally { await f.close(); }
   }
 });
 
@@ -491,7 +519,7 @@ test("a secret in a task request cannot start or save a run", async () => {
   }
 });
 
-test("a clean cached Wikipedia starter upgrades to issue triage without archiving or overwriting user recordings", async () => {
+test("a retired cached starter is cleared and examples require an explicit choice", async () => {
   const f = await fixture({
     draft: {
       ...exampleDraft,
@@ -500,9 +528,12 @@ test("a clean cached Wikipedia starter upgrades to issue triage without archivin
     },
   });
   try {
-    assert.equal(f.local.skillDraft.sourceRecordingId, EXAMPLE_ID);
-    assert.deepEqual(f.local.localSkills, []);
-    assert.match(f.element("task-request").value, /microsoft\/vscode/);
+    assert.equal(f.local.skillDraft, undefined);
+    assert.deepEqual(f.local.localSkills ?? [], []);
+    assert.equal(f.element('library-controls').hidden, true);
+    assert.equal(f.element('run-empty').hidden, false);
+    assert.equal(f.element('try-example').disabled, false);
+    assert.equal(f.element("task-request").value, '');
     assert.equal(f.element("open-start-page"), null);
   } finally {
     await f.close();
@@ -567,7 +598,7 @@ test("a pending save locks editing and task switching until the exact submitted 
   let complete;
   const pending = new Promise(resolve => { complete = resolve; });
   const f = await fixture({ signedIn: true, beforeSave: () => pending,
-    draft: { ...exampleDraft, sourceRecordingId: 'recorded', readOnly: false, dirty: true },
+    draft: { ...exampleDraft, sourceRecordingId: 'recorded', ownerId: 'user-one', readOnly: false, dirty: true },
   });
   try {
     f.element('save-library').click();
@@ -770,16 +801,14 @@ test("the actual content executor exposes a search redirect button, requires app
   }
 });
 
-test('switching to the example keeps unfinished library edits locally with clear nonblocking feedback', async () => {
+test('switching to the example keeps another account’s unfinished edits without showing its recovery notice', async () => {
   const pending = { ...exampleDraft, sourceRecordingId: 'private-edit', remoteSkillId: 'cloud', ownerId: 'owner', readOnly: false, dirty: true, markdown: '---\nname: "unfinished' };
   const f = await fixture({ draft: pending });
   try {
     f.element('try-example').click();
     await until(() => f.local.skillDraft?.sourceRecordingId === EXAMPLE_ID);
     assert.deepEqual(f.local.localSkills, [pending]);
-    await until(() => f.element('kept-draft-notice').hidden === false);
-    assert.match(f.element('kept-draft-notice').textContent, /kept on this device/);
-    assert.match(f.element('kept-draft-notice').textContent, /run this skill now/);
+    assert.equal(f.element('kept-draft-notice').hidden, true);
     assert.equal(f.messages.some(m => m.type === 'account-login' || m.type === 'library-save'), false);
   } finally { await f.close(); }
 });

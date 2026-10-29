@@ -298,6 +298,10 @@ async function fixture({ holdModel = false, provider = "openai", signedIn = true
     const path = new URL(url).pathname.replace("/api/rpc/", "");
     const input = JSON.parse(options.body).json;
     const envelope = (json) => Response.json({ json });
+    if (path === 'auth/login') return envelope({ token: 'test-session', user: {
+      id: input.email === 'owner@example.test' ? 'owner' : 'new-owner', email: input.email,
+    } });
+    if (path === 'auth/logout') return envelope({ ok: true });
     if (path === 'skill/list') return envelope(library ? [library] : []);
     if (path === "skill/get")
       return envelope(library ?? { currentVersion: 1, versions: [{ markdown }] });
@@ -415,6 +419,8 @@ test('signed-out MCP opens the built-in task automatically without model or back
     const skill = await f.callMcp({ kind: 'get_skill', skillId: 'example:github-issue-triage' });
     const result = await f.callMcp({ kind: 'start', markdown: skill.skill.markdown, parameters: { repository: 'microsoft/vscode', topic: 'terminal', state: 'open', label: 'bug' } });
     assert.equal(result.status, 'waiting'); assert.ok(result.runId);
+    assert.equal(f.local.skillDraft.sourceRecordingId, 'example:github-issue-triage');
+    assert.equal(f.local.skillDraft.dirty, false);
     assert.equal(f.local.runState.engine, 'external'); assert.equal(f.session.account, undefined);
     assert.deepEqual(f.decisions, []); assert.deepEqual(f.history, []);
     assert.equal(f.session.mcpLastError, undefined);
@@ -423,6 +429,81 @@ test('signed-out MCP opens the built-in task automatically without model or back
     const repeated = await f.callMcp({ kind: 'start', markdown: skill.skill.markdown, parameters: { repository: 'microsoft/vscode', topic: 'terminal', state: 'open', label: 'bug' } });
     assert.equal(repeated.errorCode, 'ACTIVE_TASK'); assert.equal(repeated.status, 'blocked');
     assert.equal(f.createdTabs.length, 1);
+  } finally { await f.close(); }
+});
+
+test('actual worker removes old example-run copies while retaining edited and recorded work', async () => {
+  const { exampleDraft } = await import('../lib/example-skill.ts');
+  const copy = { ...exampleDraft, sourceRecordingId: 'mcp:old-run', readOnly: false, dirty: true };
+  const recorded = { ...copy, sourceRecordingId: 'my-recording', name: 'My recording' };
+  const edited = { ...copy, sourceRecordingId: 'mcp:edited-run', markdown: copy.markdown + '\nMy instructions' };
+  const f = await fixture({ signedIn: false, mcp: true, draft: copy });
+  try {
+    f.local.localSkills = [copy, { ...copy, sourceRecordingId: 'mcp:second-run', markdown: copy.markdown.replace('Wait for explicit human approval through the coding client or extension.', 'Wait for human approval in the extension.') }, recorded, edited];
+    const listed = await f.post({ type: 'mcp-skills' });
+    assert.deepEqual(Array.from(listed.skills, skill => skill.id), ['example:github-issue-triage', 'local:my-recording', 'local:mcp:edited-run']);
+    assert.equal(f.local.skillDraft, undefined);
+    assert.deepEqual(JSON.parse(JSON.stringify(f.local.localSkills)), [recorded, edited]);
+    for (let index = 0; index < 2; index++) {
+      await f.callMcp({ kind: 'start', skillId: 'example:github-issue-triage', parameters: { repository: 'microsoft/vscode', topic: 'terminal', state: 'open', label: 'bug' } });
+      assert.equal(f.local.skillDraft.sourceRecordingId, 'example:github-issue-triage');
+      assert.equal(f.local.skillDraft.dirty, false);
+      await f.post({ type: 'stop-run' });
+    }
+    assert.equal(f.local.localSkills.length, 2);
+  } finally { await f.close(); }
+});
+
+test('actual account switching hides prior drafts and activity, retains work for its owner and clears model credentials', async () => {
+  const draft = { sourceRecordingId: 'recorded', ownerId: 'owner', name: 'My task', description: 'My task.', markdown, dirty: true };
+  const f = await fixture({ draft });
+  try {
+    f.local.recording = { id: 'recorded', active: false, actions: [] };
+    f.local.runState = { active: false, id: 'old-run', logs: [] };
+    await f.post({ type: 'account-login', email: 'new@example.test', password: 'test-password-only' });
+    assert.equal(f.local.skillDraft, null);
+    assert.equal(f.local.recording, undefined);
+    assert.equal(f.local.runState, undefined);
+    assert.equal(f.session.agentApiKey, undefined);
+    assert.equal(f.local.localSkills[0].ownerId, 'owner');
+    assert.deepEqual(Array.from((await f.post({ type: 'mcp-skills' })).skills, skill => skill.id), ['example:github-issue-triage']);
+    await assert.rejects(f.post({ type: 'mcp-open-skill', skillId: 'local:recorded' }), /not found/);
+    await f.post({ type: 'account-login', email: 'owner@example.test', password: 'test-password-only' });
+    assert((await f.post({ type: 'mcp-skills' })).skills.some(skill => skill.id === 'local:recorded'));
+    await f.post({ type: 'mcp-open-skill', skillId: 'local:recorded' });
+    assert.equal(f.local.skillDraft.markdown, markdown);
+    await f.post({ type: 'account-logout' });
+    assert.equal(f.local.skillDraft, null);
+    assert.deepEqual(Array.from((await f.post({ type: 'mcp-skills' })).skills, skill => skill.id), ['example:github-issue-triage']);
+  } finally { await f.close(); }
+});
+
+test('signing in claims only an explicitly selected guest draft when saving or running it', async () => {
+  const draft = { sourceRecordingId: 'recorded', name: 'My task', description: 'My task.', markdown, dirty: true };
+  for (const preserveDraft of [false, true]) {
+    const f = await fixture({ signedIn: false, draft });
+    try {
+      f.local.localSkills = [{ ...draft, sourceRecordingId: 'older-guest' }];
+      await f.post({ type: 'account-login', email: 'new@example.test', password: 'test-password-only', preserveDraft });
+      const ids = (await f.post({ type: 'mcp-skills' })).skills.map(skill => skill.id);
+      assert.equal(ids.includes('local:recorded'), preserveDraft);
+      assert.equal(ids.includes('local:older-guest'), false);
+      if (preserveDraft) {
+        assert.equal(f.local.skillDraft.ownerId, 'new-owner');
+        assert.equal(f.local.skillDraft.markdown, markdown);
+      } else assert.equal(f.local.skillDraft, null);
+      assert(f.local.localSkills.some(value => value.sourceRecordingId === 'older-guest' && !value.ownerId));
+    } finally { await f.close(); }
+  }
+});
+
+test('account changes are blocked during an active recording', async () => {
+  const f = await fixture();
+  try {
+    f.local.recording = { active: true };
+    await assert.rejects(f.post({ type: 'account-login', email: 'new@example.test', password: 'test-password-only' }), /Stop the current recording or run/);
+    await assert.rejects(f.post({ type: 'account-logout' }), /Stop the current recording or run/);
+    assert.equal(f.session.account.user.id, 'owner');
   } finally { await f.close(); }
 });
 
