@@ -1,5 +1,14 @@
 # Manual verification
 
+## Native MCP action approval — 0.9.0
+
+The review_action tool requests a native form for the current protected action, showing its site, target and consequence. An explicit checked boolean response is required; the model has no approval flag. The extension approval remains available. HMAC-sealed expiring state, a consumed server nonce and a worker review bound to controller/bridge/connection/run/tab/step/browser-token prevent cross-run, stale and replayed consent. Live target revalidation stays in the existing executor. Unsupported form capability or rejected/cancelled/empty input leaves the action waiting; client policies are not modified.
+
+All 127 automated tests pass (25 shared, 10 helper/model, 65 extension, 24 MCP, 3 web), including real legacy and 2026-07-28 SDK transports with two input sets and native form responses; an actual-worker automatic run with cancellation, replay rejection and one approved dispatch; expiry, tampered/cross-client state, controller/connection/tab changes, Pause and Stop. Workspace type checks and production package builds pass. Tests use simulated human form responses and browser API mocks. The user confirmed the earlier MCP workflow in Chrome; the new native form still requires acceptance in their actual coding client and permission mode. No actual browser was automated for this change.
+
+Extension/connector versions are both 0.9.0. The private relay protocol is 4, so close older coding-agent sessions after upgrading registration; browser pairing remains compatible. Earlier 0.7.0 and 0.8.0 download bytes remain immutable.
+
+
 ## Unsaved draft isolation — extension 0.8.1
 
 The previous external-run guard blocked unrelated tasks when an edited library skill was open, even while signed out. Switching now retains the exact draft, remote skill identity and saved version in local recovery storage. Cached cloud edits never become local catalog skills. Recovery requires freshly authorized access as the original owner; a shared recipient receives only the server version. Reopening for editing allows an incomplete YAML header, while agent export/execution still rejects invalid instructions. The picker labels recoverable work as unsaved edits, and the popup explains that the other task can run immediately. Successfully saving removes only its matching recovery snapshot.

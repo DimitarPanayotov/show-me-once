@@ -3,6 +3,7 @@ import type { ExternalResult } from '@show-me-once/shared/mcp';
 // Only known application messages may cross the MCP boundary. Browser/library
 // exceptions can contain URLs, page text or input values and stay private.
 const reasons = new Map<string, [string, string]>([
+  ['The action preview changed. Review it again before approving.', ['STALE_APPROVAL', 'The action preview changed or expired. Request a fresh action review. No previous approval can be reused.']],
   ['Stop the current recording or run first.', ['ACTIVE_TASK', 'Stop the current recording or run in Show Me Once, then ask your agent to start again.']],
   ['Stop the current run first.', ['ACTIVE_TASK', 'Stop the current run in Show Me Once before starting another.']],
   ['Supply the public starting address in chat. The recording hides URL paths.', ['START_ADDRESS_REQUIRED', 'Ask the user for the public starting address in chat, then supply startUrl to start_skill. The agent will open it automatically; no tab selection is needed.']],

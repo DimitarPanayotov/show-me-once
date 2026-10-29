@@ -14,7 +14,7 @@ import {
   EXAMPLE_ID,
 } from "../../../apps/extension/lib/skill-catalog.ts";
 
-test("official SDK client discovers seven tools, reads an example directly and forwards guarded calls over the authenticated bridge", async () => {
+test("official SDK client discovers eight tools, reads an example directly and forwards guarded calls over the authenticated bridge", async () => {
   const origin = "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   const bridge = createBridge(origin, { port: 0 });
   const port = await bridge.listen();
@@ -53,6 +53,7 @@ test("official SDK client discovers seven tools, reads an example directly and f
       "get_skill",
       "list_skills",
       "observe_run",
+      "review_action",
       "start_skill",
       "stop_run",
     ]);
@@ -139,6 +140,8 @@ test("official SDK client discovers seven tools, reads an example directly and f
     });
     assert.equal(rejected.isError, true);
     assert.equal(received, 3);
+    const forgedApproval = await client.callTool({ name: 'review_action', arguments: { runId: 'run-one', approved: true } });
+    assert.equal(forgedApproval.isError, true); assert.equal(received, 3);
   } finally {
     await client.close();
     socket?.terminate();

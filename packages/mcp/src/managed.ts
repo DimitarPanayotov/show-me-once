@@ -115,7 +115,7 @@ export async function ensureManagedBridge(
       });
       if (!response.ok) return undefined;
       const value = (await response.json()) as { bridgeId?: string; protocolVersion?: number };
-      if (value.protocolVersion !== 3) { previousConnector = true; return undefined; }
+      if (value.protocolVersion !== 4) { previousConnector = true; return undefined; }
       return typeof value.bridgeId === "string" &&
         /^[a-f0-9-]{36}$/.test(value.bridgeId)
         ? { url, token: settings.agentToken, bridgeId: value.bridgeId }

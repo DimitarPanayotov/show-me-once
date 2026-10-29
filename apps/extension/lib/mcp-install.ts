@@ -1,4 +1,4 @@
-export const CONNECTOR_VERSION = '0.8.0';
+export const CONNECTOR_VERSION = '0.9.0';
 export type McpAgent = 'codex' | 'claude-code' | 'cursor' | 'vscode' | 'other';
 export function mcpInstallation(agent: McpAgent, appUrl: string) {
   const archive = `${new URL(appUrl).origin}/downloads/show-me-once-mcp-${CONNECTOR_VERSION}.tgz`;

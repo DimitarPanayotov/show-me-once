@@ -82,7 +82,7 @@ test("MCP clients automatically start, share, stop and restart the connector wit
         stderr: "pipe",
       }),
     );
-    assert.equal((await client.listTools()).tools.length, 7);
+    assert.equal((await client.listTools()).tools.length, 8);
     return client;
   };
   const pair = async () => {
@@ -214,7 +214,7 @@ test('a fresh real MCP client needs no setup file or extension ID; browser appro
   const offline = async () => { try { await fetch(`http://127.0.0.1:${port}/heartbeat`, { method: 'POST', signal: AbortSignal.timeout(200) }); return false; } catch { return true; } };
   try {
     const first = await connect();
-    assert.equal((await first.listTools()).tools.length, 7);
+    assert.equal((await first.listTools()).tools.length, 8);
     assert.equal((await readSettings(home)).extensionId, undefined);
     const discovery = first.callTool({ name: 'list_skills', arguments: {} });
     await new Promise(resolve => setTimeout(resolve, 100));

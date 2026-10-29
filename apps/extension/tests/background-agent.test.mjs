@@ -154,6 +154,7 @@ async function fixture({ holdModel = false, provider = "openai", signedIn = true
       : { action: "click", targetId: "c2", parameter: null, value: null };
   }
   const createdTabs = [];
+  let taskTabUrl;
   let startComplete = !holdStart;
   const browser = {
     storage: { local: area(local), session: area(session) },
@@ -217,15 +218,15 @@ async function fixture({ holdModel = false, provider = "openai", signedIn = true
     windows: {
       onCreated: { addListener() {} },
       getAll: async () => noWindow ? [] : [{ id: 3, focused: true }],
-      create: async (options) => { createdTabs.push({ ...options, id: 19 }); return { tabs: [{ id: 19 }] }; },
+      create: async (options) => { createdTabs.push({ ...options, id: 19 }); taskTabUrl = options.url; return { tabs: [{ id: 19 }] }; },
     },
     tabs: {
-      create: async (options) => { createdTabs.push({ ...options, id: 19 }); return { id: 19 }; },
+      create: async (options) => { createdTabs.push({ ...options, id: 19 }); taskTabUrl = options.url; return { id: 19 }; },
       query: async (query) => query.windowType === 'normal'
         ? [{ id: 1, url: tabUrl }, ...(focusedUrl ? [{ id: 2, url: focusedUrl }] : [])]
         : [{ id: focusedUrl ? 2 : 1, url: focusedUrl ?? tabUrl }],
       get: async id => id === 19
-        ? { id, url: startComplete ? createdTabs.at(-1).url : 'about:blank', status: startComplete ? 'complete' : 'loading' }
+        ? { id, url: startComplete ? taskTabUrl : 'about:blank', status: startComplete ? 'complete' : 'loading' }
         : ({ id: 1, url: tabUrl, status: "complete" }),
       onUpdated: {
         addListener: (fn) => {
@@ -281,8 +282,9 @@ async function fixture({ holdModel = false, provider = "openai", signedIn = true
           assert.equal(m.approvalToken, "07118f12-a190-4ddd-9dd9-d7ee5e69f98b");
           dispatches.push("submit");
           tabUrl = "https://example.com/results";
+          if (_id === 19) taskTabUrl = tabUrl;
           schedule(
-            () => tabUpdated(1, { status: "complete" }, { url: tabUrl }),
+            () => tabUpdated(_id, { status: "complete" }, { url: tabUrl }),
             1,
           );
           return { status: "done" };
@@ -648,5 +650,38 @@ test('a legacy skill asks for its redacted starting route in chat and opens a su
     assert.equal(f.createdTabs[0].url, 'https://example.org/search/advanced');
     assert.doesNotMatch(JSON.stringify(f.local.runState), /search\/advanced/);
     assert.doesNotMatch(f.session.externalSession.markdown, /search\/advanced/);
+  } finally { await f.close(); }
+});
+
+test('actual worker gates native MCP approval, preserves the browser fallback and completes an automatic run after one explicit decision', async () => {
+  const f = await fixture({ signedIn: false, mcp: true, draft: { sourceRecordingId: 'recorded', name: 'search-example', description: 'Search for a new topic.', markdown } });
+  try {
+    const started = await f.callMcp({ kind: 'start', skillId: 'local:recorded', parameters: { search_1: 'Alpha' } });
+    const runId = started.runId;
+    const act = async (action, targetId) => {
+      const page = await f.callMcp({ kind: 'observe', runId });
+      return f.callMcp({ kind: 'act', runId, stepIndex: page.stepIndex, observationId: page.observation.id, action, ...(targetId ? { targetId } : {}) });
+    };
+    await act('checkpoint'); await act('fill', 'c1');
+    assert.equal((await act('click', 'c2')).status, 'needs_approval');
+    const pending = await f.callMcp({ kind: 'approval_preview', runId });
+    assert.equal(pending.approval.title, 'Submit search on example.com');
+    assert.match(pending.approval.target, /Search/);
+    assert.doesNotMatch(JSON.stringify(pending), /07118f12|Alpha/);
+    assert.equal((await f.callMcp({ kind: 'status', runId })).approval, undefined);
+    assert.equal(f.session.runConfirmation.details.token, '07118f12-a190-4ddd-9dd9-d7ee5e69f98b');
+    const cancelled = await f.callMcp({ kind: 'approval_decide', runId, reviewId: pending.approval.reviewId, approved: false });
+    assert.equal(cancelled.status, 'needs_approval'); assert.deepEqual(f.dispatches, ['fill']);
+    const retry = await f.callMcp({ kind: 'approval_decide', runId, reviewId: pending.approval.reviewId, approved: true });
+    assert.equal(retry.errorCode, 'STALE_APPROVAL'); assert.deepEqual(f.dispatches, ['fill']);
+    const fresh = await f.callMcp({ kind: 'approval_preview', runId });
+    const approved = await f.callMcp({ kind: 'approval_decide', runId, reviewId: fresh.approval.reviewId, approved: true });
+    assert.equal(approved.stepIndex, 3); assert.deepEqual(f.dispatches, ['fill', 'submit']);
+    await until(() => f.local.runState.navigationObserved);
+    assert.equal((await act('checkpoint')).status, 'completed');
+    await f.callMcp({ kind: 'approval_decide', runId, reviewId: fresh.approval.reviewId, approved: true });
+    assert.deepEqual(f.dispatches, ['fill', 'submit']);
+    assert.doesNotMatch(JSON.stringify(f.local.runState.logs), /Alpha|Search|07118f12/);
+    assert.equal(f.session.account, undefined); assert.deepEqual(f.history, []); assert.deepEqual(f.decisions, []);
   } finally { await f.close(); }
 });

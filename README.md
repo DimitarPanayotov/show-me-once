@@ -2,7 +2,7 @@
 
 Record a browser task once, then type a new request and click Run inside the extension. Its agent executes the skill automatically while you watch, approve protected actions, pause or stop.
 
-[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.8.1](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.8.1-demo) · [Setup and demo](docs/agent.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
+[Web library](https://show-me-once-dimitar.vercel.app) · [Reviewer kit 0.9.0](https://github.com/DimitarPanayotov/show-me-once/releases/tag/v0.9.0-demo) · [Setup and demo](docs/agent.md) · [Architecture](docs/architecture.md) · [Verification](docs/verification.md)
 
 ## Start here
 
@@ -43,3 +43,5 @@ Run pnpm test and pnpm typecheck. Set WXT_API_BASE_URL=https://show-me-once-dimi
 Configure the Vercel project with root apps/web, workspace sources enabled, Node.js 24, and DATABASE_URL. The web build applies Prisma migrations before Next.js. Browser tests for older execution modes are historical fixtures; current popup tests run in an in-memory document without controlling Chrome.
 
 For optional local MCP use, connect once, then ask the agent to run a discovered skill. It opens Chrome and a dedicated task tab automatically; no manual tab selection or helper terminal. See [MCP setup and upgrades](docs/mcp.md).
+
+In MCP clients that support native confirmation forms, approve a pending action directly in your coding agent. The action/site/consequence are shown before consent; approval is limited to that one pending action. The extension remains an approval option.

@@ -29,6 +29,7 @@ import {
   keepLocalDraft,
   localSkillId,
   EXAMPLE_ID,
+  exampleDraft,
   EXAMPLE_START_URL,
   EXAMPLE_REQUEST,
   EXAMPLE_STEP_LABELS,
@@ -1284,7 +1285,7 @@ void (async () => {
   renderMcpInstallation();
   const previous = saved.skillDraft as SkillDraft | undefined;
   if (
-    previous?.sourceRecordingId === "example:wikipedia-search" &&
+    previous && (previous.sourceRecordingId === "example:wikipedia-search" || (previous.sourceRecordingId === EXAMPLE_ID && previous.markdown !== exampleDraft.markdown)) &&
     previous.readOnly &&
     !previous.dirty &&
     !(saved.runState as RunState | undefined)?.active &&

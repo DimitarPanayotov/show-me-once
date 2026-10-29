@@ -540,7 +540,7 @@ async function recoverRun(): Promise<void> {
       await browser.storage.session.set({
         externalSession: {
           ...session,
-          observation: undefined,
+          observation: undefined, actionReview: undefined,
           selected: undefined,
         },
       });
@@ -678,7 +678,8 @@ export default defineBackground(() => {
             ],
           })) as AgentObservation);
     },
-    perform: () => performStep(),
+    perform: (confirmed, token) => performStep(confirmed, token),
+    readConfirmation: async () => (await browser.storage.session.get('runConfirmation')).runConfirmation as PendingConfirmation | undefined,
     async stop() {
       const run = await readRun();
       if (!run) throw new Error("No run.");
@@ -690,7 +691,7 @@ export default defineBackground(() => {
         await browser.storage.session.set({
           externalSession: {
             ...session,
-            observation: undefined,
+            observation: undefined, actionReview: undefined,
             selected: undefined,
           },
         });
@@ -738,7 +739,7 @@ export default defineBackground(() => {
         await browser.storage.session.set({
           externalSession: {
             ...session,
-            observation: undefined,
+            observation: undefined, actionReview: undefined,
             selected: undefined,
           },
         });
@@ -810,7 +811,10 @@ export default defineBackground(() => {
           resolved = checkedExternalCommand({ kind: 'start', markdown: skill.markdown, parameters: request.parameters,
             startUrl: resolveStartPage(skill.markdown, request.startUrl) });
         }
-        const result = await external.handle(identity, resolved);
+        const review = resolved as { kind: string; runId: string; reviewId: string; approved: boolean };
+        const result = review.kind === 'approval_preview' ? await external.review(identity, review.runId)
+          : review.kind === 'approval_decide' ? await external.decide(identity, review.runId, review.reviewId, review.approved)
+          : await external.handle(identity, resolved);
         await browser.storage.session.remove('mcpLastError');
         if (
           interruptedControllers.has(identity.controllerId) &&
@@ -1388,7 +1392,7 @@ export default defineBackground(() => {
               await browser.storage.session.set({
                 externalSession: {
                   ...session,
-                  observation: undefined,
+                  observation: undefined, actionReview: undefined,
                   selected: undefined,
                 },
               });
@@ -1412,7 +1416,7 @@ export default defineBackground(() => {
             await browser.storage.session.set({
               externalSession: {
                 ...session,
-                observation: undefined,
+                observation: undefined, actionReview: undefined,
                 selected: undefined,
               },
             });
@@ -1470,7 +1474,7 @@ export default defineBackground(() => {
             externalSession: {
               ...session,
               ...connection,
-              observation: undefined,
+              observation: undefined, actionReview: undefined,
               selected: undefined,
             },
           });

@@ -1,8 +1,8 @@
 import {
-  checkedExternalCommand,
   type ExternalIdentity,
   type ExternalResult,
 } from "@show-me-once/shared/mcp";
+import { checkedConnectorCommand } from '@show-me-once/shared/approval';
 import { encodeBytes, nonceCommitment, pairingCode, verifyPairingProof, type PairingProof } from '@show-me-once/shared/pairing';
 
 const BASE = "http://127.0.0.1:4320";
@@ -233,7 +233,7 @@ export class ExternalBridgeClient {
           }
           if (message.type !== "command" || typeof message.id !== "string")
             throw new Error();
-          const command = checkedExternalCommand(message.command);
+          const command = checkedConnectorCommand(message.command);
           const identity = {
             ...this.identity,
             controllerId: message.controllerId,
@@ -366,7 +366,7 @@ export class ExternalBridgeClient {
           if (!this.identity || value.bridgeId !== this.identity.bridgeId || value.connectionId !== this.identity.connectionId || typeof value.controllerId !== 'string') throw new Error();
           if (value.type === 'cancel' || value.type === 'controller_disconnected') { this.lost(value.controllerId); return; }
           if (value.type !== 'command' || typeof value.id !== 'string') throw new Error();
-          const command = checkedExternalCommand(value.command);
+          const command = checkedConnectorCommand(value.command);
           const identity = { ...this.identity, controllerId: value.controllerId };
           void this.command(identity, command).catch(() => ({ status: 'blocked' as const, message: 'The command was rejected. Check the extension.' })).then(result => {
             if (this.socket === socket && socket.readyState === WebSocket.OPEN)

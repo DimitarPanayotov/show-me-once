@@ -1,4 +1,4 @@
-# Optional local coding-agent connection — 0.8.0
+# Optional local coding-agent connection — 0.9.0
 
 The main product remains request → Run inside the extension. External coding agents are optional and use the same guarded browser actions, approvals and Stop controls. Your existing agent supplies its own model and account; MCP does not launch a second model.
 
@@ -14,7 +14,7 @@ You need Chrome, Node.js 24 (including npx), and an MCP-capable agent. Open **Sk
 
 The agent starts the connector automatically and it exits after the last client leaves. No extension ID, pairing-secret copying, separate bridge command, or permanently open terminal is needed for this path. The extension remembers trust and reconnects automatically when the agent returns. Node.js remains a prerequisite for these command-based integrations.
 
-The install links and commands use a self-contained versioned package at the app's `/downloads/show-me-once-mcp-0.8.0.tgz`. It is launched through npx, so it does not depend on an extracted ZIP remaining at the same local path. This download contains connector code only, with no account credentials. The adjacent `.sha256` records the packaged checksum.
+The install links and commands use a self-contained versioned package at the app's `/downloads/show-me-once-mcp-0.9.0.tgz`. It is launched through npx, so it does not depend on an extracted ZIP remaining at the same local path. This download contains connector code only, with no account credentials. The adjacent `.sha256` records the packaged checksum.
 
 ## What the statuses mean
 
@@ -36,23 +36,35 @@ Older recordings intentionally hide raw URL paths. For a deeper route whose addr
 
 An agent cannot use arbitrary Markdown to open unrelated pages: Start resolves an available catalog identity, rechecks access and validates the actual plan and parameters. Legacy Markdown calls require the builtin document or an unchanged skill previously read by that controller. Changes require a fresh read. No unrestricted navigation tool is exposed.
 
-## Updating from 0.7
+## Updating from an earlier connector
 
-Reload extension 0.8.0. Copy its updated registration command/install link once and reconnect/restart your coding agent so it uses connector 0.8.0. Existing pairing credentials are retained. If an older connector is still running, close other coding-agent sessions and reopen after it exits. Do not start a bridge manually. Daily use then requires only a request in your agent, plus any protected-action approvals.
+Update the existing unpacked extension to 0.9.0, keeping the same folder, then Reload. Copy its updated registration command/install link once and reconnect/restart your coding agent so it uses connector 0.9.0. Existing pairing credentials are retained. If an older connector is still running, close other coding-agent sessions and reopen after it exits. Do not start a bridge manually. Daily use then requires only a request in your agent, plus any protected-action approvals.
 
 ## Unsaved edits (extension 0.8.1)
 
 Running another skill keeps unfinished local and library edits on this device, including incomplete instructions. It does not force a sign-in or save before the built-in example can run. To continue editing a cloud draft later, sign into its original account and open that skill from Your skills; it is labeled unsaved edits. Cloud access is rechecked before recovery, and shared recipients receive only the saved version. Saving clears the matching recovery snapshot without erasing newer edits. No additional copy is written to another account or uploaded automatically.
 
-This is an extension-only correction. The connector remains 0.8.0; reload/update the extension without registering MCP or approving its connection again.
+Draft preservation remains available in 0.9.0. The native approval feature requires both extension and connector 0.9.0. Updating retains the existing browser trust; do not Forget the connection.
+
+## Approve inside your coding agent
+
+When act reaches a protected action, the agent calls review_action with the run ID. Clients advertising MCP form elicitation show a native confirmation containing the site, step, intended control and consequence. Check Approve this action only and submit; that one action executes and the agent continues. You do not need to open the browser popup for this approval. The extension's existing approval remains available.
+
+Cancel, decline, an unchecked box, an empty response or malformed form data never authorizes a click. The action stays waiting; the agent should not request the same approval again unless you ask. Initial browser pairing/code comparison still occurs in the extension. Pause/Resume/Stop and human-verification pages retain their existing behavior.
+
+MCP clients and their permission policies differ. A client that does not advertise forms receives a clear extension fallback. If a host blocks, auto-declines, cancels or fails to render the form, no action executes; use the extension or enable interactive MCP forms in that client. For Codex, use a permission mode that permits user prompts rather than assuming Full access or automated review is equivalent to an explicit user decision. No client permission settings are changed by this project.
+
+The model has no approve=true tool argument. Native responses return through MCP's elicitation channel and are validated against the required boolean. HMAC-protected expiring request state and a consumed server-side nonce bind the response to this controller/run. The worker also binds its one-use review to the current connection, tab, step and browser confirmation token. The token is never returned in tool results. A stale/replayed approval or changed live target cannot reuse prior consent. As with MCP generally, the client host is trusted to collect real user input; this is not proof against a malicious or modified host.
+
+References: [MCP elicitation](https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation), [Codex elicitation requests](https://learn.chatgpt.com/docs/app-server#mcp-server-elicitation-requests).
 
 ## Everyday use
 
-Open a recorded/saved skill and copy its agent request, or ask the agent to discover a skill. It calls list_skills/get_skill, reads the instructions and starts a run with new non-secret parameters. Chrome and the task page open automatically. The extension shows actions and meaningful protected-action approvals. Pause, Resume and Stop remain in the extension. Approval and reconnection never automatically repeat an uncertain action.
+Open a recorded/saved skill and copy its agent request, or ask the agent to discover a skill. It calls list_skills/get_skill, reads the instructions and starts a run with new non-secret parameters. Chrome and the task page open automatically. The extension shows actions; protected actions can be approved through native client forms or the extension. Pause, Resume and Stop remain in the extension. Approval and reconnection never automatically repeat an uncertain action.
 
 The GitHub issue-triage example has twelve steps: fill repository/topic/state/label, submit with approval, sort results by Recently updated and open an issue. Run it twice with different repositories/topics and inspect the visible results. Then test Stop before approving another search.
 
-The seven tools are list_skills, get_skill, start_skill, observe_run, act, get_run_status and stop_run. They expose guarded skill actions, not arbitrary JavaScript or unrestricted browser control. Page text cannot grant extra permissions.
+The eight tools are list_skills, get_skill, start_skill, observe_run, act, review_action, get_run_status and stop_run. They expose guarded skill actions, not arbitrary JavaScript or unrestricted browser control. Page text cannot grant extra permissions.
 
 ## Offline reviewer kit / development
 

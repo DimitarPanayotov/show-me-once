@@ -157,6 +157,7 @@ export class SkillCatalog {
   }
   async load(skillId: string, options: { forEditing?: boolean } = {}): Promise<CatalogDraft> {
     const { draft, skills = [] } = await this.ports.readLocal();
+    if (skillId === EXAMPLE_ID && (!draft || localSkillId(draft) !== skillId || (draft.readOnly && !draft.dirty))) return { ...exampleDraft };
     if (draft && !draft.remoteSkillId && localSkillId(draft) === skillId) {
       if (!options.forEditing) withMcpInstructions(draft.markdown);
       return draft;

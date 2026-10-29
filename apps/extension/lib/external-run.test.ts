@@ -101,6 +101,9 @@ function fixture() {
     session: ExternalSession | undefined,
     at = 1000,
     dispatches = 0;
+  let confirmation: import('./confirmation.ts').PendingConfirmation = { runId: 'run-one', step: 2, details: {
+    token: '07118f12-a190-4ddd-9dd9-d7ee5e69f98b', intent: 'search', interaction: 'click', targetLabel: 'Search', targetTag: 'button', origin: 'https://www.wikipedia.org',
+  } };
   const identity = {
     controllerId: "client-one",
     bridgeId: "bridge-one",
@@ -140,12 +143,13 @@ function fixture() {
           },
         ],
       }),
-      perform: async () => {
+      readConfirmation: async () => confirmation,
+      perform: async (approved, token) => {
         dispatches++;
         return (run = applyStepOutcome(
           run!,
           plan,
-          run!.nextStep === 2 ? "confirmation-required" : "done",
+          run!.nextStep === 2 && !(approved && token === confirmation.details.token) ? "confirmation-required" : "done",
           "Generic outcome.",
         ));
       },
@@ -158,6 +162,9 @@ function fixture() {
   return {
     call,
     identity,
+    review: (who = identity) => controller.review(who, 'run-one'),
+    decide: (id: string, approved: boolean, who = identity) => controller.decide(who, 'run-one', id, approved),
+    changePreview: () => { confirmation = { ...confirmation, details: { ...confirmation.details, token: crypto.randomUUID(), targetLabel: 'Different action' } }; },
     markdown,
     plan,
     get run() {
@@ -175,8 +182,8 @@ function fixture() {
     get dispatches() {
       return dispatches;
     },
-    advanceClock() {
-      at += 16000;
+    advanceClock(ms = 16000) {
+      at += ms;
     },
   };
 }
@@ -202,7 +209,7 @@ async function act(
     ...(targetId ? { targetId } : {}),
   });
 }
-test("external run uses the shared state machine, bound inputs and extension-only approval", async () => {
+test("external run uses the shared state machine and cannot approve through ordinary action arguments", async () => {
   const f = fixture();
   await start(f);
   assert.equal(canAutoAdvance(f.run), false);
@@ -228,7 +235,7 @@ test("external run uses the shared state machine, bound inputs and extension-onl
   );
   assert.equal(f.dispatches, 3);
   assert.ok(!JSON.stringify(f.run).includes("Grace Hopper"));
-  // The extension's existing approval path supplies this outcome; MCP has no approval verb.
+  // The existing extension approval remains available alongside native client confirmation.
   f.run = applyStepOutcome(f.run, f.plan, "done", "Approved in the extension.");
   assert.equal(
     (await f.call({ kind: "status", runId: f.run.id })).status,
@@ -313,4 +320,44 @@ test("Pause, Stop and uncertain worker recovery never dispatch a repeated action
   await f.call({ kind: "stop", runId: f.run.id });
   assert.equal(externalStatus(f.run).status, "stopped");
   assert.equal(f.dispatches, 0);
+});
+
+async function pendingAction() {
+  const f = fixture(); await start(f); await act(f, 'checkpoint'); await act(f, 'fill', 'c1'); await act(f, 'click', 'c1'); return f;
+}
+
+test('a native review describes the exact action and consumes one approval without exposing the browser token', async () => {
+  const f = await pendingAction();
+  const review = await f.review();
+  assert.equal(review.approval?.title, 'Submit search on www.wikipedia.org');
+  assert.match(review.approval!.target, /Search/);
+  assert.doesNotMatch(JSON.stringify(review), /07118f12|Grace Hopper/);
+  assert.equal(f.dispatches, 3);
+  const outcome = await f.decide(review.approval!.reviewId, true);
+  assert.equal(outcome.status, 'completed'); assert.equal(f.dispatches, 4);
+  await f.decide(review.approval!.reviewId, true);
+  assert.equal(f.dispatches, 4);
+});
+
+test('native approval cannot cross owners/connections/tabs, or survive a changed preview or expiry', async () => {
+  const f = await pendingAction(), review = await f.review(), id = review.approval!.reviewId;
+  await assert.rejects(f.decide(id, true, { ...f.identity, controllerId: 'other' }), /own/);
+  await assert.rejects(f.decide(id, true, { ...f.identity, connectionId: 'other' }), /Connection changed/);
+  f.run = { ...f.run, tabId: 8 }; await assert.rejects(f.decide(id, true), /preview changed/);
+  f.run = { ...f.run, tabId: 7 }; f.changePreview();
+  await assert.rejects(f.decide(id, true), /preview changed/);
+  const fresh = await f.review(); f.advanceClock(120001);
+  await assert.rejects(f.decide(fresh.approval!.reviewId, true), /preview changed/);
+  assert.equal(f.dispatches, 3);
+});
+
+test('native cancellation, Pause and Stop cannot dispatch the pending action', async () => {
+  const f = await pendingAction(), review = await f.review();
+  assert.equal((await f.decide(review.approval!.reviewId, false)).status, 'needs_approval');
+  await assert.rejects(f.decide(review.approval!.reviewId, true), /preview changed/);
+  const again = await f.review(); f.run = { ...f.run, pauseReason: 'user' };
+  assert.equal((await f.decide(again.approval!.reviewId, true)).status, 'paused');
+  await f.call({ kind: 'stop', runId: f.run.id });
+  assert.equal((await f.decide(again.approval!.reviewId, true)).status, 'stopped');
+  assert.equal(f.dispatches, 3);
 });

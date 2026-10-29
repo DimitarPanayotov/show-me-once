@@ -4,7 +4,7 @@ import type { CatalogDraft } from "./skill-catalog.ts";
 export const EXAMPLE_ID = "example:github-issue-triage";
 export const EXAMPLE_START_URL = "https://github.com/search/advanced";
 export const EXAMPLE_REQUEST =
-  "Use Show Me Once to triage open GitHub issues in microsoft/vscode about terminal with the bug label. Sort by recently updated and open the first matching issue. Ask me to approve the search in the extension.";
+  "Use Show Me Once to triage open GitHub issues in microsoft/vscode about terminal with the bug label. Sort by recently updated and open the first matching issue. Ask me to approve the search before submitting.";
 export const EXAMPLE_ALTERNATIVE_REQUEST =
   "Use the same Show Me Once issue-triage skill for microsoft/TypeScript, topic inference, state open, and label bug. Sort by recently updated and open the first matching issue.";
 export const EXAMPLE_STEP_LABELS = [
@@ -113,7 +113,7 @@ markdown = markdown.replace(
     "- Step 3: fill In these repositories with {{repository}} (owner/repository).",
     "- Step 4: set In the state to {{state}}. GitHub's option values are open and closed.",
     "- Step 5: fill With the labels with {{label}}.",
-    "- Step 6: submit the advanced-search form using its Search button. Wait for human approval in the extension.",
+    "- Step 6: submit the advanced-search form using its Search button. Wait for explicit human approval through the coding client or extension.",
     "- Steps 8–9: open the Sort by control, then choose Recently updated. Use the visible menu item, not a guessed selector.",
     "- Step 11: open the first actual issue result after sorting. Choose a result link whose sanitized destination matches the next issue-page checkpoint; skip navigation and repository links.",
     "- If no issue result is available, report that and stop. Do not substitute a different repository, broaden the search, or invent an issue.",

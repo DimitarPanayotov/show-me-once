@@ -2,9 +2,9 @@ import { createServer, type IncomingMessage } from "node:http";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import {
-  checkedExternalCommand,
   type ExternalResult,
 } from "@show-me-once/shared/mcp";
+import { checkedConnectorCommand } from '@show-me-once/shared/approval';
 import { nonceCommitment, pairingCode, type PairingProof } from '@show-me-once/shared/pairing';
 import type { BrowserBinding, ConnectorIdentity } from './pairing.ts';
 
@@ -165,7 +165,7 @@ export function createBridge(
     }
     if (req.method === "POST" && req.url === "/heartbeat") {
       touch(controllerId);
-      reply(200, { ok: true, bridgeId, connected: !!peer, protocolVersion: 3 });
+      reply(200, { ok: true, bridgeId, connected: !!peer, protocolVersion: 4 });
       return;
     }
     if (req.method !== "POST" || req.url !== "/command") {
@@ -179,7 +179,7 @@ export function createBridge(
         if (Buffer.byteLength(body) > 140000)
           throw new Error("Request too large.");
       }
-      const command = checkedExternalCommand(JSON.parse(body));
+      const command = checkedConnectorCommand(JSON.parse(body));
       touch(controllerId);
       // Only an authenticated tool call with an existing browser pairing may wake Chrome.
       // Initialization and heartbeats never launch applications.

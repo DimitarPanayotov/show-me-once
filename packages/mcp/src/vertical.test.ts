@@ -17,7 +17,8 @@ import {
 import { applyStepOutcome } from "../../../apps/extension/lib/run-state.ts";
 import type { RunState, SkillPlan } from "@show-me-once/shared";
 
-test("non-browser vertical slice: real MCP transport, actual controller, two inputs, approval, competing controller and Stop", async () => {
+for (const mode of ['legacy', { pin: '2026-07-28' }] as const)
+test(`real MCP ${typeof mode === 'string' ? mode : mode.pin}: two inputs, native approval, competing controller and Stop`, async () => {
   const bridge = createBridge(
     "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     { port: 0 },
@@ -112,16 +113,18 @@ test("non-browser vertical slice: real MCP transport, actual controller, two inp
               },
             ],
     }),
-    perform: async () => {
+    readConfirmation: async () => ({ runId: run!.id, step: run!.nextStep, details: { token: '07118f12-a190-4ddd-9dd9-d7ee5e69f98b', intent: 'search', interaction: 'click', targetLabel: 'Search', targetTag: 'button', origin: 'https://www.wikipedia.org' } }),
+    perform: async (approved, token) => {
       const step = plan.steps[run!.nextStep];
       if (step.kind === "input") {
         field = parameters.search_1 as string;
         dispatches++;
       }
+      if (step.kind === 'click' && approved && token === '07118f12-a190-4ddd-9dd9-d7ee5e69f98b') { result = field; dispatches++; }
       return (run = applyStepOutcome(
         run!,
         plan,
-        step.kind === "click" ? "confirmation-required" : "done",
+        step.kind === "click" && !approved ? "confirmation-required" : "done",
         "Generic step result.",
       ));
     },
@@ -148,6 +151,8 @@ test("non-browser vertical slice: real MCP transport, actual controller, two inp
           ? catalog.list()
           : m.command.kind === "get_skill"
             ? catalog.get(m.command.skillId)
+            : m.command.kind === 'approval_preview' ? controller.review({ controllerId: m.controllerId, bridgeId: m.bridgeId, connectionId: m.connectionId }, m.command.runId)
+            : m.command.kind === 'approval_decide' ? controller.decide({ controllerId: m.controllerId, bridgeId: m.bridgeId, connectionId: m.connectionId }, m.command.runId, m.command.reviewId, m.command.approved)
             : controller.handle(
                 {
                   controllerId: m.controllerId,
@@ -175,12 +180,18 @@ test("non-browser vertical slice: real MCP transport, actual controller, two inp
   });
   const clients: Client[] = [];
   async function client() {
-    const c = new Client({ name: "vertical-test", version: "1.0" });
+    const c = new Client({ name: "vertical-test", version: "1.0" }, { capabilities: { elicitation: { form: {} } }, versionNegotiation: { mode } });
+    c.setRequestHandler('elicitation/create', async request => {
+      assert.equal(request.params.mode, 'form'); assert.match(request.params.message, /Submit search/); assert.match(request.params.message, /Search/);
+      assert.doesNotMatch(request.params.message, /Grace Hopper|Alan Turing|07118f12/);
+      assert.equal(result, '');
+      return { action: 'accept', content: { approve: true } };
+    });
     clients.push(c);
     await c.connect(
       new StdioClientTransport({
         command: process.execPath,
-        args: ["--experimental-strip-types", resolve("src/server.ts")],
+        args: ["--experimental-strip-types", resolve(process.env.SMO_MCP_SERVER_PATH ?? "src/server.ts")],
         env: { ...process.env, SMO_MCP_CONNECTION_FILE: file } as Record<
           string,
           string
@@ -192,11 +203,11 @@ test("non-browser vertical slice: real MCP transport, actual controller, two inp
   }
   const c = await client(),
     other = await client();
-  const call = async (name: string, args: Record<string, unknown>) =>
-    (await c.callTool({ name, arguments: args })).structuredContent as Record<
-      string,
-      any
-    >;
+  const call = async (name: string, args: Record<string, unknown>) => {
+    const response = await c.callTool({ name, arguments: args });
+    assert.ok(response.structuredContent, JSON.stringify(response));
+    return response.structuredContent as Record<string, any>;
+  };
   try {
     const discovered = await call("list_skills", {});
     assert.ok(
@@ -251,11 +262,12 @@ test("non-browser vertical slice: real MCP transport, actual controller, two inp
         (await call("get_run_status", { runId })).status,
         "needs_approval",
       );
-      // Simulate the extension UI's consent; no MCP tool supplies approval.
-      result = field;
-      dispatches++;
-      run = applyStepOutcome(run!, plan, "done", "Approved in UI.");
-      run = { ...run, navigationObserved: true };
+      const approval = await call('review_action', { runId });
+      assert.equal(approval.stepIndex, 3);
+      assert.equal(result, field);
+      const currentRun = run as RunState | null;
+      assert.ok(currentRun);
+      run = { ...currentRun, navigationObserved: true };
       const observed = await call("observe_run", { runId });
       assert.equal(
         (

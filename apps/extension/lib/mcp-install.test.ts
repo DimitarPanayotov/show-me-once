@@ -13,7 +13,7 @@ test('client-specific registration uses one versioned package without extension 
   const codeConfig = JSON.parse(decodeURIComponent(vscode.slice(vscode.indexOf('?') + 1)));
   for (const config of [cursorConfig, codeConfig]) {
     assert.equal(config.command, 'npx');
-    assert.deepEqual(config.args, ['-y', `${base}/downloads/show-me-once-mcp-0.8.0.tgz`]);
+    assert.deepEqual(config.args, ['-y', `${base}/downloads/show-me-once-mcp-0.9.0.tgz`]);
     assert.equal(config.env, undefined);
   }
   assert.equal(codeConfig.type, 'stdio');
