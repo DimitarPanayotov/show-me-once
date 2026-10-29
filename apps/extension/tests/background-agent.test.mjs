@@ -75,7 +75,7 @@ async function until(check) {
   assert.fail("Worker did not reach the expected state.");
 }
 
-async function fixture({ holdModel = false, provider = "openai", signedIn = true, mcp = false, initialTabUrl = 'https://example.com', draft, failMcpSession = false, focusedUrl, noWindow = false, holdStart = false } = {}) {
+async function fixture({ holdModel = false, provider = "openai", signedIn = true, mcp = false, initialTabUrl = 'https://example.com', draft, failMcpSession = false, focusedUrl, noWindow = false, holdStart = false, library } = {}) {
   const mcpBridgeId = randomUUID(), mcpConnectionId = randomUUID(), mcpControllerId = randomUUID();
   const mcpReplies = new Map();
   let mcpSocket;
@@ -296,8 +296,9 @@ async function fixture({ holdModel = false, provider = "openai", signedIn = true
     const path = new URL(url).pathname.replace("/api/rpc/", "");
     const input = JSON.parse(options.body).json;
     const envelope = (json) => Response.json({ json });
+    if (path === 'skill/list') return envelope(library ? [library] : []);
     if (path === "skill/get")
-      return envelope({ currentVersion: 1, versions: [{ markdown }] });
+      return envelope(library ?? { currentVersion: 1, versions: [{ markdown }] });
     if (path === "run/start") {
       assert.equal(input.version, 1);
       return envelope({ id: randomUUID() });
@@ -455,24 +456,46 @@ test('a session-write failure after persisting a run reports its real ID as unce
   } finally { await f.close(); }
 });
 
-test('actual worker blocks unsaved cloud edits and arbitrary undiscovered Markdown before opening any tab', async () => {
-  for (const unsaved of [false, true]) {
-    const f = await fixture({ signedIn: false, mcp: true,
-      ...(unsaved ? { draft: { sourceRecordingId: 'cloud', remoteSkillId: 'cloud', dirty: true, name: 'my-skill', description: 'My edits', markdown } } : {}),
-    });
-    try {
-      const skill = await f.callMcp({ kind: 'get_skill', skillId: 'example:github-issue-triage' });
-      const result = await f.callMcp({ kind: 'start', markdown: unsaved ? skill.skill.markdown : markdown,
-        parameters: unsaved ? { repository: 'microsoft/vscode', topic: 'terminal', state: 'open', label: 'bug' } : { search_1: 'Alpha' } });
-      assert.equal(result.status, 'blocked');
-      assert.equal(result.errorCode, unsaved ? 'UNSAVED_LIBRARY_DRAFT' : 'SKILL_REFRESH_REQUIRED');
-      assert.equal(result.runId, undefined); assert.equal(f.local.runState, undefined);
-      assert.equal(f.createdTabs.length, 0);
-      assert.equal(f.session.mcpLastError.message, result.message);
-      assert.equal((await f.post({ type: 'mcp-status' })).runError, result.message);
-      if (unsaved) assert.equal(f.local.skillDraft.markdown, markdown);
-    } finally { await f.close(); }
-  }
+test('the actual worker starts the example signed out while preserving unfinished cloud edits and restores them only to their owner', async () => {
+  const pending = { sourceRecordingId: 'cloud-recording', remoteSkillId: 'cloud', ownerId: 'owner', savedVersion: 2,
+    dirty: true, readOnly: false, name: 'unfinished-task', description: 'Unfinished private edits.', markdown: '---\nname: "unfinished' };
+  const library = { id: 'cloud', title: 'Saved version', description: 'Saved description.', ownerId: 'owner', currentVersion: 2, versions: [{ markdown }] };
+  const f = await fixture({ signedIn: false, mcp: true, draft: pending, library });
+  try {
+    const skill = await f.callMcp({ kind: 'get_skill', skillId: 'example:github-issue-triage' });
+    const started = await f.callMcp({ kind: 'start', markdown: skill.skill.markdown,
+      parameters: { repository: 'microsoft/vscode', topic: 'terminal', state: 'open', label: 'bug' } });
+    assert.equal(started.status, 'waiting'); assert.ok(started.runId);
+    assert.equal(f.createdTabs.length, 1);
+    assert.deepEqual(f.local.localSkills, [pending]);
+    assert.equal(f.session.account, undefined); assert.equal(f.session.mcpLastError, undefined);
+    const listed = await f.callMcp({ kind: 'list_skills' });
+    assert.doesNotMatch(JSON.stringify(listed), /unfinished|private|cloud/);
+    assert.deepEqual(f.history, []); assert.deepEqual(f.decisions, []);
+    await f.callMcp({ kind: 'stop', runId: started.runId });
+    await assert.rejects(f.post({ type: 'mcp-open-skill', skillId: 'library:cloud' }), /Sign in/);
+    f.session.account = { token: 'test-session', user: { id: 'other', email: 'other@example.test' } };
+    const shared = await f.post({ type: 'mcp-open-skill', skillId: 'library:cloud' });
+    assert.equal(shared.readOnly, true); assert.equal(shared.markdown, markdown);
+    assert.ok(f.local.localSkills.some(d => d.markdown === pending.markdown));
+    f.session.account.user.id = 'owner';
+    const restored = await f.post({ type: 'mcp-open-skill', skillId: 'library:cloud' });
+    assert.equal(restored.markdown, pending.markdown); assert.equal(restored.name, pending.name);
+    assert.equal(restored.remoteSkillId, 'cloud'); assert.equal(restored.savedVersion, 2);
+    assert.equal(f.local.localSkills.some(d => d.remoteSkillId === 'cloud'), false);
+    const invalid = await f.callMcp({ kind: 'get_skill', skillId: 'library:cloud' });
+    assert.notEqual(invalid.status, 'ready');
+    assert.doesNotMatch(JSON.stringify(invalid), /unfinished|private/);
+  } finally { await f.close(); }
+});
+
+test('arbitrary undiscovered Markdown is still blocked before opening any tab', async () => {
+  const f = await fixture({ signedIn: false, mcp: true });
+  try {
+    const result = await f.callMcp({ kind: 'start', markdown, parameters: { search_1: 'Alpha' } });
+    assert.equal(result.status, 'blocked'); assert.equal(result.errorCode, 'SKILL_REFRESH_REQUIRED');
+    assert.equal(result.runId, undefined); assert.equal(f.createdTabs.length, 0);
+  } finally { await f.close(); }
 });
 
 for (const provider of ["openai", "codex-local"])

@@ -44,6 +44,7 @@ export type ExternalResult = {
     name: string;
     description: string;
     source: "example" | "local" | "library";
+    hasLocalEdits?: boolean;
   }[];
   skill?: {
     id: string;

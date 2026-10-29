@@ -1,6 +1,6 @@
-# Manual acceptance — 0.8.0
+# Manual acceptance — 0.8.1
 
-1. Reload the existing extension and confirm 0.8.0. External coding agent must remain optional and collapsed. No separate HTML guide.
+1. Reload the existing extension and confirm 0.8.1. External coding agent must remain optional and collapsed. No separate HTML guide.
 2. Under Agent settings either save a personal OpenAI/Anthropic key (session only), or install subscription-helper/Install subscription helper.cmd once for the current extension ID and choose Check subscription. No terminal or external agent chat should remain necessary.
 3. Sign into the library. Choose Try GitHub issue triage. In the extension type: Find open issues in microsoft/vscode about terminal with label bug. Sort by recently updated and open the first matching issue. Click Run.
 4. Check all four fields. Before search, verify an action-specific Submit search preview identifying the Search button and consequence. Approve once. Remaining steps must continue automatically without a chat message or Next button.
@@ -32,3 +32,5 @@ MCP automatic startup (0.8.0):
 6. Cancel a Start while Chrome reconnects. A cancelled request must not later create a task tab. Do not retry an uncertain action automatically.
 7. For a legacy recorded skill with a deeper redacted first path, check the agent asks for its public starting address in chat. Supply the address; it must open it automatically. A wrong-origin address, query values or action endpoint must be rejected before opening a tab. Optionally save a public start_url header and repeat without supplying the address.
 8. Check first-time pairing and protected-action approvals remain required, while normal starts need no Use this tab button. The in-extension request/Run path must still work independently.
+
+Draft preservation regression (extension 0.8.1, connector unchanged at 0.8.0): open an owned library skill, edit its name/instructions without saving (also try an unfinished YAML header), then sign out and ask the paired MCP agent to run the built-in GitHub example. Start must open its task tab and return a run ID, with no sign-in/save prerequisite. The popup should explain that previous edits are kept on this device. Stop or finish the run, sign back into the original library account, and reopen that skill from Your skills, labeled unsaved edits. Verify its exact working text and original library identity/version are restored. Save the edits, switch away and return: the old recovery copy must not reappear. A different account with shared read access must see only the saved version; signed-out agents must not discover the cached library draft. Incomplete instructions remain editable but cannot execute until repaired.

@@ -65,6 +65,7 @@ type SkillDraft = {
   description: string;
   markdown: string;
   remoteSkillId?: string;
+  ownerId?: string;
   readOnly?: boolean;
   savedVersion?: number;
   dirty?: boolean;
@@ -449,7 +450,7 @@ async function refreshLibrary() {
   const result = (await browser.runtime.sendMessage({
     type: "mcp-skills",
   })) as {
-    skills: { id: string; name: string; source: string }[];
+    skills: { id: string; name: string; source: string; hasLocalEdits?: boolean }[];
     message?: string;
   };
   catalogSize = result.skills.length;
@@ -465,7 +466,7 @@ async function refreshLibrary() {
         ? " · example"
         : skill.source === "library"
           ? " · library"
-          : " · local");
+          : " · local") + (skill.hasLocalEdits ? " · unsaved edits" : "");
     librarySkills.append(option);
   }
   if (result.skills.some((s) => s.id === selected))
@@ -679,6 +680,7 @@ async function render() {
     browser.storage.local.get([
       "recording",
       "skillDraft",
+      "localSkills",
       "runState",
       "runPlan",
     ]),
@@ -686,6 +688,7 @@ async function render() {
   ]);
   if (revision !== renderRevision) return;
   currentRecording = (stored.recording as Recording | undefined) ?? null;
+  element('kept-draft-notice').hidden = !((stored.localSkills as CatalogDraft[] | undefined) ?? []).some(d => d.remoteSkillId && d.dirty);
   const run = (stored.runState as RunState | undefined) ?? null;
   showDraft((stored.skillDraft as SkillDraft | undefined) ?? null);
   if (currentRecording?.active) view = "record";
@@ -843,6 +846,7 @@ async function saveDraft(copyExample = false): Promise<SkillDraft | undefined> {
     const draft: SkillDraft = {
       ...snapshot,
       remoteSkillId: saved.id,
+      ownerId: signedInUser.id,
       savedVersion: saved.currentVersion,
       dirty: false,
       readOnly: false,
@@ -1256,7 +1260,7 @@ element("subscription-copy-id").addEventListener("click", () => {
 browser.storage.onChanged.addListener((changes, area) => {
   if (
     area === "local" &&
-    (changes.recording || changes.skillDraft || changes.runState)
+    (changes.recording || changes.skillDraft || changes.runState || changes.localSkills)
   )
     void render();
   if (area === "session" && changes.runConfirmation) void render();

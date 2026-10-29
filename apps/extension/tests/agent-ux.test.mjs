@@ -223,7 +223,7 @@ async function fixture({
         }
         if (message.type === "get-run") return local.runState ?? null;
         if (message.type === "mcp-open-skill") {
-          const value = await catalog.load(message.skillId);
+          const value = await catalog.load(message.skillId, { forEditing: true });
           await storage.local.set({
             skillDraft: value,
             localSkills: keepLocalDraft(
@@ -768,4 +768,18 @@ test("the actual content executor exposes a search redirect button, requires app
   } finally {
     await window.happyDOM.abort();
   }
+});
+
+test('switching to the example keeps unfinished library edits locally with clear nonblocking feedback', async () => {
+  const pending = { ...exampleDraft, sourceRecordingId: 'private-edit', remoteSkillId: 'cloud', ownerId: 'owner', readOnly: false, dirty: true, markdown: '---\nname: "unfinished' };
+  const f = await fixture({ draft: pending });
+  try {
+    f.element('try-example').click();
+    await until(() => f.local.skillDraft?.sourceRecordingId === EXAMPLE_ID);
+    assert.deepEqual(f.local.localSkills, [pending]);
+    await until(() => f.element('kept-draft-notice').hidden === false);
+    assert.match(f.element('kept-draft-notice').textContent, /kept on this device/);
+    assert.match(f.element('kept-draft-notice').textContent, /run this skill now/);
+    assert.equal(f.messages.some(m => m.type === 'account-login' || m.type === 'library-save'), false);
+  } finally { await f.close(); }
 });

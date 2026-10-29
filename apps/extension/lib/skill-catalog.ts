@@ -23,6 +23,7 @@ export type CatalogDraft = {
   description: string;
   markdown: string;
   remoteSkillId?: string;
+  ownerId?: string;
   readOnly?: boolean;
   savedVersion?: number;
   dirty?: boolean;
@@ -37,7 +38,7 @@ export function localSkillId(draft: CatalogDraft) {
 export function keepLocalDraft(saved: CatalogDraft[], draft?: CatalogDraft) {
   if (
     !draft ||
-    draft.remoteSkillId ||
+    (draft.remoteSkillId && !draft.dirty) ||
     (draft.sourceRecordingId.startsWith("example:") &&
       draft.readOnly &&
       !draft.dirty)
@@ -45,8 +46,20 @@ export function keepLocalDraft(saved: CatalogDraft[], draft?: CatalogDraft) {
     return saved;
   return [
     draft,
-    ...saved.filter((d) => d.sourceRecordingId !== draft.sourceRecordingId),
+    ...saved.filter((d) => localSkillId(d) !== localSkillId(draft)),
   ];
+}
+
+/** Cached cloud edits are recoverable only after fresh authorization as their owner. */
+function ownedLibraryDraft(id: string, ownerId: string | undefined, userId: string | undefined, drafts: (CatalogDraft | undefined)[]) {
+  if (!userId || ownerId !== userId) return undefined;
+  return drafts.find(d => d?.remoteSkillId === id && d.dirty && !d.readOnly && (!d.ownerId || d.ownerId === userId));
+}
+
+/** Remove only the exact edit snapshot that was successfully saved, never newer work. */
+export function withoutSavedDraft(saved: CatalogDraft[], snapshot: Pick<CatalogDraft, 'remoteSkillId' | 'name' | 'description' | 'markdown'>) {
+  if (!snapshot.remoteSkillId) return saved;
+  return saved.filter(d => !(d.remoteSkillId === snapshot.remoteSkillId && d.name === snapshot.name && d.description === snapshot.description && d.markdown === snapshot.markdown));
 }
 type RemoteSkill = {
   id: string;
@@ -60,7 +73,7 @@ export class SkillCatalog {
   private ports: {
     readLocal(): Promise<{ draft?: CatalogDraft; skills?: CatalogDraft[] }>;
     listLibrary(): Promise<
-      { id: string; title: string; description: string }[]
+      { id: string; title: string; description: string; ownerId?: string }[]
     >;
     getLibrary(id: string): Promise<RemoteSkill>;
     userId(): Promise<string | undefined>;
@@ -102,10 +115,11 @@ export class SkillCatalog {
     }
     let message: string | undefined;
     try {
+      const userId = await this.ports.userId();
       for (const value of (await this.ports.listLibrary()).slice(0, 100)) {
         const id = `library:${value.id}`;
         // Keep a selected edited version visible instead of silently replacing it.
-        const selected = draft?.remoteSkillId === value.id ? draft : undefined;
+        const selected = ownedLibraryDraft(value.id, value.ownerId, userId, [draft, ...skills]);
         if (!entries.has(id))
           entries.set(id, {
             id,
@@ -114,6 +128,7 @@ export class SkillCatalog {
               selected?.description ?? value.description,
             ),
             source: "library",
+            ...(selected ? { hasLocalEdits: true } : {}),
           });
       }
     } catch {
@@ -140,10 +155,10 @@ export class SkillCatalog {
       },
     };
   }
-  async load(skillId: string): Promise<CatalogDraft> {
+  async load(skillId: string, options: { forEditing?: boolean } = {}): Promise<CatalogDraft> {
     const { draft, skills = [] } = await this.ports.readLocal();
     if (draft && !draft.remoteSkillId && localSkillId(draft) === skillId) {
-      withMcpInstructions(draft.markdown);
+      if (!options.forEditing) withMcpInstructions(draft.markdown);
       return draft;
     }
     if (skillId === EXAMPLE_ID) return { ...exampleDraft };
@@ -151,29 +166,28 @@ export class SkillCatalog {
       (d) => !d.remoteSkillId && localSkillId(d) === skillId,
     );
     if (local) {
-      withMcpInstructions(local.markdown);
+      if (!options.forEditing) withMcpInstructions(local.markdown);
       return local;
     }
     if (!skillId.startsWith("library:"))
       throw new Error("Skill not found. Refresh the skills list.");
     const remote = await this.ports.getLibrary(skillId.slice(8));
-    if (
-      draft?.remoteSkillId === remote.id &&
-      draft.dirty &&
-      remote.ownerId === (await this.ports.userId())
-    ) {
-      withMcpInstructions(draft.markdown);
-      return draft;
+    const userId = await this.ports.userId();
+    const pending = ownedLibraryDraft(remote.id, remote.ownerId, userId, [draft, ...skills]);
+    if (pending) {
+      if (!options.forEditing) withMcpInstructions(pending.markdown);
+      return { ...pending, ownerId: remote.ownerId };
     }
     if (!remote.versions[0]) throw new Error("The skill has no saved version.");
-    withMcpInstructions(remote.versions[0].markdown);
+    if (!options.forEditing) withMcpInstructions(remote.versions[0].markdown);
     return {
       sourceRecordingId: `library:${remote.id}`,
       remoteSkillId: remote.id,
+      ownerId: remote.ownerId,
       name: remote.title,
       description: remote.description,
       markdown: remote.versions[0].markdown,
-      readOnly: remote.ownerId !== (await this.ports.userId()),
+      readOnly: remote.ownerId !== userId,
       savedVersion: remote.currentVersion,
       dirty: false,
     };

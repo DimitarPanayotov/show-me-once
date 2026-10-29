@@ -16,7 +16,9 @@ import { resolveStartPage, skillBody } from '../lib/mcp-start';
 import { checkedExternalCommand } from '@show-me-once/shared/mcp';
 import {
   SkillCatalog,
+  localSkillId,
   keepLocalDraft,
+  withoutSavedDraft,
   type CatalogDraft,
   exampleDraft,
 } from "../lib/skill-catalog";
@@ -872,7 +874,7 @@ export default defineBackground(() => {
             throw new Error("Stop the current run or recording first.");
           if (typeof request.skillId !== "string")
             throw new Error("Choose a skill.");
-          const draft = await catalog.load(request.skillId);
+          const draft = await catalog.load(request.skillId, { forEditing: true });
           const stored = await browser.storage.local.get([
             "skillDraft",
             "localSkills",
@@ -883,7 +885,9 @@ export default defineBackground(() => {
           );
           await browser.storage.local.set({
             skillDraft: draft,
-            localSkills: skills,
+            // The working copy now holds this draft. Keep other accounts' cached
+            // edits when opening a shared read-only version of the same skill.
+            localSkills: skills.filter(d => localSkillId(d) !== localSkillId(draft) || (d.remoteSkillId && draft.readOnly)),
           });
           return draft;
         });
@@ -1070,7 +1074,7 @@ export default defineBackground(() => {
             typeof request.remoteSkillId === "string"
               ? "skill/update"
               : "skill/create";
-          return api<{ id: string; currentVersion: number }>(
+          const saved = await api<{ id: string; currentVersion: number }>(
             path,
             {
               ...(path === "skill/update" ? { id: request.remoteSkillId } : {}),
@@ -1080,6 +1084,16 @@ export default defineBackground(() => {
             },
             account,
           );
+          if (typeof request.remoteSkillId === 'string') {
+            try {
+              const stored = await browser.storage.local.get('localSkills');
+              await browser.storage.local.set({ localSkills: withoutSavedDraft(
+                (stored.localSkills as CatalogDraft[] | undefined) ?? [],
+                { remoteSkillId: request.remoteSkillId, name: request.name, description: request.description, markdown: request.markdown },
+              ) });
+            } catch { /* The server save already succeeded; retain the recovery copy. */ }
+          }
+          return saved;
         });
     }
     if (request.type === "get-recording") return read();

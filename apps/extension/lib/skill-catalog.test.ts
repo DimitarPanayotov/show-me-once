@@ -5,6 +5,7 @@ import {
   EXAMPLE_ID,
   exampleDraft,
   keepLocalDraft,
+  withoutSavedDraft,
   localSkillId,
   type CatalogDraft,
 } from "./skill-catalog.ts";
@@ -140,4 +141,43 @@ test("invalid or secret-containing instructions stay local and cannot be sent to
   );
   await assert.rejects(f.catalog.get("local:private"));
   await assert.rejects(f.catalog.get("local:unknown"), /not found/);
+});
+
+test('cloud draft caches keep the original library identity and version, replace only the same skill, and clear only successfully saved snapshots', () => {
+  const first = { ...exampleDraft, sourceRecordingId: 'first-recording', remoteSkillId: 'cloud', ownerId: 'me', readOnly: false, savedVersion: 4, dirty: true, markdown: 'My unfinished edit' };
+  const second = { ...first, sourceRecordingId: 'second-recording', remoteSkillId: 'other-cloud', markdown: 'Second edit' };
+  const newest = { ...first, sourceRecordingId: 'reopened', markdown: 'Newer edit' };
+  const cached = keepLocalDraft(keepLocalDraft(keepLocalDraft([], first), second), newest);
+  assert.equal(cached.length, 2); assert.equal(cached[0], newest); assert.equal(cached[1], second);
+  assert.equal(cached[0]?.remoteSkillId, 'cloud'); assert.equal(cached[0]?.savedVersion, 4);
+  assert.equal(keepLocalDraft([], { ...first, dirty: false }).length, 0);
+  assert.deepEqual(withoutSavedDraft(cached, first), cached); // An older save cannot erase newer work.
+  assert.deepEqual(withoutSavedDraft(cached, newest), [second]);
+  assert.deepEqual(withoutSavedDraft(cached, { ...newest, remoteSkillId: undefined }), cached);
+});
+
+test('recovering cloud edits always reauthorizes the original owner and shared users see only the saved version', async () => {
+  let user: string | undefined = 'me', checks = 0;
+  const pending = { ...exampleDraft, sourceRecordingId: 'cloud-edit', remoteSkillId: 'cloud', ownerId: 'me', name: 'private-working-name', description: 'Private working description.', readOnly: false, dirty: true, savedVersion: 3, markdown: exampleDraft.markdown + '\nPrivate working instructions' };
+  const row = { id: 'cloud', title: 'Saved name', description: 'Saved description', ownerId: 'me', currentVersion: 3, versions: [{ markdown: exampleDraft.markdown }] };
+  const catalog = new SkillCatalog({
+    readLocal: async () => ({ skills: [pending] }),
+    listLibrary: async () => user ? [row] : [],
+    getLibrary: async () => { checks++; if (!user) throw new Error('Sign in to the library first.'); return row; },
+    userId: async () => user,
+  });
+  assert.equal((await catalog.load('library:cloud')).markdown, pending.markdown);
+  assert.equal(checks, 1);
+  assert.equal((await catalog.list()).skills?.find(s => s.id === 'library:cloud')?.hasLocalEdits, true);
+  user = undefined;
+  assert.doesNotMatch(JSON.stringify(await catalog.list()), /private-working|cloud-edit|library:cloud/);
+  await assert.rejects(catalog.load('library:cloud'), /Sign in/);
+  user = 'recipient';
+  const shared = await catalog.get('library:cloud');
+  assert.equal(shared.skill?.name, row.title);
+  assert.doesNotMatch(shared.skill!.markdown, /Private working/);
+  assert.equal((await catalog.list()).skills?.find(s => s.id === 'library:cloud')?.hasLocalEdits, undefined);
+  user = 'me';
+  assert.equal((await catalog.load('library:cloud')).savedVersion, 3);
+  assert.equal(checks, 4);
 });

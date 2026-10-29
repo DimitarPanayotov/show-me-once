@@ -1,4 +1,4 @@
-# Run a skill inside the extension — 0.8.0
+# Run a skill inside the extension — 0.8.1
 
 Record once, review the generated skill, save it to the library, then select it, type a new request and click **Run**. The extension owns the automatic observe → model decision → guarded action → checkpoint loop. Approvals, Pause, Resume and Stop stay in the popup. No coding-agent chat is required.
 

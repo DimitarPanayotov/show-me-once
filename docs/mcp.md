@@ -40,6 +40,12 @@ An agent cannot use arbitrary Markdown to open unrelated pages: Start resolves a
 
 Reload extension 0.8.0. Copy its updated registration command/install link once and reconnect/restart your coding agent so it uses connector 0.8.0. Existing pairing credentials are retained. If an older connector is still running, close other coding-agent sessions and reopen after it exits. Do not start a bridge manually. Daily use then requires only a request in your agent, plus any protected-action approvals.
 
+## Unsaved edits (extension 0.8.1)
+
+Running another skill keeps unfinished local and library edits on this device, including incomplete instructions. It does not force a sign-in or save before the built-in example can run. To continue editing a cloud draft later, sign into its original account and open that skill from Your skills; it is labeled unsaved edits. Cloud access is rechecked before recovery, and shared recipients receive only the saved version. Saving clears the matching recovery snapshot without erasing newer edits. No additional copy is written to another account or uploaded automatically.
+
+This is an extension-only correction. The connector remains 0.8.0; reload/update the extension without registering MCP or approving its connection again.
+
 ## Everyday use
 
 Open a recorded/saved skill and copy its agent request, or ask the agent to discover a skill. It calls list_skills/get_skill, reads the instructions and starts a run with new non-secret parameters. Chrome and the task page open automatically. The extension shows actions and meaningful protected-action approvals. Pause, Resume and Stop remain in the extension. Approval and reconnection never automatically repeat an uncertain action.

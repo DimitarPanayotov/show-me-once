@@ -1,5 +1,12 @@
 # Manual verification
 
+## Unsaved draft isolation — extension 0.8.1
+
+The previous external-run guard blocked unrelated tasks when an edited library skill was open, even while signed out. Switching now retains the exact draft, remote skill identity and saved version in local recovery storage. Cached cloud edits never become local catalog skills. Recovery requires freshly authorized access as the original owner; a shared recipient receives only the server version. Reopening for editing allows an incomplete YAML header, while agent export/execution still rejects invalid instructions. The picker labels recoverable work as unsaved edits, and the popup explains that the other task can run immediately. Successfully saving removes only its matching recovery snapshot.
+
+All 116 automated tests pass, including actual-worker signed-out Start with unfinished library edits, automatic task opening, recovery by the owner, shared-recipient isolation, no upload/model call during local MCP Start, and exact/newer snapshot preservation. Workspace type checks and the production extension/reviewer package pass. These use Chrome API mocks and actual protocol transports; live Chrome acceptance remains manual. The deployed connector stays 0.8.0, with its package bytes unchanged. No MCP re-registration, new account or connection approval is required for this fix.
+
+
 ## Automatic MCP startup — 0.8.0
 
 Normal MCP use now starts from an agent request: the connector can wake installed Chrome after a prior pairing, and Start opens a new dedicated task tab without any manual page opening or tab selection. The builtin routes to GitHub Advanced Search; origin-only recordings resolve directly. Legacy redacted routes require a public starting address in chat, or an explicitly saved start_url header. Raw recorded paths remain uncaptured. Start reauthorizes catalog access and validates parameters before opening a tab; arbitrary undiscovered Markdown cannot navigate the browser.

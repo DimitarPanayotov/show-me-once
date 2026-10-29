@@ -9,7 +9,7 @@ import {
 } from "./external-run.ts";
 import { exampleDraft } from "./skill-catalog.ts";
 
-test("switching agent tasks archives unsaved local work while cloud edits still require an explicit save", () => {
+test("switching agent tasks preserves both local and cloud edits without requiring a save", () => {
   const previous = {
     ...exampleDraft,
     sourceRecordingId: "my-recording",
@@ -26,16 +26,13 @@ test("switching agent tasks archives unsaved local work while cloud edits still 
   assert.equal(next.skills[0], previous);
   assert.equal(next.skills[0]?.markdown, previous.markdown);
   assert.notEqual(next.draft, previous);
-  assert.throws(
-    () =>
-      prepareExternalDraft(
-        { ...previous, remoteSkillId: "cloud" },
-        [],
-        exampleDraft.markdown,
-        "next-run",
-      ),
-    /Save/,
-  );
+  const cloud = { ...previous, remoteSkillId: 'cloud', ownerId: 'owner' };
+  const switched = prepareExternalDraft(cloud, [], exampleDraft.markdown, 'next-run');
+  assert.equal(switched.skills[0], cloud);
+  assert.equal(switched.skills[0]?.remoteSkillId, 'cloud');
+  assert.equal(switched.skills[0]?.savedVersion, cloud.savedVersion);
+  assert.equal(switched.skills[0]?.markdown, previous.markdown);
+
 });
 import {
   applyStepOutcome,

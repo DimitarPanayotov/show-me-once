@@ -25,7 +25,7 @@ export function prepareExternalDraft(
   try {
     return { ...externalDraft(previous, markdown, runId), skills };
   } catch (error) {
-    if (!previous?.dirty || previous.remoteSkillId) throw error;
+    if (!previous?.dirty) throw error;
     return {
       ...externalDraft(undefined, markdown, runId),
       skills: keepLocalDraft(skills, previous),
